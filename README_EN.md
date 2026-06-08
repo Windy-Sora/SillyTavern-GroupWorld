@@ -512,7 +512,7 @@ Install directly through the SillyTavern Extension Manager.
 ## Manual Installation
 
 ```bash
-git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
+git clone https://github.com/Windy-Sora/SillyTavern-GroupWorld.git
 ```
 
 Place it into:

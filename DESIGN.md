@@ -31,7 +31,7 @@ Provider 层           LLM 决策层            DSL 注入层
 ## 2. 目录结构
 
 ```
-SillyTavern-GroupDirector/
+SillyTavern-GroupWorld/
 ├── manifest.json              # 插件元数据 + generate_interceptor 声明
 ├── index.js                   # 入口：运行时状态、拦截器、事件监听、系统组装、bootstrap
 ├── settings.js                # 常量 + 默认设置（单一真相源）
