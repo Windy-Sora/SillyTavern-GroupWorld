@@ -1,277 +1,234 @@
-# SillyTavern Group World
+```markdown
+# GroupWorld
 
 🌏 Language
 
-* English: Current Page
-* 中文: [README.md](README.md)
+- English: [README_EN.md](README_EN.md)
+- 中文: [README.md](README.md)
 
 ---
 
-> A Programmable Narrative Runtime for Open-Ended Storytelling in SillyTavern
+> A programmable runtime for SillyTavern group chat scenarios
 
-Group Director started as an AI director for group chats.
+GroupWorld is a third-party plugin for SillyTavern. It was initially created to solve the problem of "all characters talking over each other" in group chats, and has since evolved into a more general-purpose narrative runtime: not only deciding who speaks, but also organizing character profiles, world knowledge, director ledger, script injection, and long-term state management.
 
-Over time, it evolved into something much larger:
-
-* AI Director
-* Director Scripts
-* Director Ledger
-* Provider Runtime
-* Prompt DSL
-* Recursive Rendering
-* Character Profile System
-* Long-Term Story State
-
-Its purpose is not merely to decide who speaks next.
-
-Its purpose is to help maintain a coherent, evolving narrative world across long-running multi-character stories.
+Its goal is not to turn group chat into a smarter filter, but to turn it into a continuously evolving world model.
 
 ---
 
-# Why Group Director?
+## What it can do
 
-Traditional group chats often suffer from the same problem:
+GroupWorld primarily provides the following capabilities:
 
-> Everyone wants to speak at once.
+* Group chat speaking control
+* Local formula director (no API required)
+* LLM director (decision-making by the main model)
+* Director script injection
+* Persistent director ledger
+* Character profile system
+* World info injection
+* Unified provider data interface
+* Prompt DSL and path queries
+* Recursive rendering and template composition
+* Long-term story state management
 
-A single user message may trigger responses from every active character:
+---
+
+## Why it's needed
+
+Common problems in traditional SillyTavern group chats include:
+
+* All characters respond at once
+* Chaotic speaking order
+* Characters stealing the spotlight
+* Loss of narrative focus
+* Difficulty maintaining long-term storylines
+* Fragmented world info, character cards, and context
+
+GroupWorld adds a director layer before character generation, transforming group chat from "random grabbing" into "organized narrative orchestration":
 
 ```text
-User: What should we do tonight?
-
-Knight: I think we should...
-Mage: According to my research...
-Merchant: I have a proposal...
-Maid: Master...
-Assassin: ...
+User input
+    ↓
+Director
+    ↓
+Select characters
+    ↓
+Generate scripts
+    ↓
+Character generation
 ```
 
-The result is often:
+---
 
-* Chaotic pacing
-* Excessively long replies
-* Characters competing for attention
-* Important characters being buried
-* Loss of narrative focus
+## More than just a director plugin
 
-Group Director introduces a dedicated Director layer before character generation.
+Although the project retains the Director as the default controller, it is only the first controller provided by the system.
 
-Instead of asking:
+The truly important infrastructure is:
 
-> Which characters are activated?
+* Provider Runtime
+* Prompt DSL
+* Ledger
+* Recursive rendering
+* Character profile system
+* World info integration
 
-It asks:
+These capabilities can be combined to achieve far more than just "director" functions, for example:
 
-> Which characters should actually speak in this scene?
+* Long-term memory system
+* World state system
+* Faction system
+* Relationship system
+* Quest system
+* Story state machine
+* Custom agents
+* Custom world controllers
 
 ---
 
-# Core Features
+## Core Modes
 
-## Formula Director
+### Formula Director
 
-A local scoring-based director.
+Local scoring mode, no API calls required.
 
-No API calls.
-No additional token cost.
+Calculates priority for each character based on:
 
-Characters are ranked using factors such as:
-
-* Mention detection
-* Trigger keywords
-* Recent speaking activity
-* Consecutive speaking penalties
+* Name mentions
+* Keyword triggers
+* Recent messages
+* Consecutive speaking penalty
 * Talkativeness
-* Initiative randomness
+* Initiative
 
-Best suited for:
+Suitable for:
 
 * Large group chats
-* Long-term roleplay
 * Low-cost operation
+* Role-playing scenarios requiring stable control
 
 ---
 
-## LLM Director
+### LLM Director
 
-A language model acting as the director.
+The large language model handles director decisions.
 
-The Director analyzes:
+It can comprehensively analyze:
 
-* Recent conversation
-* Character descriptions
+* Recent messages
+* Character information
 * Character profiles
-* World Info / Lorebook
-* Previous director plans
-* Story state
+* World info
+* Historical director plans
+* Current state
 
-Then decides:
+Then decide:
 
 * Who should speak
 * Speaking order
-* Scene progression
-* Optional character scripts
-
-Example:
-
-```json
-{
-  "speakers": [
-    "Knight",
-    "Mage",
-    "King"
-  ],
-  "reason": "The king should make the final decision after hearing advice."
-}
-```
+* How to advance the scene
+* Individual scripts for each character
 
 ---
 
-## Director Scripts
+## Director Script
 
-The Director can generate private instructions for individual characters.
+The Director can not only select characters but also output individual scripts for each character, then inject them into the character generation prompt.
 
-Example:
+For example:
 
 ```json
 {
   "scripts": {
-    "Alice": "Remain calm, but gradually reveal anxiety.",
-    "Bob": "Suppress your anger. Do not explode immediately."
+    "Alice": "Stay calm, but gradually show unease.",
+    "Bob": "Don't burst out in anger; test the waters first."
   }
 }
 ```
 
-Each character only sees their own script.
-
-Characters never see:
-
-* The Director
-* Other characters' scripts
-* The full director plan
-
 This enables:
 
-* Emotional steering
-* Atmosphere control
-* Dramatic tension
-* Coordinated performances
+* Emotional control
+* Atmosphere shaping
+* Narrative tension
+* Collaborative performance
+* Subtle guidance
 
 ---
 
 ## Director Ledger
 
-One of the most powerful features of Group Director.
+The director ledger is used to store structured state and persists across the chat session.
 
-Director outputs can be stored as structured JSON and persisted across generations.
-
-Example:
+For example:
 
 ```json
 {
   "speakers": ["Alice"],
-
   "story": {
-    "chapter": 3,
-    "progress": 42
+    "chapter": 3
   },
-
   "relationships": {
     "Alice-Bob": 75
   }
 }
 ```
 
-The Ledger does not enforce a schema.
+The ledger structure is open, allowing you to freely extend it with:
 
-You are free to store:
-
-* Story progression
-* Relationship systems
-* Faction states
-* Quest states
-* World states
-* Political systems
-* Economic systems
-* Any custom narrative variables
-
-This makes the Ledger a persistent narrative state container rather than a simple history log.
-
----
-
-## Narrative Continuity
-
-Directors can reference either:
-
-* The previous plan
-* The complete director history
-
-This allows the system to maintain:
-
-* Story arcs
+* Story progress
+* World state
 * Character relationships
-* Emotional development
-* Long-term goals
-* Foreshadowing
-
-Especially useful for:
-
-* Long-form storytelling
-* Serialized RP
-* Multi-chapter narratives
+* Faction relations
+* Economic systems
+* Political systems
+* Custom variables
 
 ---
 
-## World Info Awareness
+## Unified Prompt Runtime
 
-The Director can access activated World Info entries before making decisions.
-
-This provides awareness of:
-
-* Worldbuilding
-* Regional context
-* Factions
-* Historical events
-* Current environment
-
-Allowing the Director to make decisions with actual knowledge of the setting.
-
----
-
-# Prompt Runtime
-
-Group Director includes a unified Prompt Runtime.
-
-All editable prompts share the same data layer:
+GroupWorld includes a built-in unified prompt runtime. Multiple template entry points share the same data interface:
 
 * Director Prompt
 * Script Wrapper
 * History Wrapper
 * World Info Wrapper
-* Profile Generator Prompt
-* Profile Template
+* Profile Generator
+* Profile Render Template
 
-All can access the same Providers.
+### Built-in Providers
 
+```text
+{{recentMessages}}
+{{characters}}
+{{character_profiles}}
+{{worldInfo}}
+{{previousPlan}}
+{{previousPlans}}
+{{directorLedger}}
+{{directorHistory}}
+```
 
-Standardized Provider Extension API
+---
 
-Group Director provides a standardized Provider interface.
+## Provider Extension Mechanism
 
-New data sources can be integrated without modifying the core runtime.
+GroupWorld provides a unified provider registration interface. You can register new data sources with the runtime without modifying core code.
 
-A Provider can expose:
+A provider can simultaneously provide:
 
-Human-readable content
-Structured JSON data
-Runtime-accessible state
-Custom prompt variables
+* Readable text content
+* Structured JSON data
+* Long-term state information
+* Variables accessible to prompts
 
 Example:
 
+```js
 registerProvider({
     id: 'relationshipGraph',
-
     async render(ctx) {
         return {
             content: 'Relationship Graph',
@@ -283,132 +240,76 @@ registerProvider({
         };
     }
 });
+```
 
-Once registered, the Provider becomes immediately available throughout the runtime:
-
-{{relationshipGraph}}
-
-{{?relationshipGraph:Alice.Bob}}
-
-Providers automatically integrate with:
-
-Director Prompts
-Script Wrappers
-Profile Generators
-Recursive Rendering
-Path Queries
-Runtime Variables
-
-This allows developers to build custom systems such as:
-
-Memory Systems
-Relationship Graphs
-Quest Trackers
-Faction Systems
-Economy Simulations
-World-State Services
-External Data Connectors
-
-without modifying Group Director itself.
----
-
-## Built-in Providers
+Once registered, you can use it directly in prompts:
 
 ```text
-{{recentMessages}}
-
-{{characters}}
-
-{{character_profiles}}
-
-{{worldInfo}}
-
-{{previousPlan}}
-
-{{previousPlans}}
-
-{{directorLedger}}
-
-{{directorHistory}}
+{{relationshipGraph}}
+{{?relationshipGraph:Alice.Bob}}
 ```
 
 ---
 
 ## Path Queries
 
-Extract structured values directly from Provider data.
-
-Examples:
+GroupWorld supports reading fields from structured data:
 
 ```text
 {{?directorLedger:reason}}
-
 {{?directorLedger:scripts.$character}}
-
 {{?directorHistory:[-1].reason}}
-
 {{?directorLedger:story.chapter}}
-
 {{?directorLedger:relationships.Alice-Bob}}
 ```
 
-Supported features:
+Supports:
 
-* Nested property access
+* Nested access
 * Array indexing
-* Negative indexing
-* Property filtering
+* Reverse indexing
+* Attribute filtering
 * Default values
 * Runtime variables
 
 ---
 
-# Recursive Rendering
+## Recursive Rendering
 
-Group Director supports recursive template rendering.
+GroupWorld supports recursive template parsing.
 
-Example:
-
-First pass:
+For example:
 
 ```text
 {{directorLedger}}
 ```
 
-Produces:
+After rendering, it might produce:
 
 ```text
 {{?directorLedger:story.chapter}}
 ```
 
-Second pass:
+Then continue parsing until the final result is obtained.
 
-```text
-Chapter 3
-```
-
-The maximum recursion depth is configurable.
-
-A debug mode is also available to preserve unresolved placeholders for troubleshooting.
-
-In fact, you can even allow the large model to generate the extended ledger JSON by itself, and at the same time inject query statements into the script provided to the role or other custom interfaces, achieving self-production and self-sales. Or let the large model help you dynamically inject the interfaces you provide.
+This allows you to compose prompts with prompts, and generate more complex structured data from structured data.
 
 ---
 
-# Character Profile System
+## Character Profile System
 
-Group Director includes a structured profile generation system.
+Built-in character profile system for compressing character cards into more manageable structured profiles.
 
-Features include:
+Supports:
 
-* Batch profile generation
+* Batch generation
 * Automatic synchronization
 * Change detection
-* Token budget optimization
-* Custom JSON schemas
+* Token budget compression
+* Custom schemas
 * Custom rendering templates
 
-Default schema:
+Default profile fields include:
 
 ```json
 {
@@ -419,9 +320,7 @@ Default schema:
 }
 ```
 
-However, schemas are fully customizable.
-
-Example:
+You can also define your own structure, e.g.:
 
 ```json
 {
@@ -434,130 +333,72 @@ Example:
 
 ---
 
-# Emergent World State
+## World Info and Long-term Story
 
-Unlike traditional systems, Group Director does not require developers to define all possible state structures beforehand.
+GroupWorld does not require world info and long-term state to be strictly standardized in advance.
 
-The Director can gradually build new world structures over time:
+You can bring world knowledge, story state, character relationships, and quest states into the same runtime, and then read them anywhere via providers and the prompt DSL.
 
-```json
-{
-  "politics": {},
-  "economy": {},
-  "factions": {},
-  "religions": {}
-}
-```
+This makes it especially suitable for:
 
-These structures can then be queried anywhere through the Prompt DSL.
-
-This makes Group Director particularly suitable for:
-
-* Long-form narratives
-* Open-ended worlds
-* Multi-character roleplay
-* Persistent world simulation
+* Long-form storytelling
+* Open worlds
+* Multi-character RP
+* Continuously evolving world models
+* Group chat narrative control
 
 ---
 
-# Workflow
+## Workflow
 
 ```text
-User Input
-     ↓
-Director Analysis
-     ↓
+User input
+      ↓
+Director
+      ↓
 Read:
-- World Info
-- Character Profiles
-- Director Ledger
-     ↓
+- World info
+- Character profiles
+- Director ledger
+      ↓
 Generate:
-- Speaking Order
-- Character Scripts
-- State Updates
-     ↓
-Character Generation
-     ↓
-Write Back To Ledger
-     ↓
-Next Round
+- Speaking order
+- Director scripts
+- State updates
+      ↓
+Character generation
+      ↓
+Write back to Ledger
+      ↓
+Continue to next round
 ```
 
 ---
 
-# Use Cases
+## Installation & Usage
 
-Group Director is particularly effective for:
-
-* Tavern roleplay
-* School settings
-* Adventure parties
-* Court politics
-* Family sagas
-* Military campaigns
-* Long-form stories
-* Collaborative storytelling
-
-The more characters involved, the greater the benefit.
+1. Place this plugin into SillyTavern's extensions directory.
+2. Enable GroupWorld in SillyTavern.
+3. Configure director mode, character profiles, world info, and prompt templates.
+4. Choose according to your narrative needs:
+   - Formula mode
+   - LLM mode
+   - Custom prompts / providers
 
 ---
 
-# Installation
+## Design Philosophy
 
-## Extension Manager
+GroupWorld is not a speaking filter, nor just a tool that decides "who talks".
 
-Install directly through the SillyTavern Extension Manager.
+It is more like a runtime for open-ended narrative:
 
-## Manual Installation
+* Characters are no longer just cards
+* The world is no longer just an article
+* State is no longer just temporary variables
+* The Director is no longer just a fixed algorithm
 
-```bash
-git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
+Its goal is to allow the world to continuously evolve, enabling characters, knowledge, state, and story to accumulate and influence each other over the long term.
+
+Ultimately, SillyTavern group chat is not just chatting—it's a programmable narrative world.
 ```
-
-Place it into:
-
-```text
-SillyTavern/public/scripts/extensions/third-party/
-```
-
-Restart SillyTavern.
-
----
-
-# Settings
-
-The settings panel exposes nearly every major system for customization:
-
-* Director Mode (Off / Formula / LLM)
-* Trigger Engine
-* Initiative System
-* Director Prompt
-* Script Prompt
-* Script Wrapper
-* History Modes
-* World Info Integration
-* Profile System
-* Recursive Rendering
-* Debug Mode
-* Localization
-
----
-
-# Design Philosophy
-
-The Group Director is not a filter for dialogue.
-
-Nor is it merely a simple speaker selector.
-
-It is more akin to a runtime environment designed for open-ended storytelling.
-
-Do not design the world itself.
-
-Instead, provide a mechanism that allows the world to grow.
-
-Enable the entire world to evolve continuously.
-
-Allow states, relationships, narrative elements, and the worldview to accumulate over time, ready to be reused and to influence one another in the future.
-
-Create a real virtual world.
