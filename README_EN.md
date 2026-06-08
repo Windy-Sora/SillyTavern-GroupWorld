@@ -1,4 +1,3 @@
-```markdown
 # GroupWorld
 
 🌏 Language
@@ -401,4 +400,3 @@ It is more like a runtime for open-ended narrative:
 Its goal is to allow the world to continuously evolve, enabling characters, knowledge, state, and story to accumulate and influence each other over the long term.
 
 Ultimately, SillyTavern group chat is not just chatting—it's a programmable narrative world.
-```
