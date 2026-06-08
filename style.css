@@ -1,0 +1,109 @@
+/* ── Nested inline-drawer spacing ── */
+#gd-formula-section,
+#gd-llm-section .inline-drawer {
+    margin: 6px 0;
+}
+
+.group-director-settings h4 {
+    margin: 8px 0 4px 0;
+    font-size: 0.95em;
+    color: var(--SmartThemeBodyColor);
+}
+
+.group-director-settings label {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.9em;
+}
+
+.group-director-settings small {
+    display: block;
+    color: var(--grey70a, #999);
+    margin: 4px 0;
+    font-size: 0.85em;
+}
+
+.group-director-settings hr {
+    margin: 10px 0;
+    border-color: var(--SmartThemeBorderColor);
+    opacity: 0.4;
+}
+
+.group-director-settings input[type="number"] {
+    width: 100%;
+    margin-top: 2px;
+}
+
+.group-director-settings textarea {
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+/* ── Profile Management Cards ── */
+.gd-profile-card {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.gd-profile-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gd-profile-card-info {
+    flex: 1;
+}
+
+.gd-profile-card-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.8em;
+    margin-top: 2px;
+}
+
+.gd-profile-card-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.gd-profile-card-actions button {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.gd-profile-state-ready    { color: #4caf50; }
+.gd-profile-state-pending  { color: #ff9800; }
+.gd-profile-state-failed   { color: #f44336; }
+
+.gd-profile-hash-warn      { color: #ff9800; cursor: help; font-size: 1.1em; }
+
+.gd-profile-card-edit {
+    margin-top: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+}
+
+.gd-profile-card-edit label {
+    font-size: 0.85em;
+    margin-top: 4px;
+}
+
+.gd-profile-edit-field {
+    width: 100%;
+    margin-top: 2px;
+    font-size: 0.85em;
+}
+
+.gd-profile-btn-save,
+.gd-profile-btn-cancel {
+    margin-top: 6px;
+    margin-right: 4px;
+}
+
+.gd-profile-edited-tag { color: #2196f3; font-style: italic; }

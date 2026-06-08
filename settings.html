@@ -1,0 +1,340 @@
+<div class="group-director-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Group Director</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <!-- Language selector -->
+            <label for="gd-lang" data-i18n="langLabel">语言 / Language</label>
+            <select id="gd-lang" class="text_pole" style="width:auto;">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+            </select>
+
+            <hr>
+            <small data-i18n="intro">解决群聊中所有角色抢话的问题。两种判断模式互斥，一次只能启用一种。</small>
+
+            <hr>
+            <h4 data-i18n="modeTitle">判断模式（单选）</h4>
+
+            <label class="checkbox_label" for="gd-mode-off">
+                <input type="radio" name="gd-mode" value="off" id="gd-mode-off">
+                <span data-i18n="modeOff"><b>关闭</b> — 不干预 SillyTavern 默认行为</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-mode-formula">
+                <input type="radio" name="gd-mode" value="formula" id="gd-mode-formula">
+                <span data-i18n="modeFormula"><b>公式判断</b> — 使用关键词、提名、近期发言、主动性等本地评分（无 API 调用）</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-mode-llm">
+                <input type="radio" name="gd-mode" value="llm" id="gd-mode-llm">
+                <span data-i18n="modeLlm"><b>大模型判断</b> — 调用当前主模型，结合上下文决定谁发言、按什么顺序（消耗 token）</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-debug">
+                <input type="checkbox" id="gd-debug">
+                <span data-i18n="debug">调试日志（浏览器控制台）</span>
+            </label>
+
+            <div id="gd-off-hint" style="display:none;">
+                <hr>
+                <small><i data-i18n="offHint">当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。</i></small>
+            </div>
+
+            <!-- ═══ Formula Configuration ═══ -->
+            <div id="gd-formula-section" class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b data-i18n="formulaDrawerTitle">公式判断配置</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <h4 data-i18n="topnTitle">Top-N 设置</h4>
+
+                    <label for="gd-topn" data-i18n="topn">每轮允许发言人数 (Top-N)</label>
+                    <input type="number" id="gd-topn" class="text_pole" min="1" max="20" step="1">
+
+                    <label for="gd-recent-count" data-i18n="recentCount">分析最近消息条数</label>
+                    <input type="number" id="gd-recent-count" class="text_pole" min="1" max="100" step="1">
+
+                    <label for="gd-consecutive-penalty" data-i18n="consecutivePenalty">连续发言惩罚分（每条）</label>
+                    <input type="number" id="gd-consecutive-penalty" class="text_pole" min="0" max="200" step="1">
+
+                    <hr>
+                    <h4 data-i18n="weightsTitle">评分权重</h4>
+
+                    <label for="gd-mention-weight" data-i18n="mentionWeight">名字被提及权重</label>
+                    <input type="number" id="gd-mention-weight" class="text_pole" min="0" step="1">
+
+                    <label for="gd-keyword-weight" data-i18n="keywordWeight">关键词匹配权重</label>
+                    <input type="number" id="gd-keyword-weight" class="text_pole" min="0" step="1">
+
+                    <label for="gd-recency-weight" data-i18n="recencyWeight">近期未发言加权</label>
+                    <input type="number" id="gd-recency-weight" class="text_pole" min="0" step="1">
+
+                    <label for="gd-talkativeness-weight" data-i18n="talkativenessWeight">Talkativeness 权重</label>
+                    <input type="number" id="gd-talkativeness-weight" class="text_pole" min="0" step="1">
+
+                    <hr>
+                    <h4 data-i18n="triggerTitle">触发器引擎</h4>
+                    <label class="checkbox_label" for="gd-trigger-enabled">
+                        <input type="checkbox" id="gd-trigger-enabled">
+                        <span data-i18n="triggerEnabled">启用关键词触发器（基于角色描述切词）</span>
+                    </label>
+                    <label for="gd-trigger-score" data-i18n="triggerScore">触发器命中加分</label>
+                    <input type="number" id="gd-trigger-score" class="text_pole" min="0" step="1">
+
+                    <hr>
+                    <h4 data-i18n="initiativeTitle">主动性 (Initiative)</h4>
+                    <label class="checkbox_label" for="gd-initiative-enabled">
+                        <input type="checkbox" id="gd-initiative-enabled">
+                        <span data-i18n="initiativeEnabled">启用主动性系统（每轮随机扰动）</span>
+                    </label>
+                    <label for="gd-initiative-base" data-i18n="initiativeBase">主动性基础值（每轮随机 0~该值）</label>
+                    <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
+                </div>
+            </div>
+
+            <!-- ═══ LLM Configuration ═══ -->
+            <div id="gd-llm-section" style="display:none;">
+
+                <!-- LLM Parameters Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="llmParamsDrawerTitle">Director LLM 参数</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label for="gd-llm-max-speakers" data-i18n="llmMaxSpeakers">每轮最多发言人数</label>
+                        <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
+
+                        <label for="gd-llm-context-depth" data-i18n="llmContextDepth">传入上下文层数（最近 N 条消息）</label>
+                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量。减少可节省 token，但可能影响判断准确性。</small>
+                        <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
+
+                        <label class="checkbox_label" for="gd-llm-respect-order">
+                            <input type="checkbox" id="gd-llm-respect-order">
+                            <span data-i18n="llmRespectOrder">严格按 LLM 顺序发言（接管 ST 激活循环，手动按导演决定的顺序逐人生成）</span>
+                        </label>
+
+                        <hr>
+                        <h4 data-i18n="charDescTitle">角色描述控制</h4>
+                        <small data-i18n="charDescHint">控制传入 Director LLM 的角色描述长度（<code>{{characters}}</code> 占位符）。</small>
+
+                        <label class="checkbox_label" for="gd-llm-char-desc-full">
+                            <input type="radio" name="gd-llm-char-desc-mode" value="full" id="gd-llm-char-desc-full">
+                            <span data-i18n="charDescFull">全量传入</span>
+                        </label>
+                        <label class="checkbox_label" for="gd-llm-char-desc-slice">
+                            <input type="radio" name="gd-llm-char-desc-mode" value="slice" id="gd-llm-char-desc-slice">
+                            <span data-i18n="charDescSlice">切片截断（保留前 N 个字符）</span>
+                        </label>
+                        <label for="gd-llm-char-desc-length" data-i18n="charDescLength">切片长度（字符数）</label>
+                        <input type="number" id="gd-llm-char-desc-length" class="text_pole" min="50" max="2000" step="50">
+                    </div>
+                </div>
+
+                <!-- Director Prompt Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="promptDrawerTitle">Director Prompt 模板</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label for="gd-llm-prompt" data-i18n="promptTitle">Director Prompt 模板</label>
+                        <small data-i18n="promptHint">可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{character_profiles}}</code>、<code>{{worldInfo}}</code>、<code>{{previousPlan}}</code> 等。<br>
+                            模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。</small>
+                        <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="14" style="width:100%;"></textarea>
+                        <div class="menu_button menu_button_icon" id="gd-llm-prompt-reset" style="margin-top:4px;">
+                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="promptReset">恢复默认 Prompt</span>
+                        </div>
+                        <small style="margin-top:8px;"><i data-i18n="promptNote">每轮群聊生成会额外调用一次主模型来做导演决策。</i></small>
+
+                        <hr>
+                        <h4 data-i18n="templateRecursiveTitle">模板递归渲染</h4>
+                        <small data-i18n="templateRecursiveHint">当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。</small>
+
+                        <label class="checkbox_label" for="gd-template-recursive">
+                            <input type="checkbox" id="gd-template-recursive">
+                            <span data-i18n="templateRecursive">启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）</span>
+                        </label>
+
+                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数</label>
+                        <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。</small>
+                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" step="1">
+
+                        <label class="checkbox_label" for="gd-template-debug-placeholders">
+                            <input type="checkbox" id="gd-template-debug-placeholders">
+                            <span data-i18n="templateDebugPlaceholders">调试模式：保留无法识别的占位符（如拼写错误的 <code>{{charcters}}</code> 会原样输出，而非静默清除）</span>
+                        </label>
+                        <small data-i18n="templateDebugPlaceholdersHint">开启后未注册的占位符会保留在输出中方便排查。关闭（默认）则静默清除，避免污染 LLM 上下文。</small>
+                    </div>
+                </div>
+
+                <!-- Script & Continuity Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="scriptDrawerTitle">导演剧本 & 连贯性</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label class="checkbox_label" for="gd-llm-script-enabled">
+                            <input type="checkbox" id="gd-llm-script-enabled">
+                            <span data-i18n="scriptEnabled">启用导演剧本（Director 为每个发言角色输出独立剧本）</span>
+                        </label>
+
+                        <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本要求提示（Script Prompt）</label>
+                        <small data-i18n="scriptPromptHint">告诉导演你希望什么样的剧本风格。留空则只要求基本场景描述。</small>
+                        <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
+                        <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">剧本注入包装模板（Script Wrapper）</label>
+                        <small data-i18n="scriptWrapperHint"><code>{{script}}</code> 占位符会被替换为实际剧本内容。</small>
+                        <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+
+                        <hr>
+                        <label class="checkbox_label" for="gd-llm-history-enabled">
+                            <input type="checkbox" id="gd-llm-history-enabled">
+                            <span data-i18n="historyEnabled"><b>记录导演账本</b> — 每次 LLM 决策后将完整 JSON 保存到聊天元数据</span>
+                        </label>
+                        <div class="menu_button menu_button_icon" id="gd-llm-history-clear" style="margin-top:4px;">
+                            <i class="fa-solid fa-trash"></i> <span data-i18n="historyClear">清空当前导演账本</span>
+                        </div>
+                        <div id="gd-history-meta-display" style="margin-top:6px; display:none;">
+                            <small><i><span data-i18n="historyMeta">当前账本风格：</span><span id="gd-history-meta-script"></span></i></small>
+                        </div>
+
+                        <hr>
+                        <label class="checkbox_label" for="gd-llm-script-continuity">
+                            <input type="checkbox" id="gd-llm-script-continuity">
+                            <span data-i18n="continuity"><b>使用导演历史</b> — 将记录的导演账本注入当前 prompt</span>
+                        </label>
+
+                        <h4 data-i18n="continuityTitle" style="margin-top:8px;">连贯剧本模式</h4>
+                        <small data-i18n="continuityHint">选择只注入上一轮计划，还是注入完整历史记录。</small>
+
+                        <label class="checkbox_label" for="gd-llm-script-continuity-mode-last">
+                            <input type="radio" name="gd-llm-script-continuity-mode" value="last" id="gd-llm-script-continuity-mode-last">
+                            <span data-i18n="continuityLast"><b>仅上一轮</b></span>
+                        </label>
+                        <label class="checkbox_label" for="gd-llm-script-continuity-mode-history">
+                            <input type="radio" name="gd-llm-script-continuity-mode" value="history" id="gd-llm-script-continuity-mode-history">
+                            <span data-i18n="continuityHistory"><b>完整历史</b></span>
+                        </label>
+
+                        <label for="gd-llm-script-continuity-count" data-i18n="continuityCount">历史轮数（0 = 全部）</label>
+                        <input type="number" id="gd-llm-script-continuity-count" class="text_pole" min="0" max="100" step="1">
+
+                        <label for="gd-llm-script-continuity-wrapper" data-i18n="continuityWrapper">连贯剧本包装模板（仅上一轮）</label>
+                        <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
+                        <label for="gd-llm-script-continuity-history-wrapper" data-i18n="continuityHistoryWrapper">连贯剧本包装模板（完整历史）</label>
+                        <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                    </div>
+                </div>
+
+                <!-- World Info Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="worldInfoDrawerTitle">世界书注入 (World Info)</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small data-i18n="worldInfoHint">将当前激活的世界书/ lorebook 条目注入 Director prompt。</small>
+
+                        <label class="checkbox_label" for="gd-llm-world-info-enabled">
+                            <input type="checkbox" id="gd-llm-world-info-enabled">
+                            <span data-i18n="worldInfoEnabled">启用世界书注入</span>
+                        </label>
+
+                        <label for="gd-llm-world-info-wrapper" data-i18n="worldInfoWrapper">世界书包装模板</label>
+                        <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                    </div>
+                </div>
+
+                <!-- World Book Selection Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="worldBookSelectionTitle">世界书选择 (World Book Selection)</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small data-i18n="worldBookSelectionHint">手动选择要暴露给 Director 的世界书。不勾选的书不会被扫描，避免世界观串台。</small>
+
+                        <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目数</label>
+                        <small data-i18n="worldBookMaxEntriesHint">限制 {{worldBookImportance}} 输出给 Director 的条目数量。推荐 15-30。</small>
+                        <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
+
+                        <div class="menu_button menu_button_icon" id="gd-world-book-refresh" style="margin-top:4px;">
+                            <i class="fa-solid fa-rotate"></i> <span data-i18n="worldBookRefresh">刷新世界书列表</span>
+                        </div>
+                        <div id="gd-world-book-list" style="margin-top:8px;max-height:300px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Character Profiles Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="profileDrawerTitle">角色档案系统</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small data-i18n="profileHint">提前分析每个角色的特质、动机、关系，注入 Director Prompt。</small>
+
+                        <label class="checkbox_label" for="gd-profile-enabled">
+                            <input type="checkbox" id="gd-profile-enabled">
+                            <span data-i18n="profileEnabled">启用角色档案</span>
+                        </label>
+
+                        <div id="gd-profile-section" style="display:none;">
+                            <div class="menu_button menu_button_icon" id="gd-profile-scan-save" style="margin-bottom:4px;">
+                                <i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="profileScanSave">扫描当前存档</span>
+                            </div>
+                            <div class="menu_button menu_button_icon" id="gd-profile-detect-changes" style="margin-bottom:8px;">
+                                <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测角色变动</span>
+                            </div>
+
+                            <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">档案 Token 预算</label>
+                            <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
+
+                            <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数（0=全部同时）</label>
+                            <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
+
+                            <hr>
+                            <h4 data-i18n="profileGeneratorPromptTitle">生成器 Prompt 模板</h4>
+                            <small data-i18n="profileGeneratorPromptHint">占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code></small>
+                            <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
+                            <div class="menu_button menu_button_icon" id="gd-profile-generator-reset" style="margin-top:4px;">
+                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileGeneratorReset">恢复默认</span>
+                            </div>
+
+                            <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
+                            <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;"></textarea>
+                            <div class="menu_button menu_button_icon" id="gd-profile-schema-reset" style="margin-top:4px;">
+                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileSchemaReset">恢复默认 Schema</span>
+                            </div>
+
+                            <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
+                            <small data-i18n="profileRenderTemplateHint">占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code></small>
+                            <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                            <div id="gd-profile-template-warning" style="color:orange;display:none;margin-top:4px;"></div>
+                            <div class="menu_button menu_button_icon" id="gd-profile-render-reset" style="margin-top:4px;">
+                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileRenderReset">恢复默认</span>
+                            </div>
+
+                            <hr>
+                            <h4 data-i18n="profileManagementTitle">档案管理</h4>
+                            <div class="menu_button menu_button_icon" id="gd-profile-regenerate-all" style="margin-top:4px;">
+                                <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
+                            </div>
+                            <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
