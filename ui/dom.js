@@ -1,5 +1,5 @@
 /**
- * DOM utility helpers for Group Director settings panels.
+ * DOM utility helpers for Group World settings panels.
  *
  * createDomUtils(saveSettings) returns:
  *   $c          — shorthand jQuery selector for #gd-{id} elements

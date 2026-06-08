@@ -1102,5 +1102,5 @@ jQuery(async () => {
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
         toastr, world_names, loadWorldInfo,
     });
-    console.log(`Group Director extension loaded (mode=${settings.mode})`);
+    console.log(`Group World extension loaded (mode=${settings.mode})`);
 });
