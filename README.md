@@ -1,4 +1,4 @@
-# SillyTavern Group Director
+# GroupWorld
 
 🌏 Language
 
@@ -7,39 +7,44 @@
 
 ---
 
-> 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）
+> 一个面向 **SillyTavern** 群聊场景的可编程运行时（Programmable Runtime）
 
-Group Director 起源于一个简单问题：
+GroupWorld 是一个 SillyTavern 第三方插件。它最初用于解决群聊中“所有角色一起抢话”的问题，后来逐步演化为一套更通用的叙事运行时：它不仅能决定谁发言，还能组织角色档案、世界知识、导演账本、剧本注入与长期状态管理。
 
-> 在多人群聊中，谁应该说话？
-
-但随着发展，它逐渐演化成了一套更通用的叙事运行时：
-
-* AI 导演（Director）
-* 角色剧本（Script）
-* 导演账本（Ledger）
-* Provider 数据接口
-* Prompt DSL
-* 递归渲染系统
-* 长期剧情状态管理
-
-它不仅能够决定谁发言。
-
-更能够维护一个持续演化的世界模型。
+它的目标不是把群聊变成一个更聪明的过滤器，而是把群聊变成一个可持续演化的世界模型。
 
 ---
 
-# 为什么需要 Group Director？
+## 它能做什么
 
-传统群聊往往会出现：
+GroupWorld 主要提供以下能力：
+
+* 群聊发言控制
+* 本地公式导演（无需 API）
+* LLM 导演（由主模型做决策）
+* 导演剧本注入
+* 导演账本（Ledger）持久化
+* 角色档案系统（Character Profiles）
+* 世界书注入（World Info）
+* 统一的 Provider 数据接口
+* Prompt DSL 与路径查询
+* 递归渲染与模板组合
+* 长期剧情状态管理
+
+---
+
+## 为什么需要它
+
+传统 SillyTavern 群聊常见的问题是：
 
 * 所有人同时回应
 * 发言顺序混乱
 * 角色抢戏
 * 剧情失焦
-* 长线剧情难以维持
+* 长线叙事难以维持
+* 世界书、角色卡、上下文彼此割裂
 
-Group Director 会在角色生成之前增加一个导演层：
+GroupWorld 会在角色生成之前增加一个导演层，让群聊从“随机抢话”变成“有组织的叙事编排”：
 
 ```text
 用户输入
@@ -53,31 +58,22 @@ Director
 角色生成
 ```
 
-从而让群聊更接近真实的戏剧编排。
-
 ---
 
-# 不只是导演
+## 这不只是一个导演插件
 
-虽然名字叫 Group Director。
+虽然项目里保留了 Director 作为默认控制器，但它只是系统提供的第一个 Controller。
 
-但 Director 只是系统提供的第一个 Agent。
+真正重要的是这套基础设施：
 
-真正的核心是：
+* Provider Runtime
+* Prompt DSL
+* Ledger
+* 递归渲染
+* 角色档案系统
+* 世界知识接入
 
-```text
-Provider Runtime
-        +
-Prompt DSL
-        +
-Ledger
-        +
-Recursive Rendering
-```
-
-这些能力可以组合出远超“导演”的功能。
-
-例如：
+这些能力可以组合出远超“导演”的功能，例如：
 
 * 长期记忆系统
 * 世界状态系统
@@ -86,44 +82,38 @@ Recursive Rendering
 * 任务系统
 * 剧情状态机
 * 自定义 Agent
-
-无需修改代码。
-
-仅通过 Prompt 与模板即可实现。
+* 自定义世界控制器
 
 ---
 
-# 核心能力
+## 核心模式
 
-## Formula Director
+### Formula Director
 
-本地评分模式。
+本地评分模式，不需要 API 调用。
 
-无需 API 调用。
+根据以下信息计算每个角色的优先级：
 
-根据：
-
-* 提及情况
-* 关键词
+* 名字提及
+* 关键词触发
 * 最近发言
 * 连续发言惩罚
 * Talkativeness
-
-计算角色优先级。
+* Initiative
 
 适合：
 
 * 大型群聊
-* 长期 RP
 * 低成本运行
+* 需要稳定控制的角色扮演场景
 
 ---
 
-## LLM Director
+### LLM Director
 
-由大模型担任导演。
+由大模型负责导演决策。
 
-综合分析：
+它可以综合分析：
 
 * 最近消息
 * 角色信息
@@ -132,20 +122,18 @@ Recursive Rendering
 * 历史导演计划
 * 当前状态
 
-决定：
+然后决定：
 
 * 谁应该发言
 * 发言顺序
 * 场景推进方式
-* 导演剧本
+* 每个角色的独立剧本
 
 ---
 
-## Director Script
+## 导演剧本（Director Script）
 
-导演不仅选择角色。
-
-还可以为每个角色生成独立剧本。
+Director 不仅可以选择角色，还可以为每个角色输出独立剧本，然后注入到角色生成 prompt 中。
 
 例如：
 
@@ -153,117 +141,96 @@ Recursive Rendering
 {
   "scripts": {
     "Alice": "保持冷静，但逐渐流露出不安。",
-    "Bob": "不要直接爆发愤怒。"
+    "Bob": "不要直接爆发愤怒，而是先试探对方。"
   }
 }
 ```
 
-每个角色只会看到属于自己的部分。
-
-因此可以实现：
+这样可以实现：
 
 * 情绪控制
 * 氛围塑造
-* 戏剧张力
+* 剧情张力
 * 协同演出
+* 隐性引导
 
 ---
 
-## Director Ledger
+## 导演账本（Ledger）
 
-导演账本用于保存结构化状态。
+导演账本用于保存结构化状态，并跟随聊天持久化。
 
 例如：
 
 ```json
 {
   "speakers": ["Alice"],
-
   "story": {
     "chapter": 3
   },
-
   "relationships": {
     "Alice-Bob": 75
   }
 }
 ```
 
-Ledger 不限制结构。
-
-你可以自由扩展：
+账本结构是开放的，你可以自由扩展为：
 
 * 剧情进度
 * 世界状态
-* 阵营关系
 * 角色关系
+* 阵营关系
 * 经济系统
 * 政治系统
 * 自定义变量
 
 ---
 
-# Prompt Runtime
+## 统一的 Prompt Runtime
 
-Group Director 内置统一的 Prompt Runtime。
-
-所有 Prompt：
+GroupWorld 内置一套统一的 Prompt Runtime。多个模板入口共享同一套数据接口：
 
 * Director Prompt
 * Script Wrapper
 * History Wrapper
-* WorldInfo Wrapper
+* World Info Wrapper
 * Profile Generator
-* Profile Template
+* Profile Render Template
 
-共享同一套数据接口。
-
----
-
-## 内置 Provider
+### 内置 Provider
 
 ```text
 {{recentMessages}}
-
 {{characters}}
-
 {{character_profiles}}
-
 {{worldInfo}}
-
 {{previousPlan}}
-
 {{previousPlans}}
-
 {{directorLedger}}
-
 {{directorHistory}}
 ```
 
 ---
 
-## 标准化 Provider 扩展接口
+## Provider 扩展机制
 
-Group Director 提供统一的 Provider 扩展协议。
-
-开发者无需修改核心代码，即可向运行时注册新的数据源。
+GroupWorld 提供统一的 Provider 注册接口。你可以在不改核心代码的情况下，向运行时注册新的数据源。
 
 一个 Provider 可以同时提供：
 
-可读文本内容
-结构化 JSON 数据
-长期状态信息
-Prompt 可访问变量
+* 可读文本内容
+* 结构化 JSON 数据
+* 长期状态信息
+* Prompt 可访问变量
 
-例如：
-```text
+示例：
+
+```js
 registerProvider({
     id: 'relationshipGraph',
-
     async render(ctx) {
         return {
             content: '关系图',
-
             data: {
                 Alice: {
                     Bob: 75
@@ -273,49 +240,25 @@ registerProvider({
     }
 });
 ```
-注册后即可在整个运行时中使用：
+
+注册后即可在 Prompt 中直接使用：
+
 ```text
 {{relationshipGraph}}
-
 {{?relationshipGraph:Alice.Bob}}
 ```
-Provider 会自动接入：
-```text
-Director Prompt
-Script Wrapper
-Profile Generator
-Prompt DSL
-路径查询
-递归渲染系统
-```
-因此开发者可以轻松构建：
-```text
-长期记忆系统
-角色关系图
-任务追踪系统
-阵营系统
-世界状态系统
-经济模拟系统
-外部数据接口
-自定义 Agent
-```
-而无需修改 Group Director 本体。
 
 ---
 
 ## 路径查询
 
-从结构化数据中直接读取字段：
+GroupWorld 支持从结构化数据中读取字段：
 
 ```text
 {{?directorLedger:reason}}
-
 {{?directorLedger:scripts.$character}}
-
 {{?directorHistory:[-1].reason}}
-
 {{?directorLedger:story.chapter}}
-
 {{?directorLedger:relationships.Alice-Bob}}
 ```
 
@@ -330,43 +273,31 @@ Prompt DSL
 
 ---
 
-# 递归渲染
+## 递归渲染
 
-Group Director 支持递归模板解析。
+GroupWorld 支持递归模板解析。
 
 例如：
-
-第一层：
 
 ```text
 {{directorLedger}}
 ```
 
-生成：
+渲染后可能产生：
 
 ```text
 {{?directorLedger:story.chapter}}
 ```
 
-第二层继续解析：
+然后继续解析，直到得到最终结果。
 
-```text
-第三章
-```
-
-最终得到完整结果。
-
-最大递归层数可配置。
-
-并提供调试模式用于查看未解析占位符。
-
-事实上，你甚至可以让大模型自行生成拓展账本json的同时自行在提供给角色的script中或者其他自定义接口中注入查询语句，实现自产自销，或者让大模型帮你动态注入你提供的接口。
+这允许你用 Prompt 组合 Prompt，用结构化数据生成更复杂的结构化数据。
 
 ---
 
-# 角色档案系统
+## 角色档案系统
 
-内置 Profile System。
+内置 Character Profile System，用于把角色卡压缩成更易管理的结构化档案。
 
 支持：
 
@@ -377,7 +308,7 @@ Group Director 支持递归模板解析。
 * 自定义 Schema
 * 自定义渲染模板
 
-默认可生成：
+默认档案字段包括：
 
 ```json
 {
@@ -388,9 +319,7 @@ Group Director 支持递归模板解析。
 }
 ```
 
-但结构完全开放。
-
-你可以定义自己的字段：
+你也可以定义自己的结构，例如：
 
 ```json
 {
@@ -403,33 +332,23 @@ Group Director 支持递归模板解析。
 
 ---
 
-# 世界状态与长期剧情
+## 世界书与长期剧情
 
-Group Director 不要求开发者提前定义状态结构。
+GroupWorld 不要求世界书和长期状态提前被严格标准化。
 
-状态可以由 Director 在运行过程中自然生成：
+你可以把世界知识、剧情状态、角色关系、任务状态都纳入同一套运行时中，再通过 Provider 和 Prompt DSL 在任意位置读取。
 
-```json
-{
-  "politics": {},
-  "economy": {},
-  "factions": {},
-  "religions": {}
-}
-```
-
-然后通过 Prompt DSL 在任意位置读取。
-
-这使得系统特别适合：
+这使它特别适合：
 
 * 长篇剧情
 * 开放世界
 * 多角色 RP
 * 持续演化的世界模型
+* 群聊叙事控制
 
 ---
 
-# 工作流程
+## 工作流程
 
 ```text
 用户输入
@@ -455,20 +374,31 @@ Director
 
 ---
 
-# 设计理念
+## 安装与使用
 
-Group Director 不是一个发言过滤器。
+1. 将本插件放入 SillyTavern 的扩展目录。
+2. 在 SillyTavern 中启用 GroupWorld。
+3. 配置导演模式、角色档案、世界书、Prompt 模板。
+4. 根据你的叙事需求选择：
 
-也不是一个简单的 Speaker Selector。
+   * 公式模式
+   * LLM 模式
+   * 自定义 Prompt / Provider
 
-它更像一个面向开放式叙事的运行时。
+---
 
-不要把世界设计出来。
+## 设计理念
 
-给它一个能生长世界的机制。
+GroupWorld 不是一个发言过滤器，也不是一个只管“谁说话”的工具。
 
-让整个世界拥有持续演化的能力。
+它更像一个面向开放式叙事的运行时：
 
-让状态、关系、剧情与世界观能够长期积累，并在未来被重新利用、相互影响。
+* 角色不再只是卡片
+* 世界不再只是文章
+* 状态不再只是临时变量
+* Director 不再只是一个固定算法
 
-最终实现一个虚拟世界。
+它的目标是让世界能够持续演化，让角色、知识、状态和剧情能够长期积累并相互影响。
+
+最终，SillyTavern 群聊不只是聊天，而是一个可编程的叙事世界。
+
