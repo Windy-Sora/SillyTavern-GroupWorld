@@ -14,7 +14,7 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
 
     /**
      * Scan only the world books the user has manually selected
-     * in the Group World settings panel.
+     * in the Group Director settings panel.
      */
     async function scanAll() {
         const selection = getSelection ? getSelection() : {};

@@ -636,7 +636,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     wiState.entries = [];
     scriptCounterSnapshots.clear();
     if (chat_metadata[EXT_KEY]) delete chat_metadata[EXT_KEY]._counterSnapshots;
-    await pruneDirectorHistory(newChatLength);
+    await pruneDirectorHistory();
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
