@@ -62,6 +62,11 @@ const I18N = {
 
         historyEnabled: '<b>记录导演账本</b> — 每次 LLM 决策后将完整 JSON 保存到聊天元数据，跟随对话导出/导入/分支',
         historyClear: '清空当前导演账本',
+        ledgerDrawerTitle: '导演账本浏览器',
+        ledgerHint: '查看、编辑、清空导演账本。生成中锁死不可编辑。',
+        ledgerLocked: '生成中，面板已锁定',
+        ledgerRefresh: '刷新',
+        ledgerRawToggle: 'Raw 模式',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -177,6 +182,11 @@ const I18N = {
 
         historyEnabled: '<b>Record Director Ledger</b> — Save full JSON to chat metadata after each LLM decision (follows chat export/import/branch)',
         historyClear: 'Clear Current Ledger',
+        ledgerDrawerTitle: 'Director Ledger Browser',
+        ledgerHint: 'View, edit, and clear director ledger entries. Locked during generation.',
+        ledgerLocked: 'Generation in progress — panel locked',
+        ledgerRefresh: 'Refresh',
+        ledgerRawToggle: 'Raw mode',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',

@@ -43,5 +43,25 @@ export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveCha
         }
     }
 
-    return { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory };
+    async function updateEntry(index, entry) {
+        const history = getDirectorHistory();
+        if (index < 0 || index >= history.length) return false;
+        // Preserve internal metadata — never expose to user
+        entry._anchorDate = history[index]._anchorDate;
+        entry._chatLength = history[index]._chatLength;
+        history[index] = entry;
+        await saveChatConditional();
+        return true;
+    }
+
+    async function clearEntry(index) {
+        const history = getDirectorHistory();
+        if (index < 0 || index >= history.length) return false;
+        // Replace with empty object to keep array index stable
+        history[index] = { _anchorDate: history[index]._anchorDate, _chatLength: history[index]._chatLength };
+        await saveChatConditional();
+        return true;
+    }
+
+    return { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry };
 }

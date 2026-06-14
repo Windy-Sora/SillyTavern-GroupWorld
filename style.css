@@ -107,3 +107,39 @@
 }
 
 .gd-profile-edited-tag { color: #2196f3; font-style: italic; }
+
+/* ── Ledger Cards ── */
+.gd-ledger-card {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 6px;
+}
+
+.gd-ledger-card-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.gd-ledger-card-header:hover { background: rgba(128,128,128,0.05); border-radius: 4px; }
+
+.gd-ledger-card-title { font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.gd-ledger-btn {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.gd-ledger-edit-area {
+    width: 100%;
+    margin-top: 6px;
+    font-family: monospace;
+    font-size: 0.82em;
+}
+
+.gd-ledger-edit-err { color: #f44336; font-size: 0.85em; margin-top: 4px; }

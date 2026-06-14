@@ -9,6 +9,7 @@ import './sections/director.js';
 import './sections/continuity.js';
 import './sections/worldinfo.js';
 import './sections/worldBooks.js';
+import './sections/ledger.js';
 import './sections/profile.js';
 
 export async function loadSettingsUI(deps) {

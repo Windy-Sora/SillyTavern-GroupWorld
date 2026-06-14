@@ -111,7 +111,7 @@ const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
 
-const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
+const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
 
 const { buildDirectorWorldInfo } =
@@ -329,6 +329,13 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
     const group = getCurrentGroup();
     if (!group) return;
+
+    // Manual force-speak without a user trigger: no send_date anchor
+    // for the ledger, would corrupt indexing. Transparent pass-through.
+    if (!roundInitialized && roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
+        const lastMsg = chat[chat.length - 1];
+        if (lastMsg && !lastMsg.is_user) return;
+    }
 
     const ctx = getContext();
     const activeCharId = ctx.characterId;
@@ -1102,6 +1109,9 @@ jQuery(async () => {
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
         toastr, world_names, loadWorldInfo,
+        getDirectorHistory, updateEntry, clearEntry,
+        isRoundActive: () => isGroupChat,
+        onLatestEntryEdited: () => { llmPickedSet = null; },
     });
     console.log(`Group World extension loaded (mode=${settings.mode})`);
 });

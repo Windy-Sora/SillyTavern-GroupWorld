@@ -234,6 +234,30 @@
                     </div>
                 </div>
 
+                <!-- Director Ledger Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="ledgerDrawerTitle">导演账本浏览器</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small data-i18n="ledgerHint">查看、编辑、清空导演账本。生成中锁死不可编辑。</small>
+
+                        <div id="gd-ledger-lock-warn" style="display:none;color:#ff9800;margin-top:4px;">
+                            <b>&#9888; <span data-i18n="ledgerLocked">生成中，面板已锁定</span></b>
+                        </div>
+
+                        <div id="gd-ledger-toolbar" style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span id="gd-ledger-count" style="font-size:0.9em;color:var(--grey70a)"></span>
+                            <span style="flex:1"></span>
+                            <span class="menu_button menu_button_icon" id="gd-ledger-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="ledgerRefresh">刷新</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-ledger-raw-toggle"><i class="fa-solid fa-code"></i> <span data-i18n="ledgerRawToggle">Raw 模式</span></span>
+                        </div>
+
+                        <div id="gd-ledger-list" style="margin-top:8px;max-height:500px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+
                 <!-- World Info Drawer -->
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
