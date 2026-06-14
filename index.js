@@ -330,7 +330,8 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         && roundGenerateType !== 'swipe'
         && roundGenerateType !== 'regenerate'
         && chat.length > 0
-        && !chat[chat.length - 1]?.is_user;
+        && !chat[chat.length - 1]?.is_user
+        && !!getCurrentGroup();  // group chat only — irrelevant in 1-on-1
 
     if (isForceSpeak) {
         const mode = settings.forceSpeakMode || 'native';
