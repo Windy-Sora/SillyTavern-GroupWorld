@@ -808,9 +808,10 @@ async function initForceSpeakLLM(char, avatar) {
     }
 
     // Force-speak instruction: tell LLM to pick ONLY this character
-    const fsPrompt = settings.forceSpeakPrompt ||
-        'System instruction: The user has manually forced {charName} to speak. ' +
-        'You MUST select ONLY {charName} as the speaker. Write an appropriate stage direction.';
+    const defaultFsPrompt = settings.lang === 'zh'
+        ? '【系统指令】用户启动了强制发言，此轮仅选择 {charName} 作为发言者。请为该角色撰写一段简短的舞台指导。'
+        : '[System] The user has force-triggered {charName} to speak. Select ONLY {charName} for this round. Write a short stage direction.';
+    const fsPrompt = settings.forceSpeakPrompt || defaultFsPrompt;
     filled += '\n\n' + fsPrompt.replace(/\{charName\}/g, char.name);
 
     const ctx = getContext();
