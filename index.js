@@ -324,25 +324,45 @@ function getRecentMessages() {
 // ─── Main Interceptor ─────────────────────────────────────────────────
 // Runs once per activated character before its Generate() call.
 globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, abort, type) {
+    // Manual force-speak detection: runs BEFORE mode guard so it works
+    // even when the main director mode is turned off.
+    const isForceSpeak = !roundInitialized
+        && roundGenerateType !== 'swipe'
+        && roundGenerateType !== 'regenerate'
+        && chat.length > 0
+        && !chat[chat.length - 1]?.is_user;
+
+    if (isForceSpeak) {
+        const mode = settings.forceSpeakMode || 'native';
+        if (mode === 'block') {
+            abort(false);
+            return;
+        }
+        if (mode === 'llm') {
+            const group = getCurrentGroup();
+            if (group) {
+                const ctx = getContext();
+                const chId = ctx.characterId;
+                if (chId !== undefined && chId !== null && characters[chId]) {
+                    await initForceSpeakLLM(characters[chId], characters[chId].avatar);
+                }
+            }
+            return;
+        }
+        // mode === 'native': confirm then pass through
+        const msg = settings.lang === 'zh'
+            ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
+            : 'Force-speak bypasses the director and may break story continuity. Continue?';
+        if (confirm(msg)) return;
+        abort(false);
+        return;
+    }
+
     if (settings.mode === MODE_OFF) return;
     if (type === 'quiet' || type === 'impersonate' || type === 'continue') return;
 
     const group = getCurrentGroup();
     if (!group) return;
-
-    // Manual force-speak without a user trigger: no send_date anchor
-    // for the ledger, would corrupt indexing. Warn and let the user decide.
-    if (!roundInitialized && roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
-        const lastMsg = chat[chat.length - 1];
-        if (lastMsg && !lastMsg.is_user) {
-            const msg = settings.lang === 'zh'
-                ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
-                : 'Force-speak bypasses the director and may break story continuity. Continue?';
-            if (confirm(msg)) return;     // user chose to continue → pass through
-            abort(false);                  // user cancelled → block generation
-            return;
-        }
-    }
 
     const ctx = getContext();
     const activeCharId = ctx.characterId;
@@ -748,6 +768,111 @@ async function runManualOrderedGeneration() {
             setCharacterName(savedChName);
         }
     }
+}
+
+/**
+ * Force-speak LLM takeover: run a mini director round for exactly one
+ * character. Reuses the normal Director Prompt template with a force-speak
+ * instruction appended. Script is injected via setExtensionPrompt, ledger
+ * is recorded with the last chat message as anchor.
+ */
+async function initForceSpeakLLM(char, avatar) {
+    const group = getCurrentGroup();
+    if (!group) return;
+
+    const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
+    if (!enabledMembers.includes(avatar)) return;
+
+    const llmDepth = Math.min(settings.llmContextDepth, chat.length);
+    const recentMessages = chat.slice(-llmDepth);
+
+    const runtimeContext = { recentMessages, enabledMembers, maxSpeakers: 1 };
+
+    const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
+    let filled = await renderPrompt(promptTemplate, runtimeContext, {
+        maxPasses: settings.templateMaxPasses,
+        recursive: settings.templateRecursive,
+        debugPlaceholders: settings.templateDebugPlaceholders,
+    });
+
+    // WI auto-inject (same as normal flow)
+    if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {
+        const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
+        filled = wiWrapper.replace('{{worldInfo}}', wiState.text) + '\n\n' + filled;
+    }
+
+    // Profile auto-inject
+    if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
+        const profilesText = buildCharacterProfilesText();
+        if (profilesText) filled = profilesText + '\n\n' + filled;
+    }
+
+    // Force-speak instruction: tell LLM to pick ONLY this character
+    const fsPrompt = settings.forceSpeakPrompt ||
+        'System instruction: The user has manually forced {charName} to speak. ' +
+        'You MUST select ONLY {charName} as the speaker. Write an appropriate stage direction.';
+    filled += '\n\n' + fsPrompt.replace(/\{charName\}/g, char.name);
+
+    const ctx = getContext();
+    let response;
+    try {
+        response = await ctx.generateRaw({ prompt: filled });
+    } catch (e) {
+        console.warn('[GroupDirector] Force-speak LLM call failed:', e.message);
+        return; // fall through to native generation
+    }
+
+    setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+
+    const parsed = parseLlmResponse(response, log);
+    if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
+        log('Force-speak LLM returned no valid speakers');
+        return;
+    }
+
+    // Record to ledger. Anchor to the most recent USER message instead of
+    // the force-speak character's preceding message. This ensures that when
+    // the user deletes their triggering message, all linked force-speak
+    // entries are pruned together — including multiple consecutive force-speaks.
+    if (settings.llmHistoryEnabled) {
+        await addToDirectorHistory(parsed);
+        const history = getDirectorHistory();
+        if (history.length > 0) {
+            let userAnchor = null;
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (chat[i].is_user) {
+                    userAnchor = chat[i].send_date || null;
+                    break;
+                }
+            }
+            if (userAnchor) {
+                history[history.length - 1]._anchorDate = userAnchor;
+                await saveChatConditional();
+            }
+        }
+    }
+
+    // Extract script for this character
+    let script = '';
+    if (parsed.scripts && typeof parsed.scripts === 'object') {
+        for (const [name, s] of Object.entries(parsed.scripts)) {
+            const c = matchCharacterByName(name, enabledMembers);
+            if (c && c.name === char.name && s) { script = s; break; }
+        }
+    }
+    if (!script && parsed.script) script = parsed.script;
+
+    if (script) {
+        directorScripts[char.name] = script;
+        const charScript = await getScriptForChar(char.name, {
+            speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
+        });
+        if (charScript) {
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+        }
+    }
+
+    log(`Force-speak LLM: generated script for ${char.name}`);
 }
 
 async function initRoundWithLLM() {

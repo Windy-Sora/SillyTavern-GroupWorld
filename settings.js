@@ -41,6 +41,9 @@ export const DEFAULT_SETTINGS = {
     templateMaxPasses: 5,
     templateRecursive: true,
     templateDebugPlaceholders: false,
+    // Force Speak
+    forceSpeakMode: 'native',
+    forceSpeakPrompt: '',
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,

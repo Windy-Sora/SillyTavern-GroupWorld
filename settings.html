@@ -298,6 +298,37 @@
                     </div>
                 </div>
 
+                <!-- Force Speak Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="forceSpeakDrawerTitle">强制发言 (Force Speak) 🧪</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small style="color:#ff9800;"><b>&#9888; <span data-i18n="forceSpeakWarning">测试功能，可能不稳定，谨慎使用</span></b></small>
+                        <small data-i18n="forceSpeakHint">当用户在群聊中手动强制触发某个角色发言时（非正常导演流程），Group Director 的处理方式。</small>
+
+                        <label class="checkbox_label" for="gd-force-speak-native">
+                            <input type="radio" name="gd-force-speak-mode" value="native" id="gd-force-speak-native">
+                            <span data-i18n="forceSpeakNative"><b>原生放行</b> — 弹窗确认后透传给 ST 自行处理（不计账本，不注入剧本）</span>
+                        </label>
+                        <label class="checkbox_label" for="gd-force-speak-block">
+                            <input type="radio" name="gd-force-speak-mode" value="block" id="gd-force-speak-block">
+                            <span data-i18n="forceSpeakBlock"><b>直接截停</b> — 阻止强制发言，不做任何处理</span>
+                        </label>
+                        <label class="checkbox_label" for="gd-force-speak-llm">
+                            <input type="radio" name="gd-force-speak-mode" value="llm" id="gd-force-speak-llm">
+                            <span data-i18n="forceSpeakLlm"><b>LLM 接管</b> — 调用模型只为此角色生成剧本并计入账本（实验性）</span>
+                        </label>
+
+                        <div id="gd-force-speak-llm-section" style="display:none;">
+                            <label for="gd-force-speak-prompt" data-i18n="forceSpeakPromptLabel">强制发言 Prompt 注入</label>
+                            <small data-i18n="forceSpeakPromptHint">附加到 Director Prompt 尾部的系统指令。<code>{charName}</code> 会被替换为实际角色名。</small>
+                            <textarea id="gd-force-speak-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Character Profiles Drawer -->
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
