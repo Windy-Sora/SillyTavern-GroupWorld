@@ -331,10 +331,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     if (!group) return;
 
     // Manual force-speak without a user trigger: no send_date anchor
-    // for the ledger, would corrupt indexing. Transparent pass-through.
+    // for the ledger, would corrupt indexing. Warn and let the user decide.
     if (!roundInitialized && roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
         const lastMsg = chat[chat.length - 1];
-        if (lastMsg && !lastMsg.is_user) return;
+        if (lastMsg && !lastMsg.is_user) {
+            const msg = settings.lang === 'zh'
+                ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
+                : 'Force-speak bypasses the director and may break story continuity. Continue?';
+            if (confirm(msg)) return;     // user chose to continue → pass through
+            abort(false);                  // user cancelled → block generation
+            return;
+        }
     }
 
     const ctx = getContext();
