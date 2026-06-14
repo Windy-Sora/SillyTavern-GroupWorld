@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt } = deps;
     const cm = () => getChatMetadata();
 
     // Escape untrusted strings before embedding in HTML strings.
@@ -146,10 +146,14 @@ async function generateSingleProfile(avatar) {
     const schemaText = settings.profileJsonSchema || getDefaultProfileSchema();
 
     let filled = generatorPrompt
-        .replace('{{charName}}', char.name)
-        .replace('{{charDescription}}', char.description || '')
-        .replace('{{charPersonality}}', char.personality || '')
-        .replace('{{charScenario}}', char.scenario || '');
+        .replace(/\{\{charName\}\}/g, char.name)
+        .replace(/\{\{charDescription\}\}/g, char.description || '')
+        .replace(/\{\{charPersonality\}\}/g, char.personality || '')
+        .replace(/\{\{charScenario\}\}/g, char.scenario || '');
+
+    // Run through renderPrompt so registered providers (worldBookImportance,
+    // character_profiles, etc.) are resolved in addition to the manual fields above.
+    filled = await renderPrompt(filled, {});
 
     let jsonSchema = null;
     try { jsonSchema = JSON.parse(schemaText); } catch (e) { /* use null */ }

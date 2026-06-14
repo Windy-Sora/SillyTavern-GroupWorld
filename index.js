@@ -133,6 +133,7 @@ const profileSystem = createProfileSystem({
     getRoundSpeakerCount: () => roundSpeakerCount,
     isRoundActive: () => isGroupChat,
     saveSettings,
+    renderPrompt,
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,
     buildProfileLoaderPanel, checkProfileStartupStatus, detectCharacterChanges,
