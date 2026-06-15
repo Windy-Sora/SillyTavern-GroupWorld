@@ -75,6 +75,7 @@ const I18N = {
         forceSpeakLlm: '<b>LLM 接管</b> — 调用模型只为此角色生成剧本并计入账本（实验性）',
         forceSpeakPromptLabel: '强制发言 Prompt 注入',
         forceSpeakPromptHint: '附加到 Director Prompt 尾部的系统指令。<code>{charName}</code> 会被替换为实际角色名。',
+        forceSpeakPromptReset: '恢复默认 Prompt',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -203,6 +204,7 @@ const I18N = {
         forceSpeakLlm: '<b>LLM Takeover</b> — Call model for this character only, generate script, record to ledger (experimental)',
         forceSpeakPromptLabel: 'Force Speak Prompt Injection',
         forceSpeakPromptHint: 'System instruction appended to Director Prompt. <code>{charName}</code> is replaced with the character name.',
+        forceSpeakPromptReset: 'Reset to default prompt',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',

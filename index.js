@@ -780,6 +780,7 @@ async function runManualOrderedGeneration() {
 async function initForceSpeakLLM(char, avatar) {
     const group = getCurrentGroup();
     if (!group) return;
+    if (!chat.length) return;  // no messages to anchor to
 
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
     if (!enabledMembers.includes(avatar)) return;
@@ -808,11 +809,12 @@ async function initForceSpeakLLM(char, avatar) {
         if (profilesText) filled = profilesText + '\n\n' + filled;
     }
 
-    // Force-speak instruction: tell LLM to pick ONLY this character
-    const defaultFsPrompt = settings.lang === 'zh'
-        ? '【系统指令】用户启动了强制发言，此轮仅选择 {charName} 作为发言者。请为该角色撰写一段简短的舞台指导。'
-        : '[System] The user has force-triggered {charName} to speak. Select ONLY {charName} for this round. Write a short stage direction.';
-    const fsPrompt = settings.forceSpeakPrompt || defaultFsPrompt;
+    // Force-speak instruction: tell LLM to pick ONLY this character.
+    // Appended AFTER the normal prompt so it overrides any implicit multi-character bias.
+    const systemInstruction = settings.lang === 'zh'
+        ? `【系统指令】用户已强制触发 {charName} 发言。请只选择 {charName} 一人作为本轮发言者。忽略其他角色。为 {charName} 生成一段简短的舞台指导。`
+        : `[SYSTEM] Force-speak: {charName} has been manually triggered. You MUST select ONLY {charName}. Do NOT select any other characters. Write a short stage direction for {charName}.`;
+    const fsPrompt = settings.forceSpeakPrompt || systemInstruction;
     filled += '\n\n' + fsPrompt.replace(/\{charName\}/g, char.name);
 
     const ctx = getContext();
