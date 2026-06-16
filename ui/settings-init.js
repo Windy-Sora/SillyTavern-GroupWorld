@@ -17,7 +17,7 @@ import './sections/profile.js';
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
     $('#extensions_settings').append(html);
 
     const $c = (sel) => $(`#gd-${sel}`);
