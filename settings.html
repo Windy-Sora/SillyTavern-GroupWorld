@@ -393,6 +393,23 @@
                 </div>
             </div>
 
+            <!-- Template Tester Drawer -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b data-i18n="testerDrawerTitle">模板测试器 (Template Tester) 🧪</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <small data-i18n="testerHint">输入含占位符的模板，点击测试查看实时渲染结果。不会触发任何生成。</small>
+                    <textarea id="gd-tester-input" class="text_pole textarea_compact" rows="6" style="width:100%;margin-top:6px;" placeholder="{{recentMessages}}&#10;{{?directorLedger:reason}}"></textarea>
+                    <div class="menu_button menu_button_icon" id="gd-tester-run" style="margin-top:4px;">
+                        <i class="fa-solid fa-flask"></i> <span data-i18n="testerRun">测试渲染</span>
+                    </div>
+                    <label for="gd-tester-output" style="margin-top:8px;" data-i18n="testerOutput">渲染结果</label>
+                    <textarea id="gd-tester-output" class="text_pole textarea_compact" rows="10" style="width:100%;" readonly></textarea>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>

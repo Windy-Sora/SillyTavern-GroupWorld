@@ -76,6 +76,10 @@ const I18N = {
         forceSpeakPromptLabel: '强制发言 Prompt 注入',
         forceSpeakPromptHint: '附加到 Director Prompt 尾部的系统指令。<code>{charName}</code> 会被替换为实际角色名。',
         forceSpeakPromptReset: '恢复默认 Prompt',
+        testerDrawerTitle: '模板测试器 (Template Tester)',
+        testerHint: '输入含占位符的模板，点击测试查看实时渲染结果。不会触发任何生成。',
+        testerRun: '测试渲染',
+        testerOutput: '渲染结果',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -205,6 +209,10 @@ const I18N = {
         forceSpeakPromptLabel: 'Force Speak Prompt Injection',
         forceSpeakPromptHint: 'System instruction appended to Director Prompt. <code>{charName}</code> is replaced with the character name.',
         forceSpeakPromptReset: 'Reset to default prompt',
+        testerDrawerTitle: 'Template Tester',
+        testerHint: 'Enter a template with placeholders and click test to see the rendered output. Does not trigger any generation.',
+        testerRun: 'Test Render',
+        testerOutput: 'Output',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',

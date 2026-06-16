@@ -11,12 +11,13 @@ import './sections/worldinfo.js';
 import './sections/worldBooks.js';
 import './sections/ledger.js';
 import './sections/forceSpeak.js';
+import './sections/templateTester.js';
 import './sections/profile.js';
 
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
     $('#extensions_settings').append(html);
 
     const $c = (sel) => $(`#gd-${sel}`);
