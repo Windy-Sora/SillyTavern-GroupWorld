@@ -24,6 +24,8 @@ import { register as registerCharacterLore } from './providers/character-lore.js
 import { register as registerSystemTime } from './providers/system-time.js';
 import { register as registerRandomDice } from './providers/random-dice.js';
 import { register as registerDice } from './providers/dice.js';
+import { register as registerMoonPhase } from './providers/moon-phase.js';
+import { register as registerTimeOfDay } from './providers/time-of-day.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -1241,6 +1243,8 @@ registerCharacterLore(getDirectorHistory);
 registerSystemTime(settings);
 registerRandomDice();
 registerDice();
+registerMoonPhase(settings);
+registerTimeOfDay(settings);
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
