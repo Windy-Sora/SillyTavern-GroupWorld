@@ -26,10 +26,14 @@ import { register as registerRandomDice } from './providers/random-dice.js';
 import { register as registerDice } from './providers/dice.js';
 import { register as registerMoonPhase } from './providers/moon-phase.js';
 import { register as registerTimeOfDay } from './providers/time-of-day.js';
+import { register as registerKnowledge } from './providers/knowledge.js';
+import { register as registerChatSummary } from './providers/chat-summary.js';
+import { register as registerNewRecentMessages } from './providers/new-recent-messages.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
+import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -121,6 +125,12 @@ const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEn
 
 const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
+
+const chatSummarySystem = createChatSummarySystem({
+    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
+    inject_ids, extension_prompt_types, setExtensionPrompt, log,
+});
 
 const worldBookScanner = createWorldBookScanner({
     world_names, loadWorldInfo, log,
@@ -678,6 +688,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     scriptCounterSnapshots.clear();
     if (chat_metadata[EXT_KEY]) delete chat_metadata[EXT_KEY]._counterSnapshots;
     await pruneDirectorHistory();
+    await chatSummarySystem.pruneSummaries();
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -1153,7 +1164,7 @@ function matchCharacterByName(name, enabledMembers) {
 function getDefaultLlmPrompt() {
     // Context at TOP — instruction/format at BOTTOM for maximum adherence in long contexts
     let base = `{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
-{{recentMessages}}
+{{newRecentMessages}}
 
 Available characters:
 {{characters}}
@@ -1245,6 +1256,9 @@ registerRandomDice();
 registerDice();
 registerMoonPhase(settings);
 registerTimeOfDay(settings);
+registerKnowledge(settings);
+registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
+registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
@@ -1258,6 +1272,8 @@ jQuery(async () => {
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
+        summarySystem: chatSummarySystem,
+        getChat: () => chat,
     });
     console.log(`Group World extension loaded (mode=${settings.mode})`);
 });

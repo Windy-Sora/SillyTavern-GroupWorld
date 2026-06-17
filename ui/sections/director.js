@@ -74,4 +74,11 @@ registerSection('director', function (ctx) {
         settings.templateDebugPlaceholders = !!$c('template-debug-placeholders').prop('checked');
         saveSettings();
     });
+
+    // Knowledge textarea
+    $c('knowledge-text').val(settings.knowledgeText || '');
+    $c('knowledge-text').on('input', () => {
+        settings.knowledgeText = $c('knowledge-text').val();
+        saveSettings();
+    });
 });
