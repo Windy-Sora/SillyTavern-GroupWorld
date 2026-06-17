@@ -11,6 +11,7 @@ import './sections/worldinfo.js';
 import './sections/worldBooks.js';
 import './sections/ledger.js';
 import './sections/forceSpeak.js';
+import './sections/chatSummary.js';
 import './sections/templateTester.js';
 import './sections/profile.js';
 

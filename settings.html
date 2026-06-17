@@ -111,7 +111,7 @@
                         <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
 
                         <label for="gd-llm-context-depth" data-i18n="llmContextDepth">传入上下文层数（最近 N 条消息）</label>
-                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量。减少可节省 token，但可能影响判断准确性。</small>
+                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量，对 <code>{{recentMessages}}</code> 和 <code>{{newRecentMessages}}</code> 均生效。<code>{{newRecentMessages}}</code> 在启用总结后会额外返回总结文本 + 总结后的全部新消息，此时不受深度限制。</small>
                         <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
 
                         <label class="checkbox_label" for="gd-llm-respect-order">
@@ -151,6 +151,11 @@
                             <i class="fa-solid fa-rotate-left"></i> <span data-i18n="promptReset">恢复默认 Prompt</span>
                         </div>
                         <small style="margin-top:8px;"><i data-i18n="promptNote">每轮群聊生成会额外调用一次主模型来做导演决策。</i></small>
+
+                        <hr>
+                        <h4 data-i18n="knowledgeTitle">知识库 (Knowledge)</h4>
+                        <small data-i18n="knowledgeHint">此区域的文本不会被渲染——其中的 <code>{{XXX}}</code> 会原样发给 LLM，用于教 LLM 使用 DSL 接口。通过 <code>{{knowledge}}</code> 占位符引用。</small>
+                        <textarea id="gd-knowledge-text" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
 
                         <hr>
                         <h4 data-i18n="templateRecursiveTitle">模板递归渲染</h4>
@@ -388,6 +393,68 @@
                                 <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
                             </div>
                             <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Summary Drawer -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b data-i18n="summaryDrawerTitle">上下文总结 (Chat Summary) 🧪</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <small data-i18n="summaryHint">将聊天上下文压缩为简洁摘要注入 Prompt，降低 token 消耗。修改或删除消息后请手动重新生成。</small>
+
+                    <div id="gd-summary-lock-warn" style="display:none;color:#ff9800;margin-top:4px;">
+                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
+                    </div>
+
+                    <div id="gd-summary-scan-notice" style="display:none;margin:6px 0;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
+                        <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryScanClear">清除存档</span></span>
+                    </div>
+                    <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="summaryScan">扫描存档总结</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> <span data-i18n="summaryPrune">清除已禁用</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> <span data-i18n="summaryHideDisabled">隐藏已禁用</span></span>
+                    </div>
+
+                    <label class="checkbox_label" for="gd-summary-enabled">
+                        <input type="checkbox" id="gd-summary-enabled">
+                        <span data-i18n="summaryEnabled">启用上下文总结</span>
+                    </label>
+
+                    <label class="checkbox_label" for="gd-summary-reuse">
+                        <input type="checkbox" id="gd-summary-reuse">
+                        <span data-i18n="summaryReuse">复用上次总结（勾选=上次总结+新增片段，取消=全量上下文重新总结）</span>
+                    </label>
+
+                    <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
+                    <small data-i18n="summaryPromptHint">留空使用内置默认。支持所有注册的 Provider 占位符。</small>
+                    <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                    <div class="menu_button menu_button_icon" id="gd-summary-prompt-reset" style="margin-top:4px;">
+                        <i class="fa-solid fa-rotate-left"></i> <span data-i18n="summaryPromptReset">恢复默认 Prompt</span>
+                    </div>
+
+                    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> <span data-i18n="summaryExecute">执行总结</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> <span data-i18n="summaryRegenerate">重新总结</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="summaryRevert">回退总结</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryReset">重置全部</span></span>
+                    </div>
+
+                    <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                        <span id="gd-summary-status" style="font-size:0.9em;color:var(--grey70a);"></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-refresh" style="font-size:0.8em;padding:2px 6px;"><i class="fa-solid fa-rotate"></i></span>
+                    </div>
+
+                    <div id="gd-summary-result-section" style="margin-top:8px;">
+                        <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果（可直接编辑）</label>
+                        <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
+                        <div class="menu_button menu_button_icon" id="gd-summary-result-save" style="margin-top:4px;">
+                            <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="summaryResultSave">保存编辑</span>
                         </div>
                     </div>
                 </div>
