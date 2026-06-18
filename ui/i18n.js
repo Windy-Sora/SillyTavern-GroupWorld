@@ -162,6 +162,11 @@ const I18N = {
         profileScanSave: '扫描当前存档中的角色档案',
         profileDetectChanges: '检测角色变动（加入/删除）',
         profileRegenerateAll: '全部重新生成',
+
+        exportImportTitle: '群聊导出 / 导入',
+        exportImportHint: '将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。',
+        exportGroup: '导出群聊',
+        importGroup: '导入群聊',
     },
     en: {
         langLabel: '语言 / Language',
@@ -315,6 +320,11 @@ const I18N = {
         profileScanSave: 'Scan current save for character profiles',
         profileDetectChanges: 'Detect character changes (added/removed)',
         profileRegenerateAll: 'Regenerate All',
+
+        exportImportTitle: 'Group Export / Import',
+        exportImportHint: 'Package the current group\'s character cards and activated world books into a zip archive, or import from one.',
+        exportGroup: 'Export Group',
+        importGroup: 'Import Group',
     },
 };
 

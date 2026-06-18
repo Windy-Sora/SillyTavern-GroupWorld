@@ -3,7 +3,7 @@ import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
-import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo } from '../../../world-info.js';
+import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
@@ -34,6 +34,7 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { createExportImportSystem } from './systems/export-import-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -163,6 +164,11 @@ function log(...args) {
         console.log('[GroupDirector]', ...args);
     }
 }
+
+const { exportGroup, importGroup } = createExportImportSystem({
+    settings, getCurrentGroup, getChat, getCharacters,
+    world_names, selected_world_info, world_info, getChatMetadata, log,
+});
 
 // ─── Trigger Engine ───────────────────────────────────────────────────
 function checkTriggers(characterName, characterAvatar, recentMessages) {
@@ -1274,6 +1280,8 @@ jQuery(async () => {
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
         getChat: () => chat,
+        exportGroup,
+        importGroup,
     });
     console.log(`Group World extension loaded (mode=${settings.mode})`);
 });

@@ -393,6 +393,18 @@
                                 <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
                             </div>
                             <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+
+                            <hr>
+                            <h4 data-i18n="exportImportTitle">群聊导出 / 导入</h4>
+                            <small data-i18n="exportImportHint">将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。</small>
+
+                            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                                <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> <span data-i18n="exportGroup">导出群聊</span></span>
+                                <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> <span data-i18n="importGroup">导入群聊</span></span>
+                                <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
+                            </div>
+
+                            <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
                         </div>
                     </div>
                 </div>
