@@ -697,6 +697,12 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     await chatSummarySystem.pruneSummaries();
 });
 
+eventSource.on(event_types.CHAT_CHANGED, async () => {
+    log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
+    await pruneDirectorHistory();
+    await chatSummarySystem.pruneSummaries();
+});
+
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
 async function runManualOrderedGeneration() {
     takeoverPending = false;
