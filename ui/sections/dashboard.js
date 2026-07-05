@@ -232,29 +232,34 @@ registerSection('dashboard', function (ctx) {
     function makeEditable($detail, field, getValue, setValue, afterSave) {
         const $display = $detail.find(`.gd-edit-field[data-field="${field}"]`);
         if (!$display.length) return;
-        $display.append(` <span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
-        // Use event delegation on the detail container so re-created buttons work
-        $detail.off('click.gd-edit-' + field).on('click.gd-edit-' + field, '.gd-edit-btn', function (e) {
-            e.stopPropagation();
-            const $btn = $(this);
-            const $disp = $btn.closest('.gd-edit-field');
-            if (!$disp.length) return;
-            const val = getValue();
-            const $ta = $(`<textarea class="gd-edit-textarea text_pole textarea_compact" style="width:100%;margin:2px 0;font-size:0.85em;" rows="3">${esc(val || '')}</textarea>`);
-            const $btns = $(`<span style="display:flex;gap:4px;margin:2px 0;"><span class="gd-edit-save menu_button menu_button_icon" style="font-size:0.75em;color:#4caf50;">${lang === 'zh' ? '保存' : 'Save'}</span><span class="gd-edit-cancel menu_button menu_button_icon" style="font-size:0.75em;">${lang === 'zh' ? '取消' : 'Cancel'}</span></span>`);
-            $disp.hide();
-            $disp.after($ta, $btns);
-            $ta.focus();
-            $ta.on('keydown', (ev) => { if (ev.ctrlKey && ev.key === 'Enter') { $btns.find('.gd-edit-save').trigger('click'); } });
-            $btns.find('.gd-edit-cancel').on('click', (ev2) => { ev2.stopPropagation(); $ta.remove(); $btns.remove(); $disp.show(); });
-            $btns.find('.gd-edit-save').on('click', async (ev2) => {
-                ev2.stopPropagation();
-                setValue($ta.val());
-                $disp.html(esc(getValue() || '') + ` <span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
-                $ta.remove(); $btns.remove(); $disp.show();
-                if (afterSave) await afterSave();
+
+        function attachBtn() {
+            const $btn = $(`<span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
+            $display.append($btn);
+            $btn.on('click', function (e) {
+                e.stopPropagation();
+                const $disp = $(this).closest('.gd-edit-field');
+                if (!$disp.length) return;
+                const val = getValue();
+                const $ta = $(`<textarea class="gd-edit-textarea text_pole textarea_compact" style="width:100%;margin:2px 0;font-size:0.85em;" rows="3">${esc(val || '')}</textarea>`);
+                const $btns = $(`<span style="display:flex;gap:4px;margin:2px 0;"><span class="gd-edit-save menu_button menu_button_icon" style="font-size:0.75em;color:#4caf50;">${lang === 'zh' ? '保存' : 'Save'}</span><span class="gd-edit-cancel menu_button menu_button_icon" style="font-size:0.75em;">${lang === 'zh' ? '取消' : 'Cancel'}</span></span>`);
+                $disp.hide();
+                $disp.after($ta, $btns);
+                $ta.focus();
+                $ta.on('keydown', (ev) => { if (ev.ctrlKey && ev.key === 'Enter') { $btns.find('.gd-edit-save').trigger('click'); } });
+                $btns.find('.gd-edit-cancel').on('click', (ev2) => { ev2.stopPropagation(); $ta.remove(); $btns.remove(); $disp.show(); });
+                $btns.find('.gd-edit-save').on('click', async (ev2) => {
+                    ev2.stopPropagation();
+                    setValue($ta.val());
+                    $disp.html(esc(getValue() || ''));
+                    $ta.remove(); $btns.remove(); $disp.show();
+                    attachBtn();
+                    if (afterSave) await afterSave();
+                });
             });
-        });
+        }
+
+        attachBtn();
     }
 
     function renderPanelSummary() {
@@ -394,7 +399,7 @@ registerSection('dashboard', function (ctx) {
             const reason = e.reason || '';
             const scriptEntries = e.scripts && typeof e.scripts === 'object' ? Object.entries(e.scripts) : [];
             const scriptsHtml = scriptEntries.length
-                ? `<div style="margin-top:4px;">${lang === 'zh' ? '剧本：' : 'Scripts: '}<br>` +
+                ? `<div style="margin-top:2px;">${lang === 'zh' ? '剧本：' : 'Scripts: '}` +
                   scriptEntries.map(([k, v], si) =>
                       `<div class="gd-edit-field" data-field="ledger-${history.length - 1 - i}-script-${si}" style="color:var(--grey70a);">${esc(k)}: ${esc(String(v).slice(0, 80))}${String(v).length > 80 ? '...' : ''}</div>`
                   ).join('') + '</div>'
@@ -402,7 +407,7 @@ registerSection('dashboard', function (ctx) {
             const detailHtml = [
                 reason && `<div class="gd-edit-field" data-field="ledger-${history.length - 1 - i}-reason">${lang === 'zh' ? '理由：' : 'Reason: '}${esc(reason)}</div>`,
                 scriptsHtml,
-            ].filter(Boolean).join('<br>');
+            ].filter(Boolean).join('');
             const reasonShort = reason.slice(0, 50);
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">#${history.length - i} ${esc(speakers)} ▸</span><span class="gd-list-meta">${esc(reasonShort)}${reason.length > 50 ? '...' : ''}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detailHtml || (lang === 'zh' ? '(无详情)' : '(no details)')}</div>`);
