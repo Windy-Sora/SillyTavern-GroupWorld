@@ -392,10 +392,16 @@ registerSection('dashboard', function (ctx) {
             const e = recent[i];
             const speakers = Array.isArray(e.speakers) ? e.speakers.join(', ') : '';
             const reason = e.reason || '';
-            const scripts = e.scripts && typeof e.scripts === 'object' ? Object.entries(e.scripts).map(([k, v]) => `${esc(k)}: ${esc(String(v).slice(0, 80))}`).join('<br>') : '';
+            const scriptEntries = e.scripts && typeof e.scripts === 'object' ? Object.entries(e.scripts) : [];
+            const scriptsHtml = scriptEntries.length
+                ? `<div style="margin-top:4px;">${lang === 'zh' ? '剧本：' : 'Scripts: '}<br>` +
+                  scriptEntries.map(([k, v], si) =>
+                      `<div class="gd-edit-field" data-field="ledger-${history.length - 1 - i}-script-${si}" style="color:var(--grey70a);">${esc(k)}: ${esc(String(v).slice(0, 80))}${String(v).length > 80 ? '...' : ''}</div>`
+                  ).join('') + '</div>'
+                : '';
             const detailHtml = [
                 reason && `<div class="gd-edit-field" data-field="ledger-${history.length - 1 - i}-reason">${lang === 'zh' ? '理由：' : 'Reason: '}${esc(reason)}</div>`,
-                scripts && `<div style="margin-top:4px;color:var(--grey70a);">${lang === 'zh' ? '剧本：' : 'Scripts: '}<br>${scripts}</div>`,
+                scriptsHtml,
             ].filter(Boolean).join('<br>');
             const reasonShort = reason.slice(0, 50);
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">#${history.length - i} ${esc(speakers)} ▸</span><span class="gd-list-meta">${esc(reasonShort)}${reason.length > 50 ? '...' : ''}</span></div>`);
@@ -408,6 +414,14 @@ registerSection('dashboard', function (ctx) {
                     () => saveChatConditional()
                 );
             }
+            scriptEntries.forEach(([k], si) => {
+                const ri = history.length - 1 - i;
+                makeEditable($detail, `ledger-${ri}-script-${si}`,
+                    () => history[ri].scripts?.[k] || '',
+                    (v) => { if (history[ri].scripts) history[ri].scripts[k] = v; },
+                    () => saveChatConditional()
+                );
+            });
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         }
