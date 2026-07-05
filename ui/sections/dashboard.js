@@ -579,6 +579,7 @@ registerSection('dashboard', function (ctx) {
 
     // ── Dashboard: export config profile ────────────────────────
     $('#gd-dash-export-cfg').on('click', async () => {
+        const lang = settings.lang || 'zh';
         const allDrawers = {
             directorLlm: true, worldBooks: true, profilesAndData: true,
             contextLedger: true, multimodal: true, assetManager: true, agentsTools: true,
@@ -586,7 +587,14 @@ registerSection('dashboard', function (ctx) {
         const format = $('#gd-dash-export-format').val();
         const btn = $('#gd-dash-export-cfg'); btn.prop('disabled', true);
         try {
-            await configProfileSystem.exportCurrentSettings(allDrawers, format);
+            const name = await callGenericPopup(
+                lang === 'zh' ? '<b>导出配置档</b><br>请输入导出名称：' : '<b>Export Config Profile</b><br>Enter export name:',
+                POPUP_TYPE.INPUT,
+                '',
+                { placeholder: lang === 'zh' ? '例如：我的RP配置' : 'e.g. My RP Config' },
+            );
+            if (!name || !name.trim()) { btn.prop('disabled', false); return; }
+            await configProfileSystem.exportCurrentSettings(allDrawers, format, name.trim());
             toastr.success(format === 'json'
                 ? (lang === 'zh' ? '配置清单已导出' : 'Config manifest exported')
                 : (lang === 'zh' ? '配置档已导出' : 'Config profile exported'));

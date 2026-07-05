@@ -371,7 +371,7 @@ export function createConfigProfileSystem(deps) {
     // ── Export current settings (dashboard quick export) ──────────
     // format: 'json' → manifest-only (no JS source), 'zip' → full with .js files
 
-    async function exportCurrentSettings(drawers, format) {
+    async function exportCurrentSettings(drawers, format, name, description) {
         const snap = snapshotSettings(settings, drawers);
 
         // Strip API keys
@@ -383,8 +383,8 @@ export function createConfigProfileSystem(deps) {
             version: CONFIG_PROFILE_VERSION,
             type: format === 'json' ? 'config-profile-manifest' : 'config-profile',
             exportedAt: new Date().toISOString(),
-            name: 'Current Settings',
-            description: '',
+            name: name || 'Current Settings',
+            description: description || '',
             createdAt: Date.now(),
             drawers: { ...drawers },
             settings: snap,
