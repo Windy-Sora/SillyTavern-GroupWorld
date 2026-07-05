@@ -72,12 +72,14 @@
             </select>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dashboard-preset-apply" data-i18n="applyPreset">应用</span>
             <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dash-preset-refresh" title="刷新列表"><i class="fa-solid fa-rotate"></i></span>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-preset-delete" title="删除" style="display:none;color:#ff5555;font-size:0.8em;" data-i18n-title="dashDeleteCfgTitle"><i class="fa-solid fa-trash"></i></span>
         </div>
         <div class="gd-dashboard-actions">
             <select id="gd-dash-export-format" class="text_pole" style="width:auto;font-size:0.8em;margin-right:2px;">
                 <option value="zip" data-i18n="dashExportFormatZip">完整 ZIP</option>
                 <option value="json" data-i18n="dashExportFormatJson">JSON 清单</option>
             </select>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-save-cfg" data-i18n="dashSaveCfg">保存配置档</span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-export-cfg" data-i18n="dashExportCfg">导出配置档</span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-cfg" data-i18n="dashImportCfg">导入配置档</span>
             <input type="file" id="gd-dash-import-file" accept=".zip,.json" style="display:none;">
