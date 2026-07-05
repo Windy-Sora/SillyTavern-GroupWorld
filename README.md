@@ -7,468 +7,76 @@
 
 ---
 
-> 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）
-
-Group World 起源于一个简单问题：
-
-> 在多人群聊中，谁应该说话？
-
-但随着发展，它逐渐演化成了一套更通用的叙事运行时：
-
-* AI 导演（Director）
-* 角色剧本（Script）
-* 导演账本（Ledger）
-* Provider 数据接口
-* Prompt DSL
-* 递归渲染系统
-* 长期剧情状态管理
-
-它不仅能够决定谁发言。
-
-更能够维护一个持续演化的世界模型。
+> **群聊叙事操作系统。** 不是 speaker selector，不是发言过滤器——它是一个完整的 Agent 运行时，让你的群聊变成一个持续演化的世界。
 
 ---
 
-# 为什么需要 Group World？
+# 它能做什么
 
-传统群聊往往会出现：
+**让群聊有导演。** 不会所有人一起抢话了。Director 每轮决定谁发言、按什么顺序、每人收到什么舞台指令（其他角色都看不到）。场面失控的感觉消失了。
 
-* 所有人同时回应
-* 发言顺序混乱
-* 角色抢戏
-* 剧情失焦
-* 长线剧情难以维持
+**角色会记住你半年前说过的话。** Memory 系统自动从对话中提取关键事件，跨对话持久化。下次聊到相关话题，角色会自己想起来。
 
-Group World 会在角色生成之前增加一个导演层：
+**剧情不会烂尾。** 导演账本（Ledger）持续记录故事进度、角色关系、阵营变化。八十轮之后导演还知道故事在第几章、谁和谁有旧账。长线叙事第一次有了可维护的状态。
 
-```text
-用户输入
-    ↓
-Director
-    ↓
-选择角色
-    ↓
-生成剧本
-    ↓
-角色生成
-```
+**世界书不再吃灰。** 不再依赖 ST 的关键词碰运气。Director 会主动扫描世界书条目，把该注入的信息写进角色的上下文。
 
-从而让群聊更接近真实的戏剧编排。
+**NPC 自己长出来。** 故事需要路人、店主、卫兵？NPC 系统在需要时自动生成，带背景、性格、对话风格。不需要提前手写角色卡。
+
+**AI 会自我检查。** Critique 系统在导演决策后自动审视剧本质量——角色抢戏了吗？剧情跑偏了吗？然后修正。
+
+**配置一键切换。** 不同的世界观、不同的导演风格、不同的角色设定——存成配置档，点一下切换。导出分享给别人，零门槛。
+
+**内置架构师。** 暮羽——一只住在插件里的猫头鹰娘，随时问她怎么用、怎么扩展、怎么搭配。她的世界书里有一整套完整的 API 文档。
 
 ---
 
-# 不只是导演
+# 上手
 
-虽然名字叫 Group World。
+**1. 安装** — 文件夹放进 ST 的 `extensions/third-party/`，重启，扩展面板启用。
 
-但 Director 只是系统提供的第一个 Agent。
+**2. 打开设置** — 仪表盘一眼看到当前模式、导演决策、统计数据。
 
-真正的核心是：
+**3. 选默认配置档** — 预设下拉框选 `group-world-default`，点应用。开箱即用。
 
-```text
-Provider Runtime
-        +
-Prompt DSL
-        +
-Ledger
-        +
-Recursive Rendering
-```
-
-这些能力可以组合出远超“导演”的功能。
-
-例如：
-
-* 长期记忆系统
-* 世界状态系统
-* 阵营系统
-* 关系系统
-* 任务系统
-* 剧情状态机
-* 自定义 Agent
-
-无需修改代码。
-
-仅通过 Prompt 与模板即可实现。
+**4. 进入群聊，开始。** 剩下的交给 Director。
 
 ---
 
-# 核心能力
+# 不只如此
 
-## Formula Director
+上面这些是开箱就有的。
 
-本地评分模式。
+但 Group World 的底层是一个完整的 **Agent Runtime + Provider 扩展框架 + Prompt DSL**。
 
-无需 API 调用。
+如果你会写一点东西：
 
-根据：
+- **Custom Prompt** — 把大段世界观设定收进一个占位符，Prompt 干净可维护
+- **Custom Agent** — 自定义 LLM 驱动的子任务，加入 Director 管线
+- **Capability 扩展** — 给角色加 TTS、情绪分析、图片生成能力
 
-* 提及情况
-* 关键词
-* 最近发言
-* 连续发言惩罚
-* Talkativeness
+如果你会写 JS：
 
-计算角色优先级。
+- **Provider 注册协议** — 自定义数据源，注入到运行时任意 Prompt 位置，DSL 路径查询直达字段
+- **Script Executor** — 在导演决策、角色发言、回合结束三个时机插入你的代码，修改决策、读写共享状态
+- **完整 Agent 框架** — 注册任意数量的自定义 Agent，自定义管线顺序、上下文访问权限、解析校验逻辑
 
-适合：
-
-* 大型群聊
-* 长期 RP
-* 低成本运行
+内置的东西都是这套框架上的实例。你的扩展和内置的逻辑跑在同一个运行时上。
 
 ---
 
-## LLM Director
+# 不是什么
 
-由大模型担任导演。
+**不是发言过滤器。** 不是在 ST 输出之后做筛选——而是在角色生成之前增加一层决策。角色还没开口，Director 已经在调度了。
 
-综合分析：
+**不是提前设计好的世界。** 状态结构不由开发者在代码里定义。Director 在运行过程中自然生成状态，Ledger 记录，Provider 发布，DSL 查询，Agent 消费。给机制，不给设定。
 
-* 最近消息
-* 角色信息
-* 角色档案
-* 世界书
-* 历史导演计划
-* 当前状态
-
-决定：
-
-* 谁应该发言
-* 发言顺序
-* 场景推进方式
-* 导演剧本
+**不是一个"群聊增强工具"。** 它是一套让群聊变成**自演化叙事世界**的基础设施。
 
 ---
 
-## Director Script
-
-导演不仅选择角色。
-
-还可以为每个角色生成独立剧本。
-
-例如：
-
-```json
-{
-  "scripts": {
-    "Alice": "保持冷静，但逐渐流露出不安。",
-    "Bob": "不要直接爆发愤怒。"
-  }
-}
-```
-
-每个角色只会看到属于自己的部分。
-
-因此可以实现：
-
-* 情绪控制
-* 氛围塑造
-* 戏剧张力
-* 协同演出
-
----
-
-## Director Ledger
-
-导演账本用于保存结构化状态。
-
-例如：
-
-```json
-{
-  "speakers": ["Alice"],
-
-  "story": {
-    "chapter": 3
-  },
-
-  "relationships": {
-    "Alice-Bob": 75
-  }
-}
-```
-
-Ledger 不限制结构。
-
-你可以自由扩展：
-
-* 剧情进度
-* 世界状态
-* 阵营关系
-* 角色关系
-* 经济系统
-* 政治系统
-* 自定义变量
-
----
-
-# Prompt Runtime
-
-Group World 内置统一的 Prompt Runtime。
-
-所有 Prompt：
-
-* Director Prompt
-* 角色 Prompt 注入模版
-* History Wrapper
-* WorldInfo Wrapper
-* Profile Generator
-* Profile Template
-
-共享同一套数据接口。
-
----
-
-## 内置 Provider
-
-```text
-{{recentMessages}}
-
-{{characters}}
-
-{{character_profiles}}
-
-{{worldInfo}}
-
-{{previousPlan}}
-
-{{previousPlans}}
-
-{{directorLedger}}
-
-{{directorHistory}}
-```
-
----
-
-## 标准化 Provider 扩展接口
-
-Group World 提供统一的 Provider 扩展协议。
-
-开发者无需修改核心代码，即可向运行时注册新的数据源。
-
-一个 Provider 可以同时提供：
-
-可读文本内容
-结构化 JSON 数据
-长期状态信息
-Prompt 可访问变量
-
-例如：
-```text
-registerProvider({
-    id: 'relationshipGraph',
-
-    async render(ctx) {
-        return {
-            content: '关系图',
-
-            data: {
-                Alice: {
-                    Bob: 75
-                }
-            }
-        };
-    }
-});
-```
-注册后即可在整个运行时中使用：
-```text
-{{relationshipGraph}}
-
-{{?relationshipGraph:Alice.Bob}}
-```
-Provider 会自动接入：
-```text
-Director Prompt
-角色 Prompt 注入模版
-Profile Generator
-Prompt DSL
-路径查询
-递归渲染系统
-```
-因此开发者可以轻松构建：
-```text
-长期记忆系统
-角色关系图
-任务追踪系统
-阵营系统
-世界状态系统
-经济模拟系统
-外部数据接口
-自定义 Agent
-```
-而无需修改 Group World 本体。
-
----
-
-## 路径查询
-
-从结构化数据中直接读取字段：
-
-```text
-{{?directorLedger:reason}}
-
-{{?directorLedger:scripts.$character}}
-
-{{?directorHistory:[-1].reason}}
-
-{{?directorLedger:story.chapter}}
-
-{{?directorLedger:relationships.Alice-Bob}}
-```
-
-支持：
-
-* 嵌套访问
-* 数组索引
-* 倒序索引
-* 属性过滤
-* 默认值
-* 运行时变量
-
----
-
-# 递归渲染
-
-Group World 支持递归模板解析。
-
-例如：
-
-第一层：
-
-```text
-{{directorLedger}}
-```
-
-生成：
-
-```text
-{{?directorLedger:story.chapter}}
-```
-
-第二层继续解析：
-
-```text
-第三章
-```
-
-最终得到完整结果。
-
-最大递归层数可配置。
-
-并提供调试模式用于查看未解析占位符。
-
-事实上，你甚至可以让大模型自行生成拓展账本json的同时自行在提供给角色的script中或者其他自定义接口中注入查询语句，实现自产自销，或者让大模型帮你动态注入你提供的接口。
-
----
-
-# 角色档案系统
-
-内置 Profile System。
-
-支持：
-
-* 批量生成
-* 自动同步
-* 变化检测
-* Token Budget 压缩
-* 自定义 Schema
-* 自定义渲染模板
-
-默认可生成：
-
-```json
-{
-  "summary": "",
-  "tags": [],
-  "motivation": "",
-  "relationships": ""
-}
-```
-
-但结构完全开放。
-
-你可以定义自己的字段：
-
-```json
-{
-  "goal": "",
-  "fear": "",
-  "secret": "",
-  "emotional_state": ""
-}
-```
-
----
-
-# 世界状态与长期剧情
-
-Group World 不要求开发者提前定义状态结构。
-
-状态可以由 Director 在运行过程中自然生成：
-
-```json
-{
-  "politics": {},
-  "economy": {},
-  "factions": {},
-  "religions": {}
-}
-```
-
-然后通过 Prompt DSL 在任意位置读取。
-
-这使得系统特别适合：
-
-* 长篇剧情
-* 开放世界
-* 多角色 RP
-* 持续演化的世界模型
-
----
-
-# 工作流程
-
-```text
-用户输入
-      ↓
-Director
-      ↓
-读取：
-- 世界书
-- 角色档案
-- 导演账本
-      ↓
-生成：
-- 发言顺序
-- 导演剧本
-- 状态更新
-      ↓
-角色生成
-      ↓
-写回 Ledger
-      ↓
-下一轮继续
-```
-
----
-
-# 设计理念
-
-Group World 不是一个发言过滤器。
-
-也不是一个简单的 Speaker Selector。
-
-它更像一个面向开放式叙事的运行时。
-
-不要把世界设计出来。
-
-给它一个能生长世界的机制。
-
-让整个世界拥有持续演化的能力。
-
-让状态、关系、剧情与世界观能够长期积累，并在未来被重新利用、相互影响。
-
-最终实现一个虚拟世界。
+# 接下来
+
+- 📖 [用户手册](USER-GUIDE.md) — 每个设置项、每个按钮、每个操作流程
+- 🏗 [设计文档](DESIGN.md) — 架构、管线、API、协议细节
+- 🦉 暮羽 — 打开仪表盘，点击"召唤暮羽"，直接问她
