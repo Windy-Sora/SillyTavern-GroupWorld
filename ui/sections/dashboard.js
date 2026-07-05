@@ -6,7 +6,7 @@ registerSection('dashboard', function (ctx) {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
         isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
-        configProfileSystem,
+        configProfileSystem, onLatestEntryEdited,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -229,7 +229,7 @@ registerSection('dashboard', function (ctx) {
     }
 
     // Inline edit helper: replaces a detail text with a textarea on "edit" click
-    function makeEditable($detail, field, getValue, setValue, afterSave) {
+    function makeEditable($detail, field, getValue, setValue, afterSave, formatFn) {
         const $display = $detail.find(`.gd-edit-field[data-field="${field}"]`);
         if (!$display.length) return;
 
@@ -250,8 +250,9 @@ registerSection('dashboard', function (ctx) {
                 $btns.find('.gd-edit-cancel').on('click', (ev2) => { ev2.stopPropagation(); $ta.remove(); $btns.remove(); $disp.show(); });
                 $btns.find('.gd-edit-save').on('click', async (ev2) => {
                     ev2.stopPropagation();
-                    setValue($ta.val());
-                    $disp.html(esc(getValue() || ''));
+                    const newVal = $ta.val();
+                    setValue(newVal);
+                    $disp.html(formatFn ? formatFn(newVal) : esc(newVal));
                     $ta.remove(); $btns.remove(); $disp.show();
                     attachBtn();
                     if (afterSave) await afterSave();
@@ -326,7 +327,8 @@ registerSection('dashboard', function (ctx) {
             makeEditable($detail, 'profile-summary',
                 () => summarize(),
                 (v) => { profile.summary = v; },
-                () => saveChatConditional()
+                () => saveChatConditional(),
+                () => summarize()
             );
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
@@ -349,7 +351,8 @@ registerSection('dashboard', function (ctx) {
                 makeEditable($detail, `mem-${av}-${mi}`,
                     () => m.event,
                     (v) => { m.event = v; },
-                    () => saveChatConditional()
+                    () => saveChatConditional(),
+                    (v) => `· ${esc(v)}${m.mood ? ` [${esc(m.mood)}]` : ''}`
                 );
             }
             makeToggleRow($row, $detail);
@@ -376,10 +379,14 @@ registerSection('dashboard', function (ctx) {
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
             for (const key of ['desc', 'personality', 'scenario']) {
                 if (fields[key]) {
+                    const npcLabel = lang === 'zh'
+                        ? { desc: '描述', personality: '性格', scenario: '背景' }[key]
+                        : { desc: 'Desc', personality: 'Personality', scenario: 'Scenario' }[key];
                     makeEditable($detail, `npc-${ni}-${key}`,
                         () => ({ desc: n.description, personality: n.personality, scenario: n.scenario }[key]),
                         (v) => { if (key === 'desc') n.description = v; else if (key === 'personality') n.personality = v; else n.scenario = v; },
-                        () => saveChatConditional()
+                        () => saveChatConditional(),
+                        (v) => `${npcLabel}: ${esc(v)}`
                     );
                 }
             }
@@ -416,7 +423,11 @@ registerSection('dashboard', function (ctx) {
                 makeEditable($detail, `ledger-${ri}-reason`,
                     () => history[ri].reason || '',
                     (v) => { history[ri].reason = v; },
-                    () => saveChatConditional()
+                    () => {
+                        saveChatConditional();
+                        if (ri === history.length - 1) onLatestEntryEdited();
+                    },
+                    (v) => `${lang === 'zh' ? '理由：' : 'Reason: '}${esc(v)}`
                 );
             }
             scriptEntries.forEach(([k], si) => {
@@ -424,7 +435,11 @@ registerSection('dashboard', function (ctx) {
                 makeEditable($detail, `ledger-${ri}-script-${si}`,
                     () => history[ri].scripts?.[k] || '',
                     (v) => { if (history[ri].scripts) history[ri].scripts[k] = v; },
-                    () => saveChatConditional()
+                    () => {
+                        saveChatConditional();
+                        if (ri === history.length - 1) onLatestEntryEdited();
+                    },
+                    (v) => `${esc(k)}: ${esc(String(v).slice(0, 80))}${String(v).length > 80 ? '...' : ''}`
                 );
             });
             makeToggleRow($row, $detail);
@@ -725,7 +740,7 @@ registerSection('dashboard', function (ctx) {
         const btn = $('#gd-dash-memories'); btn.prop('disabled', true);
         let done = 0;
         for (const avatar of members) {
-            try { await memorySystem.generateForCharacter(avatar); } catch (e) { console.warn('[GroupWorld] Memory extraction failed for', avatar, e); }
+            try { await memorySystem.generateForCharacter(avatar); } catch (e) { console.warn('[GroupDirector] Memory extraction failed for', avatar, e); }
             done++;
         }
         btn.prop('disabled', false);
@@ -805,7 +820,7 @@ registerSection('dashboard', function (ctx) {
     refreshWorldBookStat();
 
     // Refresh when any GD drawer is toggled
-    $('.group-world-settings .inline-drawer-toggle').on('click', function () {
+    $('.group-director-settings .inline-drawer-toggle').on('click', function () {
         setTimeout(refreshAll, 300);
     });
 
