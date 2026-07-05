@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "type": "script-executor-export",
+  "exportedAt": "2026-06-29T00:00:00.000Z",
+  "executors": [
+    {
+      "name": "消息日志",
+      "triggerOn": "message",
+      "priority": 0,
+      "code": "console.log('[Script Executor] 消息触发:', { name: ctx.message?.name, mes: ctx.message?.mes?.slice(0, 80), chatLen: ctx.chat?.length, group: ctx.group?.id });",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "ignore"
+    },
+    {
+      "name": "回合日志",
+      "triggerOn": "round",
+      "priority": 0,
+      "code": "console.log('[Script Executor] 回合结束:', { chatLen: ctx.chat?.length, characters: ctx.characters?.length, timestamp: new Date().toISOString() });",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "ignore"
+    },
+    {
+      "name": "双触发追踪",
+      "triggerOn": "both",
+      "priority": 0,
+      "code": "const mode = ctx.message ? '消息' : '回合'; console.log('[Script Executor] 双触发:', mode, '| shared keys:', Object.keys(ctx.shared).join(',') || '(空)'); return { lastMode: mode, lastTime: Date.now() };",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "shared"
+    },
+    {
+      "name": "共享状态接力-A",
+      "triggerOn": "round",
+      "priority": 1,
+      "code": "console.log('[Script Executor] A 写入共享状态: x=42'); return { x: 42, fromA: true };",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "shared"
+    },
+    {
+      "name": "共享状态接力-B",
+      "triggerOn": "round",
+      "priority": 2,
+      "code": "console.log('[Script Executor] B 读取: x=' + ctx.shared.x + ', fromA=' + ctx.shared.fromA); return { fromB: ctx.shared.x * 2 };",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "shared"
+    },
+    {
+      "name": "共享状态接力-C",
+      "triggerOn": "round",
+      "priority": 3,
+      "code": "console.log('[Script Executor] C 汇总:', { x: ctx.shared.x, fromA: ctx.shared.fromA, fromB: ctx.shared.fromB });",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "ignore"
+    },
+    {
+      "name": "参数测试",
+      "triggerOn": "both",
+      "priority": 10,
+      "code": "console.log('[Script Executor] 参数测试:', { threshold: ctx.params.threshold, verbose: ctx.params.verbose, label: ctx.params.label });",
+      "enabled": true,
+      "params": [
+        { "key": "threshold", "label": "阈值", "type": "number", "default": 0.75 },
+        { "key": "verbose", "label": "详细日志", "type": "boolean", "default": true },
+        { "key": "label", "label": "标签", "type": "string", "default": "test" }
+      ],
+      "renderParams": false,
+      "returnMode": "ignore"
+    },
+    {
+      "name": "决策日志",
+      "triggerOn": "decision",
+      "priority": 0,
+      "code": "console.log('[Script Executor] 决策触发 ===='); console.log('speakers:', ctx.decision?.speakers); console.log('names:', ctx.decision?.names); console.log('reason:', ctx.decision?.reason?.slice(0, 100)); console.log('shared from before:', Object.keys(ctx.shared).join(',') || '(空)');",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "ignore"
+    },
+    {
+      "name": "决策修改器",
+      "triggerOn": "decision",
+      "priority": 1,
+      "code": "console.log('[Script Executor] 决策修改器: 原始 speakers =', ctx.decision?.speakers); if (ctx.decision && ctx.decision.speakers.length > 0) { var last = ctx.decision.speakers[ctx.decision.speakers.length - 1]; var first = ctx.decision.speakers[0]; ctx.decision.speakers[0] = last; ctx.decision.speakers[ctx.decision.speakers.length - 1] = first; console.log('[Script Executor] 交换首尾:', ctx.decision.speakers); } return { modified: true };",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "shared"
+    }
+  ],
+  "migrations": []
+}

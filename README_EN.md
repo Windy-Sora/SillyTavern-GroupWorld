@@ -191,7 +191,7 @@ The ledger structure is open, allowing you to freely extend it with:
 GroupWorld includes a built-in unified prompt runtime. Multiple template entry points share the same data interface:
 
 * Director Prompt
-* Script Wrapper
+* Character Prompt Injection Template
 * History Wrapper
 * World Info Wrapper
 * Profile Generator

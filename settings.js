@@ -1,4 +1,4 @@
-export const EXT_KEY = 'group-director';
+export const EXT_KEY = 'group-world';
 export const MODE_OFF = 'off';
 export const MODE_FORMULA = 'formula';
 export const MODE_LLM = 'llm';
@@ -28,7 +28,29 @@ export const DEFAULT_SETTINGS = {
     // Director script
     llmScriptEnabled: false,
     llmScriptPrompt: '',
-    llmScriptWrapper: '{{characterLore}}[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmScriptWrapper: '{{charMemoryCurrent}}{{characterLore}}[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmJsonSchema: `Reply with ONLY a JSON object, no prose, no code fences:
+{
+  "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
+  "reason": "short justification"{{scriptField}},
+  "ledger_update": {},
+  "loreAssignments": {
+    "NameOfFirstSpeaker": ["exact entry name", "another entry"],
+    "NameOfSecondSpeaker": []
+  }
+}`,
+    llmJsonSchemaHint: `## ledger_update — 导演自由记录字段
+
+ledger_update 是一个完全开放的 catch-all 字段，类型为 object。
+LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例如：
+- 剧情进展、伏笔、角色情绪变化
+- 新出现的 NPC、地点、物品
+- 需要跨轮次追踪的状态
+
+字段名和结构完全由 LLM 自定，无需预先声明。
+写入 ledger_update 的数据会随导演账本持久化，可通过 {{?directorLedger:ledger_update.xxx}} 查询。
+
+如果不需要自由记录，保留空对象 {} 即可。`,
     llmHistoryEnabled: true,
     llmScriptContinuity: false,
     llmScriptContinuityMode: 'last',
@@ -44,14 +66,26 @@ export const DEFAULT_SETTINGS = {
     // Force Speak
     forceSpeakMode: 'native',
     forceSpeakPrompt: '',
+    // Script injection position: 0=IN_PROMPT (top), 1=IN_CHAT (near dialog)
+    llmScriptPosition: 0,
     // Chat Summary
     knowledgeText: '',
     summaryEnabled: false,
     summaryReusePrevious: true,
     summaryPrompt: '',
+    autoSummaryEnabled: false,
+    autoSummaryInterval: 10,
+    // Chat Critique
+    critiqueEnabled: false,
+    critiqueReusePrevious: true,
+    critiquePrompt: '',
+    critiqueSchema: '',
+    autoCritiqueEnabled: false,
+    autoCritiqueInterval: 10,
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,
+    identityPrompt: '', // '' = use DEFAULT_IDENTITY_PROMPT
     debugLogging: false,
     lang: 'zh',
     // Character Profile System
@@ -62,4 +96,38 @@ export const DEFAULT_SETTINGS = {
     profileJsonSchema: '',
     profileRenderTemplate: '',
     profileSchemaVersion: 1,
+    // NPC Generation System
+    npcEnabled: false,
+    npcMaxCount: 10,
+    npcBatchSize: 3,
+    npcGenerateFirstMes: false,
+    npcPrompt: '',
+    // Character Memory System
+    memoryEnabled: false,
+    memoryTokenBudget: 2000,
+    autoMemoryEnabled: false,
+    autoMemoryInterval: 10,
+    autoMemorySpeakers: false,
+    memoryPrompt: '',
+    memoryJsonSchema: '',
+    memoryRenderTemplate: '',
+    memoryKeepRecent: 5,
+    memoryMaxEntries: 200,
+    memoryCompressPrompt: '',
+    traceMaxEntries: 50,
+    // PostSpeech — multimodal policy after each character message
+    postSpeechMessageEnabled: false,
+    postSpeechMessagePrompt: '',
+    postSpeechRoundEnabled: false,
+    postSpeechRoundPrompt: '',
+    postSpeechBlocking: true,
+    postSpeechDecisionLimit: 20,
+    // Agent Runtime — per-agent API config (stored in extension_settings, not chat_metadata)
+    agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }
+    customPrompts: [], // [{ id, name, content, enabled }]
+    customPromptsEnabled: true,
+    scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
+    providerReferenceList: [], // user-editable provider reference list
+    // Custom Agents — user-defined LLM agents
+    customAgents: [], // [{ id, name, providerName, prompt, schema, enabled, autoEnabled, autoInterval, order }]
 };

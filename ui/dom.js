@@ -1,5 +1,5 @@
 /**
- * DOM utility helpers for Group Director settings panels.
+ * DOM utility helpers for Group World settings panels.
  *
  * createDomUtils(saveSettings) returns:
  *   $c          — shorthand jQuery selector for #gd-{id} elements
@@ -38,5 +38,56 @@ export function createDomUtils(saveSettings) {
         });
     }
 
-    return { $c, bindNumber, bindCheckbox, bindTextarea, bindRadio };
+    /**
+     * bindSetting — one-liner for the common init+bind pattern.
+     *
+     * Usage:
+     *   bindSetting($c('llm-max-speakers'), {
+     *       get: () => settings.llmMaxSpeakers,
+     *       set: (v) => { settings.llmMaxSpeakers = v; },
+     *       parse: (v) => Math.max(1, parseInt(v) || 3),
+     *   });
+     *
+     * For checkboxes, omit `parse` and use `get: () => !!prop('checked')`.
+     * The helper auto-detects :checkbox / :radio elements.
+     */
+    function bindSetting($el, { get, set, parse, afterSet } = {}) {
+        if (!$el || !$el.length) return;
+        const isCheckbox = $el.is(':checkbox') || $el.is(':radio');
+
+        // Init
+        const initial = get();
+        if (isCheckbox) {
+            $el.prop('checked', !!initial);
+        } else {
+            $el.val(initial != null ? initial : '');
+        }
+
+        // Bind
+        $el.on(isCheckbox ? 'input' : 'input', function () {
+            let val;
+            if (isCheckbox) {
+                val = !!$(this).prop('checked');
+            } else {
+                val = $(this).val();
+                if (parse) val = parse(val);
+            }
+            set(val);
+            if (afterSet) afterSet(val);
+            saveSettings();
+        });
+
+        // Select elements need 'change' too (for option selection)
+        if ($el.is('select')) {
+            $el.on('change', function () {
+                let val = $(this).val();
+                if (parse) val = parse(val);
+                set(val);
+                if (afterSet) afterSet(val);
+                saveSettings();
+            });
+        }
+    }
+
+    return { $c, bindNumber, bindCheckbox, bindTextarea, bindRadio, bindSetting };
 }

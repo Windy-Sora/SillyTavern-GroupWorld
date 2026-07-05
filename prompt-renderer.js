@@ -1,7 +1,7 @@
 import { providers } from './provider-registry.js';
 import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
 import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
-import { unescapeKnowledge } from './providers/knowledge.js';
+import { unescapeKnowledge } from './assets/providers/knowledge.js';
 
 /**
  * Render a template by executing all registered providers once,
@@ -17,10 +17,10 @@ import { unescapeKnowledge } from './providers/knowledge.js';
  *
  * Special placeholder: {{counter}} increments per occurrence across
  * all renderPrompt() calls. Each occurrence gets a unique monotonic
- * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
+ * value (0, 1, 2...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -43,7 +43,7 @@ export async function renderPrompt(template, context, options = {}) {
     const cache = Object.create(null);
 
     for (const provider of providers.values()) {
-        if (provider.enabled && !provider.enabled(context)) continue;
+        if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
         try {
             const raw = await provider.render(context);
             const normalized = (raw && typeof raw === 'object')
@@ -51,22 +51,42 @@ export async function renderPrompt(template, context, options = {}) {
                 : { content: raw ?? '', data: null };
             cache[provider.id] = normalized;
         } catch (e) {
-            console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
+            console.warn(`[GroupWorld] Provider "${provider.id}" render failed:`, e.message);
             cache[provider.id] = { content: '', data: null };
         }
     }
 
+    // Inject local resolvers — per-call placeholder overrides that don't
+    // go through the global Provider registry. Agent data placeholders
+    // (e.g. {{existingCharacters}}) use this to avoid being cleared.
+    if (locals) {
+        for (const [id, content] of Object.entries(locals)) {
+            cache[id] = { content: String(content ?? ''), data: null };
+        }
+    }
+
+    // Allow external observer to snapshot provider outputs (trace/debug)
+    if (onCache) {
+        try {
+            const snap = Object.create(null);
+            for (const [id, entry] of Object.entries(cache)) {
+                snap[id] = { content: entry.content?.length ?? 0, hasData: !!entry.data };
+            }
+            onCache(snap);
+        } catch (_) { /* never throw from observer */ }
+    }
+
     // ── Phase 1.5: block loops ──
-    result = processBlockLoops(result, cache, context, unresolvable, false);
+    result = processBlockLoops(result, cache, context, unresolvable, false, passthrough);
 
     // ── Phase 2+3: placeholders and path queries ──
-    result = renderPhases2and3(result, cache, context, unresolvable, false);
+    result = renderPhases2and3(result, cache, context, unresolvable, false, passthrough);
 
     // ── Post-render passes ──
     for (let pass = 1; pass < maxPasses; pass++) {
         const before = result;
-        result = processBlockLoops(result, cache, context, unresolvable, true);
-        result = renderPhases2and3(result, cache, context, unresolvable, true);
+        result = processBlockLoops(result, cache, context, unresolvable, true, passthrough);
+        result = renderPhases2and3(result, cache, context, unresolvable, true, passthrough);
         if (result === before) break;
     }
 
@@ -88,11 +108,15 @@ export async function renderPrompt(template, context, options = {}) {
  * in a single pass. When isRePass is true, counters are preserved
  * rather than incremented.
  */
-function renderPhases2and3(template, cache, context, unresolvable, isRePass = false) {
+function renderPhases2and3(template, cache, context, unresolvable, isRePass = false, passthrough) {
     // Phase 2
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter' || id === 'counter0') {
             return isRePass ? match : String(id === 'counter' ? roundCounterNext() : promptCounterNext());
+        }
+        // Passthrough: ST-native or user-specified placeholders left as-is
+        if (passthrough && (passthrough === true || passthrough.includes(id))) {
+            return match;
         }
         if (!(id in cache)) return unresolvable(match);
         return cache[id].content;
@@ -134,7 +158,7 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
  * - Empty/null array → whole block replaced with empty string
  * - Join uses literal newlines from the template (user controls)
  */
-function processBlockLoops(template, cache, context, unresolvable, isRePass) {
+function processBlockLoops(template, cache, context, unresolvable, isRePass, passthrough) {
     let result = template;
     let safety = 0;
     const MAX_BLOCKS = 200;
@@ -164,7 +188,7 @@ function processBlockLoops(template, cache, context, unresolvable, isRePass) {
         // Render inner for each element
         const parts = unique.map(el => {
             const elCtx = { ...context, it: formatValue(el) };
-            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass);
+            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass, passthrough);
         });
 
         // Replace entire block with joined results
@@ -237,7 +261,9 @@ function expandVariables(path, context) {
 
 function resolveInnerPlaceholders(pathStr, cache, context) {
     let prev;
+    let guard = 0;
     do {
+        if (++guard > 16) { console.warn('[GroupWorld] resolveInnerPlaceholders exceeded max iterations (16) — possible circular reference'); break; }
         prev = pathStr;
         pathStr = pathStr.replace(/\{\{([^{}]+)\}\}/g, (_match, inner) => {
             if (/^\w+$/.test(inner)) {

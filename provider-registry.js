@@ -2,7 +2,7 @@ export const providers = new Map();
 
 export function registerProvider(provider) {
     if (!provider || !provider.id || !provider.placeholder) {
-        console.warn('[GroupDirector] registerProvider: invalid provider, missing id or placeholder');
+        console.warn('[GroupWorld] registerProvider: invalid provider, missing id or placeholder');
         return;
     }
     providers.set(provider.id, provider);

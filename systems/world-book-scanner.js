@@ -14,7 +14,7 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
 
     /**
      * Scan only the world books the user has manually selected
-     * in the Group Director settings panel.
+     * in the Group World settings panel.
      */
     async function scanAll() {
         const selection = getSelection ? getSelection() : {};
@@ -30,7 +30,7 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
                 const data = await loadWorldInfo(name);
                 return { name, data };
             } catch (e) {
-                console.warn(`[GroupDirector] Failed to load world book "${name}":`, e.message);
+                console.warn(`[GroupWorld] Failed to load world book "${name}":`, e.message);
                 return { name, data: null };
             }
         }));
@@ -72,7 +72,7 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
         }
 
         if (results.length === 0) {
-            console.warn('[GroupDirector] World book scanner: NO activated books found. Check that world books are selected in ST\'s World Info panel for this chat.');
+            console.warn('[GroupWorld] World book scanner: NO activated books found. Check that world books are selected in ST\'s World Info panel for this chat.');
         } else if (log) {
             log(`World book scanner: loaded ${results.length} activated books (${results.reduce((s, b) => s + b.entryCount, 0)} entries)`);
         }

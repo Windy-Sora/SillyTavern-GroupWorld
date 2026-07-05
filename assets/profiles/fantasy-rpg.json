@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "type": "profile-export",
+  "exportedAt": "2026-06-21T00:00:00.000Z",
+  "source": {
+    "groupName": "Fantasy RPG Preset",
+    "groupNote": "预设奇幻RPG角色档案模板 — 展示标准导出格式。导入时可作为模板参考，也可直接加载到群聊中使用。"
+  },
+  "template": {
+    "generatorPrompt": "You are a Character Profile Analyzer. Analyze the following character and extract key information.\n\nCharacter Name: {{charName}}\nDescription: {{charDescription}}\nPersonality: {{charPersonality}}\nScenario: {{charScenario}}\n\nExtract the following in JSON format ONLY (no prose, no code fences):\n{\n  \"summary\": \"A concise 2-3 sentence description of who this character is, their role, and their defining traits.\",\n  \"tags\": [\"tag1\", \"tag2\", \"tag3\"],\n  \"motivation\": \"What drives this character? What do they want? What are their core goals or fears?\",\n  \"relationships\": \"How does this character relate to others? What is their social role or typical dynamic with people?\"\n}\n\nImportant:\n- Output ONLY valid JSON, no extra text.\n- summary must be under 200 characters.\n- tags must be an array of 3-6 single words or short phrases.\n- motivation must be under 300 characters.\n- relationships must be under 200 characters.",
+    "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"summary\":       { \"type\": \"string\" },\n    \"tags\":          { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"motivation\":    { \"type\": \"string\" },\n    \"relationships\": { \"type\": \"string\" }\n  },\n  \"required\": [\"summary\", \"tags\", \"motivation\", \"relationships\"]\n}",
+    "renderTemplate": "- {{name}}: {{summary}}\n  Tags: {{tags}}\n  Motivation: {{motivation}}\n  Relationships: {{relationships}}"
+  },
+  "profiles": [
+    {
+      "avatar": "knight.png",
+      "name": "Sir Aldric",
+      "hash": "",
+      "profile": {
+        "summary": "一位身经百战的王国骑士，恪守荣誉准则，但内心深处对战争的代价感到疲惫。",
+        "tags": ["骑士", "荣耀", "疲惫", "守护者"],
+        "motivation": "保护无辜者，寻找战争之外的人生意义。害怕辜负信任他的人。",
+        "relationships": "对待平民温和有礼，在贵族面前保持威严，对同伴高度忠诚。"
+      }
+    },
+    {
+      "avatar": "mage.png",
+      "name": "Elena Starweaver",
+      "hash": "",
+      "profile": {
+        "summary": "年轻的奥术法师，对魔法知识有着无尽的渴求，但偶尔因冲动惹上麻烦。",
+        "tags": ["法师", "求知", "冲动", "天才"],
+        "motivation": "解锁失传的古代魔法，证明自己的才能。害怕魔法失控伤害所爱之人。",
+        "relationships": "在学术场合健谈自信，对陌生人多疑谨慎，与同为施法者的角色容易产生共鸣。"
+      }
+    },
+    {
+      "avatar": "rogue.png",
+      "name": "Shadow",
+      "hash": "",
+      "profile": {
+        "summary": "一个来历不明的盗贼，身手敏捷、口才出众，用玩世不恭的态度掩饰过去的创伤。",
+        "tags": ["盗贼", "敏捷", "神秘", "玩世不恭"],
+        "motivation": "攒够钱后隐退，远离追杀他的人。渴望信任他人但害怕被背叛。",
+        "relationships": "对权威人物天生不信任，默默保护弱者，与同样有过黑暗经历的人有特殊共鸣。"
+      }
+    }
+  ]
+}

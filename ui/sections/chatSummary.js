@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 function getDefaultPrompt(lang) {
     return lang === 'zh'
@@ -38,6 +39,20 @@ registerSection('chatSummary', function (ctx) {
         saveSettings();
     });
 
+    // Auto summary
+    $c('auto-summary-enabled').prop('checked', !!settings.autoSummaryEnabled);
+    $c('auto-summary-interval').val(settings.autoSummaryInterval ?? 10);
+    $c('auto-summary-enabled').on('change', () => {
+        settings.autoSummaryEnabled = !!$c('auto-summary-enabled').prop('checked');
+        $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
+        saveSettings();
+    });
+    $c('auto-summary-interval').on('input', () => {
+        settings.autoSummaryInterval = Math.max(1, parseInt($c('auto-summary-interval').val()) || 10);
+        saveSettings();
+    });
+    $('#gd-auto-summary-row').toggle(!!settings.autoSummaryEnabled);
+
     // Reuse toggle
     $c('summary-reuse').on('change', () => {
         settings.summaryReusePrevious = !!$c('summary-reuse').prop('checked');
@@ -67,13 +82,13 @@ registerSection('chatSummary', function (ctx) {
         if (blocks.length > 1) {
             const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
             let updated = 0;
-            for (let i = 0; i < allSummaries.length; i++) {
-                // blocks[0] = text before first header
-                // blocks[1] = #1, blocks[2] = content1
-                // blocks[3] = #2, blocks[4] = content2, etc.
-                const idx = 2 * i + 2;
-                if (idx < blocks.length && blocks[idx]) {
-                    allSummaries[i].content = blocks[idx].trim();
+            // blocks[0] = text before first header (ignored)
+            // blocks[1] = "1", blocks[2] = content of #1
+            // blocks[3] = "2", blocks[4] = content of #2 etc.
+            for (let j = 1; j + 1 < blocks.length; j += 2) {
+                const idx = parseInt(blocks[j], 10) - 1; // section number → 0-based index
+                if (idx >= 0 && idx < allSummaries.length && blocks[j + 1] !== undefined) {
+                    allSummaries[idx].content = blocks[j + 1].trim();
                     updated++;
                 }
             }
@@ -126,7 +141,7 @@ registerSection('chatSummary', function (ctx) {
     // Revert
     $c('summary-revert').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
-        if (!confirm(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?')) return;
+        if (!await callGenericPopup(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?', POPUP_TYPE.CONFIRM)) return;
         await ss.revertLastSummary();
         refreshStatus();
         toastr.info(settings.lang === 'zh' ? '已回退总结' : 'Summary reverted');
@@ -135,7 +150,7 @@ registerSection('chatSummary', function (ctx) {
     // Reset
     $c('summary-reset').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
-        if (!confirm(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?')) return;
+        if (!await callGenericPopup(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?', POPUP_TYPE.CONFIRM)) return;
         await ss.resetAll();
         refreshStatus();
         toastr.info(settings.lang === 'zh' ? '已重置全部总结' : 'All summaries reset');
@@ -169,8 +184,12 @@ registerSection('chatSummary', function (ctx) {
             $c('summary-result').val('');
             $c('summary-result-section').hide();
         }
+        // Cross-sync dashboard summary panel
+        window.__gdRenderPanelSummary?.();
+        window.__gdRefreshSummaryStat?.();
     }
     refreshStatus();
+    window.__gdRefreshSummaryStatus = refreshStatus;
 
     // Show result section if active summary exists
     if (ss.getLatestActive()) {
@@ -211,11 +230,14 @@ registerSection('chatSummary', function (ctx) {
             return;
         }
 
-        // Show summaries for review
-        const scanText = visible.map((s, i) => {
+        // Show summaries for review — use actual allSummaries index so save maps correctly
+        const idxMap = new Map();
+        allSummaries.forEach((s, i) => idxMap.set(s, i));
+        const scanText = visible.map((s) => {
+            const actualIdx = (idxMap.get(s) ?? -1) + 1;
             const status = s.active ? (settings.lang === 'zh' ? '活跃' : 'Active') : (settings.lang === 'zh' ? '已禁用' : 'Disabled');
             const range = settings.lang === 'zh' ? `覆盖前${s.rangeEnd}条` : `covers first ${s.rangeEnd}`;
-            return `--- #${i + 1} [${status}] ${range} ---\n${s.content}`;
+            return `--- #${actualIdx} [${status}] ${range} ---\n${s.content}`;
         }).join('\n\n');
         $c('summary-result').val(scanText);
         $c('summary-result-section').show();
@@ -234,9 +256,9 @@ registerSection('chatSummary', function (ctx) {
             toastr.info(settings.lang === 'zh' ? '没有可清除的已禁用条目' : 'No disabled entries to prune');
             return;
         }
-        if (!confirm(settings.lang === 'zh'
+        if (!await callGenericPopup(settings.lang === 'zh'
             ? `将删除 ${allSummaries.length - activeOnly.length} 条已禁用总结，保留 ${activeOnly.length} 条活跃。确认？`
-            : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`)) return;
+            : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`, POPUP_TYPE.CONFIRM)) return;
         allSummaries.length = 0;
         allSummaries.push(...activeOnly);
         const { saveChatConditional } = ctx;
@@ -265,9 +287,9 @@ registerSection('chatSummary', function (ctx) {
     });
 
     $c('summary-scan-clear').on('click', async () => {
-        if (!confirm(settings.lang === 'zh'
+        if (!await callGenericPopup(settings.lang === 'zh'
             ? '清除全部存档总结？此操作不可撤销。'
-            : 'Clear all archived summaries? This cannot be undone.')) return;
+            : 'Clear all archived summaries? This cannot be undone.', POPUP_TYPE.CONFIRM)) return;
         await ss.resetAll();
         const summaries = ss.getSummaries ? ss.getSummaries() : [];
         summaries.length = 0;

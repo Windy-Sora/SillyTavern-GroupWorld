@@ -18,13 +18,23 @@ export function createExportImportSystem({
     // toastr is a global jQuery plugin that may load after module init —
     // resolve lazily so it's always available when our functions run.
     const toastr = () => window.toastr;
+    const JSZIP_PATH = '../../../../../lib/jszip.min.js';
     let JSZip;
     let csrfToken = null;
 
     async function ensureJSZip() {
         if (JSZip) return;
         if (window.JSZip) { JSZip = window.JSZip; return; }
-        await import('../../../../../lib/jszip.min.js');
+        try { await import(JSZIP_PATH); } catch (_) { /* non-module, fall through */ }
+        if (window.JSZip) { JSZip = window.JSZip; return; }
+        const script = document.createElement('script');
+        script.src = JSZIP_PATH;
+        document.head.appendChild(script);
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('JSZip script load failed'));
+            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+        });
         if (window.JSZip) { JSZip = window.JSZip; return; }
         throw new Error('JSZip not available');
     }
@@ -92,7 +102,7 @@ export function createExportImportSystem({
             await ensureJSZip();
         } catch (e) {
             toastr().error(L('JSZip 加载失败', 'JSZip failed to load'));
-            console.error('[GroupDirector] JSZip load failed:', e);
+            console.error('[GroupWorld] JSZip load failed:', e);
             return;
         }
 
@@ -202,7 +212,7 @@ export function createExportImportSystem({
             await ensureJSZip();
         } catch (e) {
             toastr().error(L('JSZip 加载失败', 'JSZip failed to load'));
-            console.error('[GroupDirector] JSZip load failed:', e);
+            console.error('[GroupWorld] JSZip load failed:', e);
             return;
         }
 
@@ -219,7 +229,7 @@ export function createExportImportSystem({
             zip = await JSZip.loadAsync(data);
         } catch (e) {
             toastr().error(L('无法解析压缩包', 'Failed to parse zip file'));
-            console.error('[GroupDirector] Zip parse failed:', e);
+            console.error('[GroupWorld] Zip parse failed:', e);
             return;
         }
 
@@ -364,7 +374,13 @@ export function createExportImportSystem({
         if (groupCreated) parts.push(L('群组已创建', 'group created'));
         if (charFail + worldFail > 0) parts.push(L(`${charFail + worldFail} 跳过`, `${charFail + worldFail} skipped`));
 
-        toastr().success(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        if (charOk === 0 && charFail === 0) {
+            toastr().info(L('导入完成 — 无有效条目', 'Import complete — no valid entries'));
+        } else if (charOk === 0 && charFail > 0) {
+            toastr().warning(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        } else {
+            toastr().success(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        }
         toastr().info(L('请刷新页面以查看导入的角色和群组', 'Please refresh the page to see imported characters and group'));
 
         log(`Import done: ${charOk} chars, ${worldOk} worlds, group=${groupCreated}` + (charFail + worldFail > 0 ? `, ${charFail + worldFail} skipped` : ''));

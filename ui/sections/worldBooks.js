@@ -32,11 +32,13 @@ registerSection('worldBooks', async function (ctx) {
             for (const name of names) settings.worldBookSelection[name] = true;
             refreshBookList();
             saveSettings();
+            window.__gdRefreshDashboard?.();
         });
         deselectAll.on('click', () => {
             settings.worldBookSelection = {};
             refreshBookList();
             saveSettings();
+            window.__gdRefreshDashboard?.();
         });
 
         toolbar.append(selectAll, deselectAll);
@@ -45,13 +47,14 @@ registerSection('worldBooks', async function (ctx) {
         for (const name of names) {
             const checked = settings.worldBookSelection[name] === true;
             const label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:6px;"></label>`);
-            const input = $(`<input type="checkbox" data-book="${name}">`);
+            const input = $('<input type="checkbox">').attr('data-book', name);
             input.prop('checked', checked);
             input.on('change', function () {
                 settings.worldBookSelection[name] = !!$(this).prop('checked');
                 saveSettings();
+                window.__gdRefreshDashboard?.();
             });
-            label.append(input, name);
+            label.append(input, document.createTextNode(name));
             list.append(label);
         }
     }
@@ -62,4 +65,8 @@ registerSection('worldBooks', async function (ctx) {
         await refreshBookList();
         toastr.info(settings.lang === 'zh' ? '世界书列表已刷新' : 'World book list refreshed');
     });
+
+    // Expose for quick-start mirror in drawer 1
+    ctx.renderWorldBookList = refreshBookList;
+    window.__gdRefreshWorldBookList = refreshBookList;
 });

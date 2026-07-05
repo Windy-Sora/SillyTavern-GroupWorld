@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { eventSource, event_types } from '../../../../../events.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('ledger', function (ctx) {
     const { settings, getDirectorHistory, updateEntry, clearEntry, isRoundActive, saveChatConditional, toastr, onLatestEntryEdited } = ctx;
@@ -60,7 +61,7 @@ registerSection('ledger', function (ctx) {
             btnClear.on('click', async (e) => {
                 e.stopPropagation();
                 if (isLocked()) return;
-                if (!confirm(settings.lang === 'zh' ? `清空第 ${realIndex + 1} 轮账本？` : `Clear round ${realIndex + 1} ledger entry?`)) return;
+                if (!await callGenericPopup(settings.lang === 'zh' ? `清空第 ${realIndex + 1} 轮账本？` : `Clear round ${realIndex + 1} ledger entry?`, POPUP_TYPE.CONFIRM)) return;
                 await clearEntry(realIndex);
                 expandedIndex = -1;
                 buildCards();
@@ -138,6 +139,7 @@ registerSection('ledger', function (ctx) {
         const list = $('#gd-ledger-list');
         list.empty();
         const entries = getEntries(); // newest-first from getEntries()
+        const snapshotLen = entries.length; // freeze at build time for consistent validation + indexing
         const safeEntries = entries.map(e => {
             const copy = Object.assign({}, e);
             delete copy._anchorDate;
@@ -157,14 +159,20 @@ registerSection('ledger', function (ctx) {
             try {
                 const parsed = JSON.parse(textarea.val());
                 if (!Array.isArray(parsed)) throw new Error(settings.lang === 'zh' ? '必须是数组' : 'Must be an array');
-                if (parsed.length !== entries.length) {
+                if (parsed.length !== snapshotLen) {
                     throw new Error(settings.lang === 'zh'
-                        ? `条目数量不符（原${entries.length}条，现${parsed.length}条）。Raw 模式不支持增删，请回到卡片模式逐条操作。`
-                        : `Entry count mismatch (was ${entries.length}, now ${parsed.length}). Raw mode does not support add/remove. Use card mode.`);
+                        ? `条目数量不符（原${snapshotLen}条，现${parsed.length}条）。Raw 模式不支持增删，请回到卡片模式逐条操作。`
+                        : `Entry count mismatch (was ${snapshotLen}, now ${parsed.length}). Raw mode does not support add/remove. Use card mode.`);
                 }
                 const history = getDirectorHistory();
+                const historyLen = history.length;
+                if (historyLen !== snapshotLen) {
+                    throw new Error(settings.lang === 'zh'
+                        ? `条目数量变化（原${snapshotLen}条，现${historyLen}条）。请刷新后重试。`
+                        : `Entry count changed (was ${snapshotLen}, now ${historyLen}). Refresh and retry.`);
+                }
                 for (let i = 0; i < parsed.length; i++) {
-                    const realIndex = history.length - 1 - i; // newest-first → chronological
+                    const realIndex = snapshotLen - 1 - i; // newest-first → chronological (push() appends, indices stable)
                     parsed[i]._anchorDate = null;
                     parsed[i]._chatLength = 0;
                     await updateEntry(realIndex, parsed[i]);
@@ -192,10 +200,25 @@ registerSection('ledger', function (ctx) {
 
     function rebuild() {
         if (isLocked()) { updateLockState(); return; }
+        // Preserve in-progress textarea content across re-renders without committing to live data
+        let pendingEditText = null;
+        if (expandedIndex >= 0 && !rawMode) {
+            const $ta = $(`.gd-ledger-edit-area`);
+            if ($ta.length) {
+                pendingEditText = $ta.val();
+            }
+        }
         snapshotHistory = getEntries();
         snapshotLength = snapshotHistory.length;
         updateLockState();
         if (rawMode) { buildRaw(); } else { buildCards(); }
+        // Restore in-progress edit text after re-render
+        if (pendingEditText !== null && expandedIndex >= 0) {
+            const $ta = $(`.gd-ledger-edit-area`);
+            if ($ta.length) {
+                $ta.val(pendingEditText);
+            }
+        }
     }
 
     // ── Toolbar ────────────────────────────────────────────────

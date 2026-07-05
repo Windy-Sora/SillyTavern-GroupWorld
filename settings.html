@@ -1,494 +1,1072 @@
-<div class="group-director-settings">
+<div class="group-world-settings">
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!--  DIRECTOR'S BOARD — always visible, never inside a drawer      -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="gd-dashboard">
+        <div class="gd-dashboard-top">
+            <div class="gd-dashboard-mode">
+                <span class="gd-status-dot" id="gd-status-dot"></span>
+                <span class="gd-mode-label" id="gd-mode-label">Director</span>
+                <span class="gd-mode-badge" id="gd-mode-badge"></span>
+            </div>
+            <div class="gd-dashboard-quick">
+                <select id="gd-lang" class="text_pole gd-lang-select">
+                    <option value="zh">中文</option>
+                    <option value="en">English</option>
+                </select>
+                <label class="checkbox_label gd-debug-label" for="gd-debug">
+                    <input type="checkbox" id="gd-debug">
+                    <span data-i18n="debug">调试</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="gd-dashboard-decision" id="gd-dashboard-decision" style="display:none;">
+            <span class="gd-decision-label">Last call</span>
+            <span class="gd-decision-speakers" id="gd-decision-speakers"></span>
+            <span class="gd-decision-reason" id="gd-decision-reason"></span>
+        </div>
+
+        <div class="gd-dashboard-stats">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-profiles">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statProfiles">档案 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
+            </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-memories">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statMemories">记忆 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
+            </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-npcs">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statNpcs">NPC <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
+            </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-ledger">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statLedger">账本 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
+            </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-summary">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statSummary">总结</span>
+            </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statWorldBooks">世界书 <i class="fa-solid fa-caret-down" style="font-size:0.7em;"></i></span>
+            </div>
+            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dashboard-refresh" title="刷新" onclick="window.__gdRefreshDashboard && window.__gdRefreshDashboard(); var i=this.querySelector('i'); if(i){i.classList.add('fa-spin');setTimeout(function(){i.classList.remove('fa-spin')},600)}">
+                <i class="fa-solid fa-rotate"></i>
+            </span>
+        </div>
+
+        <div class="gd-dashboard-divider"></div>
+
+        <div class="gd-dashboard-actions">
+            <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-scan" data-i18n="dashScan">扫描存档</span>
+            <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-profiles" data-i18n="dashProfiles">生成档案</span>
+            <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-memories" data-i18n="dashMemories">提取记忆</span>
+            <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-summary" data-i18n="dashSummary">执行总结</span>
+        </div>
+        <div class="gd-dashboard-actions">
+            <select id="gd-dash-cfg-preset" class="text_pole gd-preset-select">
+                <option value="" data-i18n="dashCfgPresetPlaceholder">配置档...</option>
+            </select>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dashboard-preset-apply" data-i18n="applyPreset">应用</span>
+            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dash-preset-refresh" title="刷新列表"><i class="fa-solid fa-rotate"></i></span>
+        </div>
+        <div class="gd-dashboard-actions">
+            <select id="gd-dash-export-format" class="text_pole" style="width:auto;font-size:0.8em;margin-right:2px;">
+                <option value="zip" data-i18n="dashExportFormatZip">完整 ZIP</option>
+                <option value="json" data-i18n="dashExportFormatJson">JSON 清单</option>
+            </select>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-export-cfg" data-i18n="dashExportCfg">导出配置档</span>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-cfg" data-i18n="dashImportCfg">导入配置档</span>
+            <input type="file" id="gd-dash-import-file" accept=".zip,.json" style="display:none;">
+            <span style="color:var(--SmartThemeBorderColor);margin:0 4px;">|</span>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-export-group" data-i18n="dashExportGroup">导出群聊</span>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-group" data-i18n="dashImportGroup">导入群聊</span>
+            <input type="file" id="gd-dash-import-group-file" accept=".zip" style="display:none;">
+        </div>
+    </div>
+
+    <div class="gd-dash-panel gd-dash-panel-summary" id="gd-dash-panel-summary" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashSummaryTitle">上下文总结</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="summary" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-summary-list" class="gd-dash-panel-body"></div>
+    </div>
+
+    <div class="gd-dash-panel gd-dash-panel-profiles" id="gd-dash-panel-profiles" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashProfilesTitle">角色档案</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="profiles" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-profiles-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-memories" id="gd-dash-panel-memories" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashMemoriesTitle">角色记忆</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="memories" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-memories-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-npcs" id="gd-dash-panel-npcs" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashNpcsTitle">NPC 列表</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="npcs" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-npcs-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-ledger" id="gd-dash-panel-ledger" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashLedgerTitle">导演账本</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="ledger" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-ledger-list" class="gd-dash-panel-body"></div>
+    </div>
+
+    <div class="gd-dash-worldbooks" id="gd-dash-worldbooks" style="display:none;">
+        <div class="gd-dash-worldbooks-header">
+            <span data-i18n="dashWorldBooksTitle">世界书选择</span>
+            <span class="gd-dash-worldbooks-count" id="gd-dash-worldbooks-count"></span>
+            <span class="gd-dash-worldbooks-toggle menu_button menu_button_icon" id="gd-dash-worldbooks-close" style="font-size:0.7em;margin-left:auto;">收起</span>
+        </div>
+        <div id="gd-dash-worldbook-list" style="max-height:160px;overflow-y:auto;padding:4px 0;"></div>
+    </div>
+    <div class="gd-dashboard-assistant-row">
+        <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-get-assistant" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border:none;font-weight:bold;">
+            <i class="fa-solid fa-feather"></i> <span data-i18n="dashGetAssistant">召唤暮羽</span>
+        </span>
+        <small class="gd-assistant-hint" data-i18n="dashGetAssistantHint">紫色台灯下，一只懂 GD 的猫头鹰娘在等你~ 快带她回家吧。</small>
+    </div>
+
+    <hr class="gd-dashboard-rule">
+
+    <!-- ═══ Drawer 1: 导演 ═══ -->
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>Group World</b>
+            <b data-i18n="drawerDirector">导演</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
 
-            <!-- Language selector -->
-            <label for="gd-lang" data-i18n="langLabel">语言 / Language</label>
-            <select id="gd-lang" class="text_pole" style="width:auto;">
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-            </select>
+            <small data-i18n="intro">解决群聊中所有角色抢话的问题。</small>
 
-            <hr>
-            <small data-i18n="intro">解决群聊中所有角色抢话的问题。两种判断模式互斥，一次只能启用一种。</small>
-
-            <hr>
-            <h4 data-i18n="modeTitle">判断模式（单选）</h4>
-
-            <label class="checkbox_label" for="gd-mode-off">
-                <input type="radio" name="gd-mode" value="off" id="gd-mode-off">
-                <span data-i18n="modeOff"><b>关闭</b> — 不干预 SillyTavern 默认行为</span>
-            </label>
-
-            <label class="checkbox_label" for="gd-mode-formula">
-                <input type="radio" name="gd-mode" value="formula" id="gd-mode-formula">
-                <span data-i18n="modeFormula"><b>公式判断</b> — 使用关键词、提名、近期发言、主动性等本地评分（无 API 调用）</span>
-            </label>
-
-            <label class="checkbox_label" for="gd-mode-llm">
-                <input type="radio" name="gd-mode" value="llm" id="gd-mode-llm">
-                <span data-i18n="modeLlm"><b>大模型判断</b> — 调用当前主模型，结合上下文决定谁发言、按什么顺序（消耗 token）</span>
-            </label>
-
-            <label class="checkbox_label" for="gd-debug">
-                <input type="checkbox" id="gd-debug">
-                <span data-i18n="debug">调试日志（浏览器控制台）</span>
-            </label>
+            <div class="gd-mode-selector">
+                <label class="checkbox_label" for="gd-mode-off">
+                    <input type="radio" name="gd-mode" value="off" id="gd-mode-off">
+                    <span data-i18n="modeOffShort"><b>关闭</b></span>
+                </label>
+                <label class="checkbox_label" for="gd-mode-formula">
+                    <input type="radio" name="gd-mode" value="formula" id="gd-mode-formula">
+                    <span data-i18n="modeFormulaShort"><b>公式</b></span>
+                </label>
+                <label class="checkbox_label" for="gd-mode-llm">
+                    <input type="radio" name="gd-mode" value="llm" id="gd-mode-llm">
+                    <span data-i18n="modeLlmShort"><b>LLM</b></span>
+                </label>
+            </div>
 
             <div id="gd-off-hint" style="display:none;">
+                <small><i data-i18n="offHint">当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言。</i></small>
+            </div>
+
+            <!-- Formula -->
+            <div id="gd-formula-section" style="display:none;">
                 <hr>
-                <small><i data-i18n="offHint">当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。</i></small>
+                <label for="gd-topn" data-i18n="topn">发言人数 (Top-N)</label>
+                <input type="number" id="gd-topn" class="text_pole" min="1" max="20" step="1">
+
+                <label for="gd-recent-count" data-i18n="recentCount">分析最近消息条数</label>
+                <input type="number" id="gd-recent-count" class="text_pole" min="1" max="100" step="1">
+
+                <label for="gd-consecutive-penalty" data-i18n="consecutivePenalty">连续发言惩罚</label>
+                <input type="number" id="gd-consecutive-penalty" class="text_pole" min="0" max="200" step="1">
+
+                <label for="gd-mention-weight" data-i18n="mentionWeight">提及权重</label>
+                <input type="number" id="gd-mention-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-keyword-weight" data-i18n="keywordWeight">关键词权重</label>
+                <input type="number" id="gd-keyword-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-recency-weight" data-i18n="recencyWeight">近期未发言加权</label>
+                <input type="number" id="gd-recency-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-talkativeness-weight" data-i18n="talkativenessWeight">Talkativeness 权重</label>
+                <input type="number" id="gd-talkativeness-weight" class="text_pole" min="0" step="1">
+
+                <label class="checkbox_label" for="gd-trigger-enabled">
+                    <input type="checkbox" id="gd-trigger-enabled">
+                    <span data-i18n="triggerEnabled">关键词触发</span>
+                </label>
+                <label for="gd-trigger-score" data-i18n="triggerScore">触发加分</label>
+                <input type="number" id="gd-trigger-score" class="text_pole" min="0" step="1">
+
+                <label class="checkbox_label" for="gd-initiative-enabled">
+                    <input type="checkbox" id="gd-initiative-enabled">
+                    <span data-i18n="initiativeEnabled">主动性扰动</span>
+                </label>
+                <label for="gd-initiative-base" data-i18n="initiativeBase">主动性基础值</label>
+                <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
             </div>
 
-            <!-- ═══ Formula Configuration ═══ -->
-            <div id="gd-formula-section" class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b data-i18n="formulaDrawerTitle">公式判断配置</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                </div>
-                <div class="inline-drawer-content">
-                    <h4 data-i18n="topnTitle">Top-N 设置</h4>
-
-                    <label for="gd-topn" data-i18n="topn">每轮允许发言人数 (Top-N)</label>
-                    <input type="number" id="gd-topn" class="text_pole" min="1" max="20" step="1">
-
-                    <label for="gd-recent-count" data-i18n="recentCount">分析最近消息条数</label>
-                    <input type="number" id="gd-recent-count" class="text_pole" min="1" max="100" step="1">
-
-                    <label for="gd-consecutive-penalty" data-i18n="consecutivePenalty">连续发言惩罚分（每条）</label>
-                    <input type="number" id="gd-consecutive-penalty" class="text_pole" min="0" max="200" step="1">
-
-                    <hr>
-                    <h4 data-i18n="weightsTitle">评分权重</h4>
-
-                    <label for="gd-mention-weight" data-i18n="mentionWeight">名字被提及权重</label>
-                    <input type="number" id="gd-mention-weight" class="text_pole" min="0" step="1">
-
-                    <label for="gd-keyword-weight" data-i18n="keywordWeight">关键词匹配权重</label>
-                    <input type="number" id="gd-keyword-weight" class="text_pole" min="0" step="1">
-
-                    <label for="gd-recency-weight" data-i18n="recencyWeight">近期未发言加权</label>
-                    <input type="number" id="gd-recency-weight" class="text_pole" min="0" step="1">
-
-                    <label for="gd-talkativeness-weight" data-i18n="talkativenessWeight">Talkativeness 权重</label>
-                    <input type="number" id="gd-talkativeness-weight" class="text_pole" min="0" step="1">
-
-                    <hr>
-                    <h4 data-i18n="triggerTitle">触发器引擎</h4>
-                    <label class="checkbox_label" for="gd-trigger-enabled">
-                        <input type="checkbox" id="gd-trigger-enabled">
-                        <span data-i18n="triggerEnabled">启用关键词触发器（基于角色描述切词）</span>
-                    </label>
-                    <label for="gd-trigger-score" data-i18n="triggerScore">触发器命中加分</label>
-                    <input type="number" id="gd-trigger-score" class="text_pole" min="0" step="1">
-
-                    <hr>
-                    <h4 data-i18n="initiativeTitle">主动性 (Initiative)</h4>
-                    <label class="checkbox_label" for="gd-initiative-enabled">
-                        <input type="checkbox" id="gd-initiative-enabled">
-                        <span data-i18n="initiativeEnabled">启用主动性系统（每轮随机扰动）</span>
-                    </label>
-                    <label for="gd-initiative-base" data-i18n="initiativeBase">主动性基础值（每轮随机 0~该值）</label>
-                    <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
-                </div>
-            </div>
-
-            <!-- ═══ LLM Configuration ═══ -->
+            <!-- LLM -->
             <div id="gd-llm-section" style="display:none;">
+                <hr>
+                <label for="gd-llm-max-speakers" data-i18n="llmMaxSpeakers">每轮最多发言人数</label>
+                <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
 
-                <!-- LLM Parameters Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="llmParamsDrawerTitle">Director LLM 参数</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                <label for="gd-llm-context-depth" data-i18n="llmContextDepth">上下文层数</label>
+                <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
+
+
+
+                <label for="gd-llm-prompt" data-i18n="promptShort">Director Prompt</label>
+                <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
+                <div class="gd-row-buttons">
+                    <span class="menu_button menu_button_icon" id="gd-llm-prompt-reset">
+                        <i class="fa-solid fa-rotate-left"></i> 默认
+                    </span>
+                    <span class="menu_button menu_button_icon" id="gd-llm-prompt-expand" style="display:none;">
+                        <i class="fa-solid fa-maximize"></i>
+                    </span>
+                </div>
+
+                <hr>
+                <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">角色 Prompt 注入模版</label>
+                <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                <span class="menu_button menu_button_icon" id="gd-llm-script-wrapper-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> 默认
+                </span>
+
+                <div class="gd-card gd-card-collapsible" data-card="jsonSchema" style="margin-top:8px;">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="jsonSchemaCard">高级：JSON 输出格式</span>
                     </div>
-                    <div class="inline-drawer-content">
-                        <label for="gd-llm-max-speakers" data-i18n="llmMaxSpeakers">每轮最多发言人数</label>
-                        <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
-
-                        <label for="gd-llm-context-depth" data-i18n="llmContextDepth">传入上下文层数（最近 N 条消息）</label>
-                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量，对 <code>{{recentMessages}}</code> 和 <code>{{newRecentMessages}}</code> 均生效。<code>{{newRecentMessages}}</code> 在启用总结后会额外返回总结文本 + 总结后的全部新消息，此时不受深度限制。</small>
-                        <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
-
-                        <label class="checkbox_label" for="gd-llm-respect-order">
-                            <input type="checkbox" id="gd-llm-respect-order">
-                            <span data-i18n="llmRespectOrder">严格按 LLM 顺序发言（接管 ST 激活循环，手动按导演决定的顺序逐人生成）</span>
-                        </label>
-
-                        <hr>
-                        <h4 data-i18n="charDescTitle">角色描述控制</h4>
-                        <small data-i18n="charDescHint">控制传入 Director LLM 的角色描述长度（<code>{{characters}}</code> 占位符）。</small>
-
-                        <label class="checkbox_label" for="gd-llm-char-desc-full">
-                            <input type="radio" name="gd-llm-char-desc-mode" value="full" id="gd-llm-char-desc-full">
-                            <span data-i18n="charDescFull">全量传入</span>
-                        </label>
-                        <label class="checkbox_label" for="gd-llm-char-desc-slice">
-                            <input type="radio" name="gd-llm-char-desc-mode" value="slice" id="gd-llm-char-desc-slice">
-                            <span data-i18n="charDescSlice">切片截断（保留前 N 个字符）</span>
-                        </label>
-                        <label for="gd-llm-char-desc-length" data-i18n="charDescLength">切片长度（字符数）</label>
-                        <input type="number" id="gd-llm-char-desc-length" class="text_pole" min="50" max="2000" step="50">
+                    <div class="gd-card-body">
+                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="jsonSchemaHint"><code>{{scriptField}}</code> 在启用剧本时替换为 scripts 字段，禁用时清空。</small>
+                        <textarea id="gd-llm-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
+                        <small style="color:#ff9800;display:block;margin-top:4px;" data-i18n="jsonSchemaWarning">⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。</small>
+                        <span class="menu_button menu_button_icon" id="gd-llm-json-schema-reset" style="margin-top:4px;">
+                            <i class="fa-solid fa-rotate-left"></i> 默认
+                        </span>
                     </div>
                 </div>
 
-                <!-- Director Prompt Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="promptDrawerTitle">Director Prompt 模板</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                    </div>
-                    <div class="inline-drawer-content">
-                        <label for="gd-llm-prompt" data-i18n="promptTitle">Director Prompt 模板</label>
-                        <small data-i18n="promptHint">可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{character_profiles}}</code>、<code>{{worldInfo}}</code>、<code>{{previousPlan}}</code> 等。<br>
-                            模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。</small>
-                        <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="14" style="width:100%;"></textarea>
-                        <div class="menu_button menu_button_icon" id="gd-llm-prompt-reset" style="margin-top:4px;">
-                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="promptReset">恢复默认 Prompt</span>
-                        </div>
-                        <small style="margin-top:8px;"><i data-i18n="promptNote">每轮群聊生成会额外调用一次主模型来做导演决策。</i></small>
-
-                        <hr>
-                        <h4 data-i18n="knowledgeTitle">知识库 (Knowledge)</h4>
-                        <small data-i18n="knowledgeHint">此区域的文本不会被渲染——其中的 <code>{{XXX}}</code> 会原样发给 LLM，用于教 LLM 使用 DSL 接口。通过 <code>{{knowledge}}</code> 占位符引用。</small>
-                        <textarea id="gd-knowledge-text" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-
-                        <hr>
-                        <h4 data-i18n="templateRecursiveTitle">模板递归渲染</h4>
-                        <small data-i18n="templateRecursiveHint">当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。</small>
-
-                        <label class="checkbox_label" for="gd-template-recursive">
-                            <input type="checkbox" id="gd-template-recursive">
-                            <span data-i18n="templateRecursive">启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）</span>
-                        </label>
-
-                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数</label>
-                        <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。</small>
-                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" step="1">
-
-                        <label class="checkbox_label" for="gd-template-debug-placeholders">
-                            <input type="checkbox" id="gd-template-debug-placeholders">
-                            <span data-i18n="templateDebugPlaceholders">调试模式：保留无法识别的占位符（如拼写错误的 <code>{{charcters}}</code> 会原样输出，而非静默清除）</span>
-                        </label>
-                        <small data-i18n="templateDebugPlaceholdersHint">开启后未注册的占位符会保留在输出中方便排查。关闭（默认）则静默清除，避免污染 LLM 上下文。</small>
-                    </div>
+                <hr>
+                <label class="checkbox_label" for="gd-llm-script-enabled">
+                    <input type="checkbox" id="gd-llm-script-enabled">
+                    <span data-i18n="scriptEnabled">导演剧本 (Director Script)</span>
+                </label>
+                <div id="gd-script-detail" style="display:none;">
+                    <label for="gd-llm-script-position" data-i18n="llmScriptPosition">注入位置</label>
+                    <select id="gd-llm-script-position" class="text_pole" style="width:auto;">
+                        <option value="0" data-i18n="llmScriptPositionTop">Prompt 开头</option>
+                        <option value="1" data-i18n="llmScriptPositionChat">对话附近</option>
+                    </select>
+                    <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本风格要求</label>
+                    <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
                 </div>
 
-                <!-- Script & Continuity Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="scriptDrawerTitle">导演剧本 & 连贯性</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                <hr>
+                <div class="gd-card gd-card-collapsible" data-card="continuity">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="continuityCard">连贯性 & 账本</span>
                     </div>
-                    <div class="inline-drawer-content">
-                        <label class="checkbox_label" for="gd-llm-script-enabled">
-                            <input type="checkbox" id="gd-llm-script-enabled">
-                            <span data-i18n="scriptEnabled">启用导演剧本（Director 为每个发言角色输出独立剧本）</span>
-                        </label>
-
-                        <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本要求提示（Script Prompt）</label>
-                        <small data-i18n="scriptPromptHint">告诉导演你希望什么样的剧本风格。留空则只要求基本场景描述。</small>
-                        <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-
-                        <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">剧本注入包装模板（Script Wrapper）</label>
-                        <small data-i18n="scriptWrapperHint"><code>{{script}}</code> 占位符会被替换为实际剧本内容。</small>
-                        <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-
-                        <hr>
+                    <div class="gd-card-body">
                         <label class="checkbox_label" for="gd-llm-history-enabled">
                             <input type="checkbox" id="gd-llm-history-enabled">
-                            <span data-i18n="historyEnabled"><b>记录导演账本</b> — 每次 LLM 决策后将完整 JSON 保存到聊天元数据</span>
+                            <span data-i18n="historyEnabledShort">记录导演账本</span>
                         </label>
-                        <div class="menu_button menu_button_icon" id="gd-llm-history-clear" style="margin-top:4px;">
-                            <i class="fa-solid fa-trash"></i> <span data-i18n="historyClear">清空当前导演账本</span>
-                        </div>
-                        <div id="gd-history-meta-display" style="margin-top:6px; display:none;">
-                            <small><i><span data-i18n="historyMeta">当前账本风格：</span><span id="gd-history-meta-script"></span></i></small>
+                        <span class="menu_button menu_button_icon" id="gd-llm-history-clear" style="font-size:0.8em;">
+                            <i class="fa-solid fa-trash"></i> <span data-i18n="historyClear">清空</span>
+                        </span>
+                        <div id="gd-history-meta-display" style="display:none;margin-top:4px;">
+                            <small id="gd-history-meta-script"></small>
                         </div>
 
-                        <hr>
-                        <label class="checkbox_label" for="gd-llm-script-continuity">
+                        <label class="checkbox_label" for="gd-llm-script-continuity" style="margin-top:6px;">
                             <input type="checkbox" id="gd-llm-script-continuity">
-                            <span data-i18n="continuity"><b>使用导演历史</b> — 将记录的导演账本注入当前 prompt</span>
+                            <span data-i18n="continuityShort">使用导演历史</span>
                         </label>
+                        <div id="gd-continuity-detail" style="display:none;">
+                            <label class="checkbox_label" for="gd-llm-script-continuity-mode-last">
+                                <input type="radio" name="gd-llm-script-continuity-mode" value="last" id="gd-llm-script-continuity-mode-last">
+                                <span data-i18n="continuityLast">仅上一轮</span>
+                            </label>
+                            <label class="checkbox_label" for="gd-llm-script-continuity-mode-history">
+                                <input type="radio" name="gd-llm-script-continuity-mode" value="history" id="gd-llm-script-continuity-mode-history">
+                                <span data-i18n="continuityHistory">完整历史</span>
+                            </label>
+                            <label for="gd-llm-script-continuity-count" data-i18n="continuityCount">历史轮数 (0=全部)</label>
+                            <input type="number" id="gd-llm-script-continuity-count" class="text_pole" min="0" max="100" step="1">
+                            <label for="gd-llm-script-continuity-wrapper" data-i18n="continuityWrapper">包装模板（仅上一轮）</label>
+                            <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                            <label for="gd-llm-script-continuity-history-wrapper" data-i18n="continuityHistoryWrapper">包装模板（完整历史）</label>
+                            <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                        </div>
 
-                        <h4 data-i18n="continuityTitle" style="margin-top:8px;">连贯剧本模式</h4>
-                        <small data-i18n="continuityHint">选择只注入上一轮计划，还是注入完整历史记录。</small>
-
-                        <label class="checkbox_label" for="gd-llm-script-continuity-mode-last">
-                            <input type="radio" name="gd-llm-script-continuity-mode" value="last" id="gd-llm-script-continuity-mode-last">
-                            <span data-i18n="continuityLast"><b>仅上一轮</b></span>
-                        </label>
-                        <label class="checkbox_label" for="gd-llm-script-continuity-mode-history">
-                            <input type="radio" name="gd-llm-script-continuity-mode" value="history" id="gd-llm-script-continuity-mode-history">
-                            <span data-i18n="continuityHistory"><b>完整历史</b></span>
-                        </label>
-
-                        <label for="gd-llm-script-continuity-count" data-i18n="continuityCount">历史轮数（0 = 全部）</label>
-                        <input type="number" id="gd-llm-script-continuity-count" class="text_pole" min="0" max="100" step="1">
-
-                        <label for="gd-llm-script-continuity-wrapper" data-i18n="continuityWrapper">连贯剧本包装模板（仅上一轮）</label>
-                        <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-
-                        <label for="gd-llm-script-continuity-history-wrapper" data-i18n="continuityHistoryWrapper">连贯剧本包装模板（完整历史）</label>
-                        <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                     </div>
                 </div>
 
-                <!-- Director Ledger Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="ledgerDrawerTitle">导演账本浏览器</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                <div class="gd-card gd-card-collapsible" data-card="worldinfo">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="worldInfoCard">世界书 & 知识库</span>
                     </div>
-                    <div class="inline-drawer-content">
-                        <small data-i18n="ledgerHint">查看、编辑、清空导演账本。生成中锁死不可编辑。</small>
-
-                        <div id="gd-ledger-lock-warn" style="display:none;color:#ff9800;margin-top:4px;">
-                            <b>&#9888; <span data-i18n="ledgerLocked">生成中，面板已锁定</span></b>
+                    <div class="gd-card-body">
+                        <div id="gd-llm-data-section" style="display:none;">
+                            <label class="checkbox_label" for="gd-llm-world-info-enabled">
+                                <input type="checkbox" id="gd-llm-world-info-enabled">
+                                <span data-i18n="worldInfoEnabledShort">世界书注入</span>
+                            </label>
+                            <label for="gd-llm-world-info-wrapper" data-i18n="worldInfoWrapperShort">包装模板</label>
+                            <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
                         </div>
-
-                        <div id="gd-ledger-toolbar" style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                            <span id="gd-ledger-count" style="font-size:0.9em;color:var(--grey70a)"></span>
-                            <span style="flex:1"></span>
-                            <span class="menu_button menu_button_icon" id="gd-ledger-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="ledgerRefresh">刷新</span></span>
-                            <span class="menu_button menu_button_icon" id="gd-ledger-raw-toggle"><i class="fa-solid fa-code"></i> <span data-i18n="ledgerRawToggle">Raw 模式</span></span>
-                        </div>
-
-                        <div id="gd-ledger-list" style="margin-top:8px;max-height:500px;overflow-y:auto;"></div>
+                        <label for="gd-knowledge-text" data-i18n="knowledgeShort">知识库</label>
+                        <textarea id="gd-knowledge-text" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                     </div>
                 </div>
 
-                <!-- World Info Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="worldInfoDrawerTitle">世界书注入 (World Info)</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                <div class="gd-card gd-card-collapsible" data-card="forcespeak">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="forceSpeakCard">强制发言</span>
                     </div>
-                    <div class="inline-drawer-content">
-                        <small data-i18n="worldInfoHint">将当前激活的世界书/ lorebook 条目注入 Director prompt。</small>
-
-                        <label class="checkbox_label" for="gd-llm-world-info-enabled">
-                            <input type="checkbox" id="gd-llm-world-info-enabled">
-                            <span data-i18n="worldInfoEnabled">启用世界书注入</span>
-                        </label>
-
-                        <label for="gd-llm-world-info-wrapper" data-i18n="worldInfoWrapper">世界书包装模板</label>
-                        <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-                    </div>
-                </div>
-
-                <!-- World Book Selection Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="worldBookSelectionTitle">世界书选择 (World Book Selection)</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                    </div>
-                    <div class="inline-drawer-content">
-                        <small data-i18n="worldBookSelectionHint">手动选择要暴露给 Director 的世界书。不勾选的书不会被扫描，避免世界观串台。</small>
-
-                        <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目数</label>
-                        <small data-i18n="worldBookMaxEntriesHint">限制 {{worldBookImportance}} 输出给 Director 的条目数量。推荐 15-30。</small>
-                        <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
-
-                        <div class="menu_button menu_button_icon" id="gd-world-book-refresh" style="margin-top:4px;">
-                            <i class="fa-solid fa-rotate"></i> <span data-i18n="worldBookRefresh">刷新世界书列表</span>
-                        </div>
-                        <div id="gd-world-book-list" style="margin-top:8px;max-height:300px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Force Speak Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="forceSpeakDrawerTitle">强制发言 (Force Speak) 🧪</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                    </div>
-                    <div class="inline-drawer-content">
-                        <small style="color:#ff9800;"><b>&#9888; <span data-i18n="forceSpeakWarning">测试功能，可能不稳定，谨慎使用</span></b></small>
-                        <small data-i18n="forceSpeakHint">当用户在群聊中手动强制触发某个角色发言时（非正常导演流程），Group Director 的处理方式。</small>
-
+                    <div class="gd-card-body">
                         <label class="checkbox_label" for="gd-force-speak-native">
                             <input type="radio" name="gd-force-speak-mode" value="native" id="gd-force-speak-native">
-                            <span data-i18n="forceSpeakNative"><b>原生放行</b> — 弹窗确认后透传给 ST 自行处理（不计账本，不注入剧本）</span>
+                            <span data-i18n="forceSpeakNativeShort">原生放行</span>
                         </label>
                         <label class="checkbox_label" for="gd-force-speak-block">
                             <input type="radio" name="gd-force-speak-mode" value="block" id="gd-force-speak-block">
-                            <span data-i18n="forceSpeakBlock"><b>直接截停</b> — 阻止强制发言，不做任何处理</span>
+                            <span data-i18n="forceSpeakBlockShort">直接截停</span>
                         </label>
                         <label class="checkbox_label" for="gd-force-speak-llm">
                             <input type="radio" name="gd-force-speak-mode" value="llm" id="gd-force-speak-llm">
-                            <span data-i18n="forceSpeakLlm"><b>LLM 接管</b> — 调用模型只为此角色生成剧本并计入账本（实验性）</span>
+                            <span data-i18n="forceSpeakLlmShort">LLM接管</span>
                         </label>
-
                         <div id="gd-force-speak-llm-section" style="display:none;">
-                            <label for="gd-force-speak-prompt" data-i18n="forceSpeakPromptLabel">强制发言 Prompt 注入</label>
-                            <small data-i18n="forceSpeakPromptHint">附加到 Director Prompt 尾部的系统指令。<code>{charName}</code> 会被替换为实际角色名。</small>
-                            <textarea id="gd-force-speak-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                            <div class="menu_button menu_button_icon" id="gd-force-speak-prompt-reset" style="margin-top:4px;">
-                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="forceSpeakPromptReset">恢复默认 Prompt</span>
-                            </div>
+                            <label for="gd-force-speak-prompt" data-i18n="forceSpeakPromptShort">注入 Prompt</label>
+                            <textarea id="gd-force-speak-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                         </div>
                     </div>
                 </div>
 
-                <!-- Character Profiles Drawer -->
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b data-i18n="profileDrawerTitle">角色档案系统</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                <div class="gd-card gd-card-collapsible" data-card="template">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="templateCard">模板 & 角色描述</span>
                     </div>
-                    <div class="inline-drawer-content">
-                        <small data-i18n="profileHint">提前分析每个角色的特质、动机、关系，注入 Director Prompt。</small>
-
-                        <label class="checkbox_label" for="gd-profile-enabled">
-                            <input type="checkbox" id="gd-profile-enabled">
-                            <span data-i18n="profileEnabled">启用角色档案</span>
+                    <div class="gd-card-body">
+                        <label class="checkbox_label" for="gd-template-recursive">
+                            <input type="checkbox" id="gd-template-recursive">
+                            <span data-i18n="templateRecursive">递归渲染</span>
                         </label>
-
-                        <div id="gd-profile-section" style="display:none;">
-                            <div class="menu_button menu_button_icon" id="gd-profile-scan-save" style="margin-bottom:4px;">
-                                <i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="profileScanSave">扫描当前存档</span>
-                            </div>
-                            <div class="menu_button menu_button_icon" id="gd-profile-detect-changes" style="margin-bottom:8px;">
-                                <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测角色变动</span>
-                            </div>
-
-                            <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">档案 Token 预算</label>
-                            <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
-
-                            <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数（0=全部同时）</label>
-                            <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
-
-                            <hr>
-                            <h4 data-i18n="profileGeneratorPromptTitle">生成器 Prompt 模板</h4>
-                            <small data-i18n="profileGeneratorPromptHint">占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code></small>
-                            <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
-                            <div class="menu_button menu_button_icon" id="gd-profile-generator-reset" style="margin-top:4px;">
-                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileGeneratorReset">恢复默认</span>
-                            </div>
-
-                            <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
-                            <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;"></textarea>
-                            <div class="menu_button menu_button_icon" id="gd-profile-schema-reset" style="margin-top:4px;">
-                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileSchemaReset">恢复默认 Schema</span>
-                            </div>
-
-                            <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
-                            <small data-i18n="profileRenderTemplateHint">占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code></small>
-                            <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                            <div id="gd-profile-template-warning" style="color:orange;display:none;margin-top:4px;"></div>
-                            <div class="menu_button menu_button_icon" id="gd-profile-render-reset" style="margin-top:4px;">
-                                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileRenderReset">恢复默认</span>
-                            </div>
-
-                            <hr>
-                            <h4 data-i18n="profileManagementTitle">档案管理</h4>
-                            <div class="menu_button menu_button_icon" id="gd-profile-regenerate-all" style="margin-top:4px;">
-                                <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
-                            </div>
-                            <div id="gd-profile-management-list" style="margin-top:8px;"></div>
-
-                            <hr>
-                            <h4 data-i18n="exportImportTitle">群聊导出 / 导入</h4>
-                            <small data-i18n="exportImportHint">将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。</small>
-
-                            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                                <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> <span data-i18n="exportGroup">导出群聊</span></span>
-                                <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> <span data-i18n="importGroup">导入群聊</span></span>
-                                <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
-                            </div>
-
-                            <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
-                        </div>
+                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数</label>
+                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" step="1">
+                        <label class="checkbox_label" for="gd-template-debug-placeholders">
+                            <input type="checkbox" id="gd-template-debug-placeholders">
+                            <span data-i18n="templateDebugPlaceholdersShort">调试占位符</span>
+                        </label>
+                        <hr>
+                        <label class="checkbox_label" for="gd-llm-char-desc-full">
+                            <input type="radio" name="gd-llm-char-desc-mode" value="full" id="gd-llm-char-desc-full">
+                            <span data-i18n="charDescFullShort">全量角色描述</span>
+                        </label>
+                        <label class="checkbox_label" for="gd-llm-char-desc-slice">
+                            <input type="radio" name="gd-llm-char-desc-mode" value="slice" id="gd-llm-char-desc-slice">
+                            <span data-i18n="charDescSliceShort">切片截断</span>
+                        </label>
+                        <label for="gd-llm-char-desc-length" data-i18n="charDescLength">切片长度</label>
+                        <input type="number" id="gd-llm-char-desc-length" class="text_pole" min="50" max="2000" step="50">
                     </div>
-                </div>
-            </div>
-
-            <!-- Chat Summary Drawer -->
-            <div class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b data-i18n="summaryDrawerTitle">上下文总结 (Chat Summary) 🧪</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                </div>
-                <div class="inline-drawer-content">
-                    <small data-i18n="summaryHint">将聊天上下文压缩为简洁摘要注入 Prompt，降低 token 消耗。修改或删除消息后请手动重新生成。</small>
-
-                    <div id="gd-summary-lock-warn" style="display:none;color:#ff9800;margin-top:4px;">
-                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
-                    </div>
-
-                    <div id="gd-summary-scan-notice" style="display:none;margin:6px 0;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
-                        <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryScanClear">清除存档</span></span>
-                    </div>
-                    <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
-                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="summaryScan">扫描存档总结</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> <span data-i18n="summaryPrune">清除已禁用</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> <span data-i18n="summaryHideDisabled">隐藏已禁用</span></span>
-                    </div>
-
-                    <label class="checkbox_label" for="gd-summary-enabled">
-                        <input type="checkbox" id="gd-summary-enabled">
-                        <span data-i18n="summaryEnabled">启用上下文总结</span>
-                    </label>
-
-                    <label class="checkbox_label" for="gd-summary-reuse">
-                        <input type="checkbox" id="gd-summary-reuse">
-                        <span data-i18n="summaryReuse">复用上次总结（勾选=上次总结+新增片段，取消=全量上下文重新总结）</span>
-                    </label>
-
-                    <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
-                    <small data-i18n="summaryPromptHint">留空使用内置默认。支持所有注册的 Provider 占位符。</small>
-                    <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                    <div class="menu_button menu_button_icon" id="gd-summary-prompt-reset" style="margin-top:4px;">
-                        <i class="fa-solid fa-rotate-left"></i> <span data-i18n="summaryPromptReset">恢复默认 Prompt</span>
-                    </div>
-
-                    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                        <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> <span data-i18n="summaryExecute">执行总结</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> <span data-i18n="summaryRegenerate">重新总结</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="summaryRevert">回退总结</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryReset">重置全部</span></span>
-                    </div>
-
-                    <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
-                        <span id="gd-summary-status" style="font-size:0.9em;color:var(--grey70a);"></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-refresh" style="font-size:0.8em;padding:2px 6px;"><i class="fa-solid fa-rotate"></i></span>
-                    </div>
-
-                    <div id="gd-summary-result-section" style="margin-top:8px;">
-                        <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果（可直接编辑）</label>
-                        <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
-                        <div class="menu_button menu_button_icon" id="gd-summary-result-save" style="margin-top:4px;">
-                            <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="summaryResultSave">保存编辑</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Template Tester Drawer -->
-            <div class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b data-i18n="testerDrawerTitle">模板测试器 (Template Tester) 🧪</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                </div>
-                <div class="inline-drawer-content">
-                    <small data-i18n="testerHint">输入含占位符的模板，点击测试查看实时渲染结果。不会触发任何生成。</small>
-                    <textarea id="gd-tester-input" class="text_pole textarea_compact" rows="6" style="width:100%;margin-top:6px;" placeholder="{{recentMessages}}&#10;{{?directorLedger:reason}}"></textarea>
-                    <div class="menu_button menu_button_icon" id="gd-tester-run" style="margin-top:4px;">
-                        <i class="fa-solid fa-flask"></i> <span data-i18n="testerRun">测试渲染</span>
-                    </div>
-                    <label for="gd-tester-output" style="margin-top:8px;" data-i18n="testerOutput">渲染结果</label>
-                    <textarea id="gd-tester-output" class="text_pole textarea_compact" rows="10" style="width:100%;" readonly></textarea>
                 </div>
             </div>
 
         </div>
     </div>
+
+    <!-- ═══ Drawer 2: 角色 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerCast">角色</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <div class="gd-card gd-card-collapsible" data-card="profile">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="profileCard">角色档案</span>
+                    <span class="gd-card-status" id="gd-card-status-profile"></span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-profile-enabled">
+                        <input type="checkbox" id="gd-profile-enabled">
+                        <span data-i18n="profileEnabled">启用角色档案</span>
+                    </label>
+                    <div id="gd-profile-section" style="display:none;">
+                        <span class="menu_button menu_button_icon" id="gd-profile-scan-save">
+                            <i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="profileScanSave">扫描存档</span>
+                        </span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-detect-changes">
+                            <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测变动</span>
+                        </span>
+                        <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">Token 预算</label>
+                        <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
+                        <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数</label>
+                        <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
+                        <label for="gd-profile-generator-prompt" data-i18n="profileGeneratorPromptTitle">生成 Prompt</label>
+                        <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-profile-generator-reset">
+                            <i class="fa-solid fa-rotate-left"></i> 默认
+                        </span>
+                        <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
+                        <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-profile-schema-reset">
+                            <i class="fa-solid fa-rotate-left"></i> 默认
+                        </span>
+                        <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
+                        <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <div id="gd-profile-template-warning" style="color:orange;display:none;"></div>
+                        <span class="menu_button menu_button_icon" id="gd-profile-render-reset">
+                            <i class="fa-solid fa-rotate-left"></i> 默认
+                        </span>
+                        <hr>
+                        <span class="menu_button menu_button_icon" id="gd-profile-regenerate-all">
+                            <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
+                        </span>
+                        <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="memory">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="memoryCard">角色记忆</span>
+                    <span class="gd-card-status" id="gd-card-status-memory"></span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-memory-enabled">
+                        <input type="checkbox" id="gd-memory-enabled">
+                        <span data-i18n="memoryEnabled">启用角色记忆</span>
+                    </label>
+                    <label class="checkbox_label" for="gd-auto-memory-enabled" style="margin-top:2px;">
+                        <input type="checkbox" id="gd-auto-memory-enabled">
+                        <span data-i18n="autoMemoryEnabled">自动提取</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-memory-row">
+                        <span style="font-size:0.85em;" data-i18n="autoMemoryIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-memory-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoMemoryIntervalSuffix">条新消息触发</span>
+                        <label class="checkbox_label" style="margin-left:8px;">
+                            <input type="checkbox" id="gd-auto-memory-speakers">
+                            <span data-i18n="autoMemorySpeakers">仅发言角色</span>
+                        </label>
+                    </span>
+                    <div id="gd-memory-section" style="display:none;">
+                        <label for="gd-memory-token-budget" data-i18n="memoryTokenBudget">Token 预算</label>
+                        <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100">
+                        <label for="gd-memory-prompt" data-i18n="memoryPromptLabel">提取 Prompt</label>
+                        <textarea id="gd-memory-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-memory-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <label for="gd-memory-json-schema" data-i18n="memoryJsonSchemaTitle">JSON Schema</label>
+                        <textarea id="gd-memory-json-schema" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-memory-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <label for="gd-memory-render-template" data-i18n="memoryRenderTemplateTitle">渲染模板</label>
+                        <textarea id="gd-memory-render-template" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-memory-render-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <label for="gd-memory-compress-prompt" data-i18n="memoryCompressPromptLabel">压缩 Prompt</label>
+                        <textarea id="gd-memory-compress-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <hr>
+                        <div class="gd-row-buttons">
+                            <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> 提取全部</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> 检测失联</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                        </div>
+                        <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent">压缩保留最近</label>
+                        <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
+                        <label for="gd-memory-max-entries" data-i18n="memoryMaxEntries">单角色上限</label>
+                        <input type="number" id="gd-memory-max-entries" class="text_pole" min="10" max="2000" step="10" style="width:100px;">
+                        <div id="gd-memory-list" style="margin-top:6px;max-height:400px;overflow-y:auto;"></div>
+                        <div id="gd-mem-edit-panel" style="display:none;margin-top:6px;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
+                            <input type="hidden" id="gd-mem-edit-idx">
+                            <input type="hidden" id="gd-mem-edit-avatar">
+                            <label for="gd-mem-edit-event" data-i18n="memoryEditEvent">记忆内容</label>
+                            <textarea id="gd-mem-edit-event" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                            <label for="gd-mem-edit-mood" data-i18n="memoryEditMood">情绪</label>
+                            <select id="gd-mem-edit-mood" class="text_pole" style="width:auto;">
+                                <option value="happy">😊 happy</option><option value="sad">😢 sad</option>
+                                <option value="angry">😡 angry</option><option value="fearful">😨 fearful</option>
+                                <option value="excited">🤩 excited</option><option value="neutral">😐 neutral</option>
+                                <option value="mixed">😶 mixed</option>
+                            </select>
+                            <div style="margin-top:4px;display:flex;gap:4px;">
+                                <span class="menu_button menu_button_icon" id="gd-mem-edit-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                                <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> 取消</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="npc">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="npcCard">NPC 生成</span>
+                    <span class="gd-card-status" id="gd-card-status-npc"></span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-npc-enabled">
+                        <input type="checkbox" id="gd-npc-enabled">
+                        <span data-i18n="npcEnabled">启用 NPC 生成</span>
+                    </label>
+                    <div id="gd-npc-section" style="display:none;">
+                        <label for="gd-npc-max-count" data-i18n="npcMaxCount">最大数量</label>
+                        <input type="number" id="gd-npc-max-count" class="text_pole" min="1" max="100" step="1">
+                        <label for="gd-npc-batch-size" data-i18n="npcBatchSize">每次生成数</label>
+                        <input type="number" id="gd-npc-batch-size" class="text_pole" min="1" max="20" step="1">
+                        <label class="checkbox_label" for="gd-npc-generate-firstmes">
+                            <input type="checkbox" id="gd-npc-generate-firstmes">
+                            <span data-i18n="npcGenerateFirstMes">生成开场白</span>
+                        </label>
+                        <label for="gd-npc-prompt" data-i18n="npcPromptShort">生成 Prompt</label>
+                        <textarea id="gd-npc-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-npc-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <div class="gd-row-buttons">
+                            <span class="menu_button menu_button_icon" id="gd-npc-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> 生成</span>
+                            <span class="menu_button menu_button_icon" id="gd-npc-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
+                        </div>
+                        <div id="gd-npc-list" style="margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="identity">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="identityCard">身份锚定</span>
+                </div>
+                <div class="gd-card-body">
+                    <small data-i18n="identityHintShort">自定义的身份锚定提示词。通过 {{identity}} 手动注入。</small>
+                    <textarea id="gd-identity-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-identity-reset"><i class="fa-solid fa-trash"></i> 清空</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══ Drawer 3: 连续性 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerContinuity">连续性</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <div class="gd-card gd-card-collapsible" data-card="summary">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="summaryCard">上下文总结</span>
+                    <span class="gd-card-status" id="gd-card-status-summary"></span>
+                </div>
+                <div class="gd-card-body">
+                    <div id="gd-summary-lock-warn" style="display:none;color:#ff9800;">
+                        <b>&#9888; 生成中，面板已锁定</b>
+                    </div>
+                    <div id="gd-summary-scan-notice" style="display:none;margin:6px 0;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
+                        <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> 清除存档</span>
+                    </div>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> 扫描存档</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> 清除禁用</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> 隐藏禁用</span>
+                    </div>
+                    <label class="checkbox_label" for="gd-summary-enabled">
+                        <input type="checkbox" id="gd-summary-enabled">
+                        <span data-i18n="summaryEnabled">启用</span>
+                    </label>
+                    <label class="checkbox_label" for="gd-summary-reuse">
+                        <input type="checkbox" id="gd-summary-reuse">
+                        <span data-i18n="summaryReuse">复用上次</span>
+                    </label>
+                    <hr>
+                    <label class="checkbox_label" for="gd-auto-summary-enabled">
+                        <input type="checkbox" id="gd-auto-summary-enabled">
+                        <span data-i18n="autoSummaryEnabled">自动总结</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-summary-row">
+                        <span style="font-size:0.85em;" data-i18n="autoSummaryIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-summary-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoSummaryIntervalSuffix">条新消息触发</span>
+                    </span>
+                    <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
+                    <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> 执行</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> 回退</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                    </div>
+                    <span id="gd-summary-status" style="font-size:0.9em;color:var(--grey70a);"></span>
+                    <span class="menu_button menu_button_icon" id="gd-summary-refresh" style="font-size:0.8em;padding:2px 6px;"><i class="fa-solid fa-rotate"></i></span>
+                    <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果</label>
+                    <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-summary-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="critique">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="critiqueCard">AI 批判</span>
+                    <span class="gd-card-status" id="gd-card-status-critique"></span>
+                </div>
+                <div class="gd-card-body">
+                    <div id="gd-critique-lock-warn" style="display:none;color:#ff9800;">
+                        <b>&#9888; 生成中，面板已锁定</b>
+                    </div>
+                    <label class="checkbox_label" for="gd-critique-enabled" style="margin-top:6px;">
+                        <input type="checkbox" id="gd-critique-enabled">
+                        <span data-i18n="critiqueEnabled">AI 批判</span>
+                    </label>
+                    <label class="checkbox_label" for="gd-critique-reuse">
+                        <input type="checkbox" id="gd-critique-reuse">
+                        <span data-i18n="critiqueReuse">复用</span>
+                    </label>
+                    <hr>
+                    <label class="checkbox_label" for="gd-auto-critique-enabled">
+                        <input type="checkbox" id="gd-auto-critique-enabled">
+                        <span data-i18n="autoCritiqueEnabled">自动批判</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-critique-row">
+                        <span style="font-size:0.85em;" data-i18n="autoCritiqueIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-critique-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoCritiqueIntervalSuffix">条新消息触发</span>
+                    </span>
+                    <label for="gd-critique-prompt" data-i18n="critiquePromptLabel">批判 Prompt</label>
+                    <textarea id="gd-critique-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-critique-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <label for="gd-critique-schema" data-i18n="critiqueSchemaLabel">JSON Schema（自定义输出格式）</label>
+                    <textarea id="gd-critique-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-critique-execute"><i class="fa-solid fa-play"></i> 执行</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-revert"><i class="fa-solid fa-undo"></i> 回退</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                    </div>
+                    <span id="gd-critique-status" style="font-size:0.85em;color:var(--grey70a);"></span>
+                    <div id="gd-critique-result-section" style="display:none;">
+                        <label for="gd-critique-result" data-i18n="critiqueResultLabel">批判结果（JSON）</label>
+                        <textarea id="gd-critique-result" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-critique-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="ledger">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="ledgerCard">导演账本</span>
+                    <span class="gd-card-status" id="gd-card-status-ledger"></span>
+                </div>
+                <div class="gd-card-body">
+                    <div id="gd-ledger-lock-warn" style="display:none;color:#ff9800;">
+                        <b>&#9888; 生成中，面板已锁定</b>
+                    </div>
+                    <div id="gd-ledger-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span id="gd-ledger-count" style="font-size:0.9em;color:var(--grey70a)"></span>
+                        <span style="flex:1"></span>
+                        <span class="menu_button menu_button_icon" id="gd-ledger-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-ledger-raw-toggle"><i class="fa-solid fa-code"></i> Raw</span>
+                    </div>
+                    <div id="gd-ledger-list" style="margin-top:8px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="worldbooks">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="worldBooksCard">世界书</span>
+                </div>
+                <div class="gd-card-body">
+                    <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目</label>
+                    <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
+                    <span class="menu_button menu_button_icon" id="gd-world-book-refresh"><i class="fa-solid fa-rotate"></i> 刷新列表</span>
+                    <div id="gd-world-book-list" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══ Drawer 4: 反应 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerReactions">反应</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-right"></div>
+        </div>
+        <div class="inline-drawer-content" style="display:none;">
+
+            <div class="gd-card gd-card-collapsible" data-card="postspeech-msg">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="psMsgCard">消息级反馈</span>
+                    <span class="gd-card-status" id="gd-card-status-ps-msg"></span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-ps-msg-enabled">
+                        <input type="checkbox" id="gd-ps-msg-enabled">
+                        <span data-i18n="psMsgEnabled">每次发言后激活</span>
+                    </label>
+                    <small style="color:#ff9800;display:block;margin-top:2px;" data-i18n="psMsgWarning">&#9888; 启用后每次角色发言增加 1 次 LLM 调用。</small>
+                    <div id="gd-ps-msg-section" style="display:none;">
+                        <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">Prompt</label>
+                        <textarea id="gd-ps-msg-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-ps-msg-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="postspeech-round">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="psRoundCard">回合级反馈</span>
+                    <span class="gd-card-status" id="gd-card-status-ps-round"></span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-ps-round-enabled">
+                        <input type="checkbox" id="gd-ps-round-enabled">
+                        <span data-i18n="psRoundEnabled">回合结束后激活</span>
+                    </label>
+                    <small style="color:#ff9800;display:block;margin-top:2px;" data-i18n="psRoundWarning">&#9888; 启用后每回合结束增加 1 次 LLM 调用。</small>
+                    <div id="gd-ps-round-section" style="display:none;">
+                        <label for="gd-ps-round-prompt" data-i18n="psRoundPromptLabel">Prompt</label>
+                        <textarea id="gd-ps-round-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-ps-round-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    </div>
+                    <label class="checkbox_label" for="gd-ps-blocking" style="margin-top:8px;">
+                        <input type="checkbox" id="gd-ps-blocking">
+                        <span data-i18n="psBlocking">阻塞模式</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="capabilities">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="capabilitiesCard">已注册能力</span>
+                </div>
+                <div class="gd-card-body">
+                    <span class="menu_button menu_button_icon" id="gd-cap-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                    <div id="gd-ps-capabilities-list" style="margin-top:6px;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="custom-agents">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="caCard">自定义 Agent</span>
+                </div>
+                <div class="gd-card-body">
+                    <small style="color:var(--grey70a);display:block;margin-bottom:4px;" data-i18n="caHint">用户自定义 LLM Agent。每 N 轮自动执行 prompt，结果通过 <code>{{providerName}}</code> Provider 注入到 Prompt。共用 custom-agent API 配置。</small>
+                    <div id="gd-ca-list"></div>
+                    <div style="margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-ca-add-btn"><i class="fa-solid fa-plus"></i> <span data-i18n="caAddBtn">新增</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-ca-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="caExportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-ca-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="caImportBtn">导入</span></span>
+                        <input type="file" id="gd-ca-import-file" style="display:none;" accept=".json">
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="script-executors">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="seCard">脚本执行器</span>
+                </div>
+                <div class="gd-card-body">
+                    <small style="color:var(--grey70a);display:block;margin-bottom:4px;" data-i18n="seHint">用户自定义脚本，在消息/回合末尾执行。ctx 提供 params / shared / message / character / chat 等上下文。</small>
+                    <div id="gd-se-list"></div>
+                    <div style="margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-se-add-btn"><i class="fa-solid fa-plus"></i> <span data-i18n="seAddBtn">新增</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-se-export-btn"><span data-i18n="seExportBtn">导出全部</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-se-import-btn"><span data-i18n="seImportBtn">导入</span></span>
+                        <input type="file" id="gd-se-import-file" style="display:none;" accept=".json">
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="postspeech-log">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="psDecisionsCard">决策记录</span>
+                </div>
+                <div class="gd-card-body">
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-ps-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <label for="gd-ps-decision-limit" data-i18n="psDecisionLimit">显示</label>
+                        <input type="number" id="gd-ps-decision-limit" class="text_pole" min="1" max="500" step="1" style="width:60px;">
+                    </div>
+                    <div id="gd-ps-list" style="margin-top:4px;max-height:200px;overflow-y:auto;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══ Drawer 5: 工具 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerToolkit">工具</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-right"></div>
+        </div>
+        <div class="inline-drawer-content" style="display:none;">
+
+            <div class="gd-card gd-card-collapsible" data-card="config-profile">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="configProfileCard">配置档管理</span>
+                    <span class="gd-card-status" id="gd-card-status-config"></span>
+                </div>
+                <div class="gd-card-body">
+                    <small data-i18n="configProfilesHint">保存、导出、导入全局配置。</small>
+                    <select id="gd-cfg-preset" class="text_pole" style="width:auto;font-size:0.85em;margin-top:4px;">
+                        <option value="" data-i18n="dashCfgPresetPlaceholder">配置档...</option>
+                    </select>
+                    <div id="gd-config-profiles-list" style="margin:6px 0;"></div>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-cfg-save-btn"><i class="fa-solid fa-floppy-disk"></i> 保存为配置档</span>
+                        <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-import"></i> 导入配置档</span>
+                        <input type="file" id="gd-cfg-import-file" accept=".zip,.json" style="display:none;">
+                    </div>
+                    <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;margin-top:4px;" placeholder="配置档名称">
+                    <input type="text" id="gd-cfg-save-desc" class="text_pole" style="width:100%;margin-top:2px;" placeholder="备注（可选）">
+                    <div style="margin-top:4px;font-size:0.85em;color:var(--grey70a);" data-i18n="configProfilesSaveDrawers">导出范围：</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:2px 12px;">
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-directorLlm" checked> <span data-i18n="configDrawerDirectorLlm">导演</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-worldBooks" checked> <span data-i18n="configDrawerWorldBooks">世界书</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-profilesAndData" checked> <span data-i18n="configDrawerProfilesAndData">档案</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-contextLedger" checked> <span data-i18n="configDrawerContextLedger">连续性</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-multimodal"> <span data-i18n="configDrawerMultimodal">反应</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-assetManager"> <span data-i18n="configDrawerAssetManager">资产</span></label>
+                        <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-agentsTools" checked> <span data-i18n="configDrawerAgentsTools">Agent</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="export-import">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="exportImportCard">导出 / 导入</span>
+                </div>
+                <div class="gd-card-body">
+                    <!-- Group export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="exportImportGroup">群聊</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
+                    </div>
+                    <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
+
+                    <!-- Profile export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportProfile">档案</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-profile-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-profile-import-file" accept=".json" style="display:none;">
+                        <select id="gd-profile-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
+                            <option value="" data-i18n="profileImportPresetPlaceholder">预设...</option>
+                        </select>
+                    </div>
+                    <div id="gd-profile-export-list" style="margin-top:4px;"></div>
+                    <label for="gd-profile-export-note" data-i18n="profileExportNoteShort">备注</label>
+                    <input type="text" id="gd-profile-export-note" class="text_pole" style="width:100%;">
+                    <div id="gd-profile-import-list" style="margin-top:8px;"></div>
+                    <label class="checkbox_label" for="gd-profile-import-template">
+                        <input type="checkbox" id="gd-profile-import-template">
+                        <span data-i18n="profileImportTemplateShort">含模板</span>
+                    </label>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                    </div>
+
+                    <!-- Memory export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportMemory">记忆</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-memory-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-memory-import-file" accept=".json" style="display:none;">
+                    </div>
+                    <div id="gd-memory-export-list" style="margin-top:4px;"></div>
+                    <label for="gd-memory-export-note" data-i18n="memoryExportNoteShort">备注</label>
+                    <input type="text" id="gd-memory-export-note" class="text_pole" style="width:100%;">
+                    <div id="gd-memory-import-list" style="margin-top:8px;"></div>
+                    <label class="checkbox_label" for="gd-memory-import-template">
+                        <input type="checkbox" id="gd-memory-import-template">
+                        <span data-i18n="memoryImportTemplateShort">含模板</span>
+                    </label>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                    </div>
+
+                    <!-- NPC export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportNpc">NPC</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-npc-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-npc-import-file" accept=".json" style="display:none;">
+                        <select id="gd-npc-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
+                            <option value="" data-i18n="npcImportPresetPlaceholder">预设...</option>
+                        </select>
+                    </div>
+                    <div id="gd-npc-export-list" style="margin-top:4px;"></div>
+                    <label for="gd-npc-export-note" data-i18n="npcExportNoteShort">备注</label>
+                    <input type="text" id="gd-npc-export-note" class="text_pole" style="width:100%;">
+                    <div id="gd-npc-import-list" style="margin-top:8px;"></div>
+                    <label class="checkbox_label" for="gd-npc-import-template">
+                        <input type="checkbox" id="gd-npc-import-template">
+                        <span data-i18n="npcImportTemplateShort">含Prompt</span>
+                    </label>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                    </div>
+
+                    <!-- Summary export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportSummary">摘要</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-summary-import-panel-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-summary-import-file" accept=".json" style="display:none;">
+                    </div>
+                    <label for="gd-summary-export-note" data-i18n="summaryExportNoteShort">备注</label>
+                    <input type="text" id="gd-summary-export-note" class="text_pole" style="width:100%;">
+                    <div id="gd-summary-imported-list" style="margin-top:6px;"></div>
+
+                    <!-- Critique export/import -->
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportCritique">批判</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-critique-import-panel-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-critique-import-file" accept=".json" style="display:none;">
+                    </div>
+                    <label for="gd-critique-export-note" data-i18n="critiqueExportNoteShort">备注</label>
+                    <input type="text" id="gd-critique-export-note" class="text_pole" style="width:100%;">
+                    <div id="gd-critique-imported-list" style="margin-top:6px;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="agents">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="agentsCard">Agent 配置</span>
+                </div>
+                <div class="gd-card-body">
+                    <small data-i18n="agentsHintShort">每个 Agent 可独立配置 API。</small>
+                    <div id="gd-agents-list" style="margin-top:8px;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="custom-prompts">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="customPromptsCard">自定义 Prompt</span>
+                </div>
+                <div class="gd-card-body">
+                    <label class="checkbox_label" for="gd-cp-enabled">
+                        <input type="checkbox" id="gd-cp-enabled">
+                        <span data-i18n="customPromptsEnabledShort">启用</span>
+                    </label>
+                    <div id="gd-custom-prompt-list" style="margin:6px 0;"></div>
+                    <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;" placeholder="name">
+                    <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+                    <textarea id="gd-cp-new-content" class="text_pole textarea_compact" rows="2" style="width:100%;margin-top:2px;" placeholder="content"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-cp-add-btn" style="margin-top:4px;">
+                        <i class="fa-solid fa-plus"></i> 添加
+                    </span>
+                    <div class="gd-row-buttons" style="margin-top:6px;">
+                        <span class="menu_button menu_button_icon" id="gd-cp-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
+                        <span class="menu_button menu_button_icon" id="gd-cp-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <input type="file" id="gd-cp-import-file" accept=".json" style="display:none;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="user-assets">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="userAssetsCard">用户扩展</span>
+                </div>
+                <div class="gd-card-body">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="userProviderTitleShort">Provider</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-user-provider-import"><i class="fa-solid fa-file-import"></i> 导入 .js</span>
+                        <input type="file" id="gd-user-provider-file" accept=".js" style="display:none;">
+                    </div>
+                    <div id="gd-user-provider-list" style="margin:4px 0;"></div>
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="userCapabilityTitleShort">Capability</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-user-capability-import"><i class="fa-solid fa-file-import"></i> 导入 .js</span>
+                        <input type="file" id="gd-user-capability-file" accept=".js" style="display:none;">
+                    </div>
+                    <div id="gd-user-capability-list" style="margin:4px 0;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="providerReference">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="providerRefCard">接口参考</span>
+                </div>
+                <div class="gd-card-body">
+                    <input type="text" id="gd-provider-ref-search" class="text_pole" style="width:100%;" data-i18n-placeholder="providerRefSearchPlaceholder" placeholder="搜索接口名称、占位符或描述...">
+                    <div class="gd-row-buttons" style="margin-top:4px;">
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-add"><i class="fa-solid fa-plus"></i> <span data-i18n="providerRefAdd">添加</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-export"><i class="fa-solid fa-file-export"></i> <span data-i18n="providerRefExport">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-import"><i class="fa-solid fa-file-import"></i> <span data-i18n="providerRefImport">导入</span></span>
+                        <input type="file" id="gd-provider-ref-import-file" accept=".json" style="display:none;">
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="providerRefReset">恢复默认</span></span>
+                    </div>
+                    <div id="gd-provider-ref-list" style="margin-top:6px;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="debug">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="debugCard">调试</span>
+                </div>
+                <div class="gd-card-body">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="testerDrawerTitle">模板测试器</span>
+                    <textarea id="gd-tester-input" class="text_pole textarea_compact" rows="4" style="width:100%;margin-top:4px;" placeholder="{{recentMessages}}"></textarea>
+                    <label for="gd-tester-locals" style="margin-top:4px;font-size:0.9em;" data-i18n="testerLocalsShort">Locals (JSON)</label>
+                    <textarea id="gd-tester-locals" class="text_pole textarea_compact" rows="2" style="width:100%;" placeholder='{"key":"value"}'></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-tester-run" style="margin-top:4px;"><i class="fa-solid fa-flask"></i> 测试</span>
+                    <label for="gd-tester-output" style="margin-top:6px;" data-i18n="testerOutputShort">结果</label>
+                    <textarea id="gd-tester-output" class="text_pole textarea_compact" rows="6" style="width:100%;" readonly></textarea>
+
+                    <hr>
+                    <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="traceTitle">执行追踪</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-trace-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-trace-clear"><i class="fa-solid fa-trash"></i> 清空</span>
+                        <label for="gd-trace-max" data-i18n="traceMaxLabel">最大条数</label>
+                        <input type="number" id="gd-trace-max" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                    </div>
+                    <div id="gd-trace-list" style="margin-top:6px;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Quick Start container (hidden, maintained for backward compat) -->
+    <div id="gd-quick-start" style="display:none;"></div>
+
 </div>

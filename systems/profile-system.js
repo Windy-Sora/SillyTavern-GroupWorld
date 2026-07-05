@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
 
     // Escape untrusted strings before embedding in HTML strings.
@@ -39,7 +39,7 @@ function migrateProfileData(container) {
     }
     const currentHash = computeProfileSchemaHash();
     if (container.profileSchemaHash && container.profileSchemaHash !== currentHash) {
-        console.warn('[GroupDirector] Profile schema changed since last save. Old profiles may use outdated field set.');
+        console.warn('[GroupWorld] Profile schema changed since last save. Old profiles may use outdated field set.');
     }
     container.profileSchemaHash = currentHash;
 }
@@ -136,14 +136,14 @@ function normalizeProfileFields(parsed) {
 async function generateSingleProfile(avatar) {
     if (!settings.profileEnabled) return null;
     if (isRoundActive()) {
-        console.warn('[GroupDirector] Profile generation skipped — director round is active, will retry later');
+        console.warn('[GroupWorld] Profile generation skipped — director round is active, will retry later');
         return null;
     }
     const char = getCharacters().find(c => c.avatar === avatar);
     if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
 
     const generatorPrompt = settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt();
-    const schemaText = settings.profileJsonSchema || getDefaultProfileSchema();
+    const schemaText = settings.profileJsonSchema || '';
 
     let filled = generatorPrompt
         .replace(/\{\{charName\}\}/g, char.name)
@@ -158,11 +158,13 @@ async function generateSingleProfile(avatar) {
     let jsonSchema = null;
     try { jsonSchema = JSON.parse(schemaText); } catch (e) { /* use null */ }
 
-    const ctx = getContext();
-    const response = await ctx.generateRaw({
-        prompt: filled,
-        jsonSchema: jsonSchema,
+    const agentConfig = settings.agentConfigs?.['profile'] || {};
+    const stGenerateRaw = (opts) => getContext().generateRaw({
+        ...opts,
+        ...(jsonSchema ? { jsonSchema: { name: 'character_profile', value: jsonSchema, strict: true } } : {}),
     });
+    const caller = createCaller(agentConfig, stGenerateRaw);
+    const response = await caller.generate(filled);
     // Clean up QUIET_PROMPT to prevent profile generator prompt
     // from leaking into subsequent Director generateRaw calls.
     setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
@@ -212,18 +214,24 @@ async function generateProfilesBatch(avatars) {
                 base.state = 'ready';
                 base.hash = currentHash;
             } else {
-                // Null means skipped (e.g. round active) — keep previous state, don't mark failed
-                if (base.state === 'pending' && existing && existing.state === 'ready') {
+                // Null means skipped (e.g. round active) — restore previous ready state
+                if (existing && existing.state === 'ready') {
                     base.state = 'ready';
                     base.profile = existing.profile;
                 }
             }
         } catch (e) {
-            console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
+            console.error(`[GroupWorld] Profile generation failed for ${char.name}:`, e.message);
             base.state = 'failed';
         }
         base.updatedAt = Date.now();
-        await saveProfile(avatar, base);
+        // Avoid overwriting a ready profile with a failed one from a concurrent run
+        const currentProfile = getProfiles()[avatar];
+        if (base.state === 'failed' && currentProfile?.state === 'ready') {
+            console.warn(`[GroupWorld] Profile generation failed for ${char.name}, keeping existing ready profile`);
+        } else {
+            await saveProfile(avatar, base);
+        }
     };
 
     const taskFns = avatars.map(buildTask).filter(Boolean);
@@ -311,15 +319,15 @@ function buildCharacterProfilesText() {
     const failedProfiles = all.filter(p => p.state === 'failed');
 
     // Always log profile state summary so the user knows what's happening
-    console.log(`[GroupDirector] Profiles: ${all.length} total, ${readyProfiles.length} ready, ${pendingProfiles.length} pending, ${failedProfiles.length} failed`);
+    console.log(`[GroupWorld] Profiles: ${all.length} total, ${readyProfiles.length} ready, ${pendingProfiles.length} pending, ${failedProfiles.length} failed`);
 
     if (readyProfiles.length === 0) {
         if (all.length === 0) {
-            console.warn('[GroupDirector] No profiles exist. Click "Regenerate All" in the Profile Management panel to generate them.');
+            console.warn('[GroupWorld] No profiles exist. Click "Regenerate All" in the Profile Management panel to generate them.');
         } else if (failedProfiles.length === all.length) {
-            console.warn(`[GroupDirector] All ${all.length} profile(s) failed. Check the browser console for errors, then click "Regenerate All" to retry.`);
+            console.warn(`[GroupWorld] All ${all.length} profile(s) failed. Check the browser console for errors, then click "Regenerate All" to retry.`);
         } else if (pendingProfiles.length > 0) {
-            console.warn(`[GroupDirector] ${pendingProfiles.length} profile(s) still pending. Profiles will appear once generation completes.`);
+            console.warn(`[GroupWorld] ${pendingProfiles.length} profile(s) still pending. Profiles will appear once generation completes.`);
         }
         return '';
     }
@@ -383,7 +391,7 @@ async function syncProfiles(enabledMembers) {
     if (newChars.length > 0) {
         log(`Auto-generating profiles for ${newChars.length} new character(s): ${newChars.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ')}`);
         generateProfilesBatch(newChars).catch(e => {
-            console.error('[GroupDirector] Background profile generation failed:', e);
+            console.error('[GroupWorld] Background profile generation failed:', e);
         });
     }
 }

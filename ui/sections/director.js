@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { toggleCharDescLength } from '../i18n.js';
+import { DEFAULT_SETTINGS } from '../../settings.js';
 
 registerSection('director', function (ctx) {
     const { settings, $c, saveSettings, EXT_KEY, chat_metadata, saveChatConditional, getDefaultLlmPrompt } = ctx;
@@ -7,10 +8,11 @@ registerSection('director', function (ctx) {
     $c('llm-prompt').val(settings.llmPrompt || getDefaultLlmPrompt());
     $c('llm-max-speakers').val(settings.llmMaxSpeakers);
     $c('llm-context-depth').val(settings.llmContextDepth);
-    $c('llm-respect-order').prop('checked', settings.llmRespectOrder);
+
     $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
     $c('llm-char-desc-length').val(settings.llmCharDescLength);
     $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
+    $c('llm-script-position').val(String(settings.llmScriptPosition ?? DEFAULT_SETTINGS.llmScriptPosition));
     $c('llm-script-prompt').val(settings.llmScriptPrompt);
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
 
@@ -19,7 +21,7 @@ registerSection('director', function (ctx) {
     $c('llm-prompt').on('input', () => { settings.llmPrompt = $c('llm-prompt').val(); saveSettings(); });
     $c('llm-max-speakers').on('input', () => { settings.llmMaxSpeakers = Math.max(1, parseInt($c('llm-max-speakers').val()) || 3); saveSettings(); });
     $c('llm-context-depth').on('input', () => { settings.llmContextDepth = Math.max(1, parseInt($c('llm-context-depth').val()) || 10); saveSettings(); });
-    $c('llm-respect-order').on('input', () => { settings.llmRespectOrder = !!$c('llm-respect-order').prop('checked'); saveSettings(); });
+
     $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
         settings.llmCharDescMode = $(this).val();
         toggleCharDescLength(settings.llmCharDescMode);
@@ -27,6 +29,10 @@ registerSection('director', function (ctx) {
     });
     $c('llm-char-desc-length').on('input', () => { settings.llmCharDescLength = Math.max(1, parseInt($c('llm-char-desc-length').val()) || 200); saveSettings(); });
     $c('llm-script-enabled').on('input', () => { settings.llmScriptEnabled = !!$c('llm-script-enabled').prop('checked'); saveSettings(); });
+    $c('llm-script-position').on('change', () => {
+        settings.llmScriptPosition = Number($c('llm-script-position').val()) === 1 ? 1 : 0;
+        saveSettings();
+    });
     $c('llm-script-prompt').on('input', () => {
         settings.llmScriptPrompt = $c('llm-script-prompt').val();
         const val = $c('llm-script-prompt').val();
@@ -34,6 +40,20 @@ registerSection('director', function (ctx) {
         saveSettings();
     });
     $c('llm-script-wrapper').on('input', () => { settings.llmScriptWrapper = $c('llm-script-wrapper').val(); saveSettings(); });
+    $c('llm-script-wrapper-reset').on('click', () => {
+        settings.llmScriptWrapper = DEFAULT_SETTINGS.llmScriptWrapper;
+        $c('llm-script-wrapper').val(DEFAULT_SETTINGS.llmScriptWrapper);
+        saveSettings();
+    });
+
+    // JSON Schema
+    $c('llm-json-schema').val(settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema);
+    $c('llm-json-schema').on('input', () => { settings.llmJsonSchema = $c('llm-json-schema').val(); saveSettings(); });
+    $c('llm-json-schema-reset').on('click', () => {
+        settings.llmJsonSchema = DEFAULT_SETTINGS.llmJsonSchema;
+        $c('llm-json-schema').val(DEFAULT_SETTINGS.llmJsonSchema);
+        saveSettings();
+    });
 
     $c('llm-history-enabled').prop('checked', settings.llmHistoryEnabled);
     $c('llm-history-enabled').on('input', () => { settings.llmHistoryEnabled = !!$c('llm-history-enabled').prop('checked'); saveSettings(); });

@@ -14,7 +14,7 @@ export function initAllSections(ctx) {
         try {
             initFn(ctx);
         } catch (e) {
-            console.error(`[GroupDirector] UI section "${name}" init failed:`, e);
+            console.error(`[GroupWorld] UI section "${name}" init failed:`, e);
         }
     }
 }

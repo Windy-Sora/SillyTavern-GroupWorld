@@ -1,40 +1,381 @@
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  DIRECTOR'S BOARD — Dashboard                                       */
+/* ═══════════════════════════════════════════════════════════════════ */
+.gd-dashboard {
+    padding: 10px 8px;
+    margin-bottom: 2px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.gd-dashboard-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.gd-dashboard-mode {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The signature element: a live status dot */
+.gd-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--grey50);
+    flex-shrink: 0;
+    transition: background 0.4s ease;
+}
+.gd-status-dot.is-live {
+    background: #4caf50;
+    animation: gd-pulse 2s ease-in-out infinite;
+}
+.gd-status-dot.is-formula {
+    background: #d4a017;
+}
+.gd-status-dot.is-off {
+    background: var(--grey50);
+}
+@keyframes gd-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(76,175,80,0.6); }
+    50%      { box-shadow: 0 0 0 6px rgba(76,175,80,0); }
+}
+
+.gd-mode-label {
+    font-weight: 700;
+    font-size: 0.95em;
+    color: var(--SmartThemeBodyColor);
+}
+
+.gd-mode-badge {
+    font-size: 0.7em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    color: var(--SmartThemeBodyColor);
+    letter-spacing: 0.02em;
+}
+
+.gd-dashboard-quick {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.gd-dashboard-assistant-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+}
+.gd-dashboard-divider {
+    height: 1px;
+    margin: 8px 0 4px;
+    background: var(--SmartThemeBorderColor);
+    opacity: 0.5;
+}
+.gd-assistant-hint {
+    color: var(--grey70a);
+    font-size: 0.75em;
+}
+.gd-lang-select { width: auto !important; font-size: 0.8em !important; margin: 0 !important; }
+.gd-debug-label { margin: 0 !important; font-size: 0.8em !important; }
+
+@media (max-width: 768px) {
+    .gd-assistant-hint { display: none; }
+}
+
+.gd-dashboard-decision {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 0.85em;
+}
+.gd-decision-label {
+    font-weight: 600;
+    color: var(--grey70a);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.75em;
+}
+.gd-decision-speakers {
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+.gd-decision-reason {
+    color: var(--grey70a);
+    flex-basis: 100%;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+.gd-dashboard-stats {
+    display: flex;
+    gap: 2px;
+    margin-top: 8px;
+}
+.gd-stat {
+    flex: 1;
+    text-align: center;
+    padding: 4px 2px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+}
+.gd-stat-value {
+    display: block;
+    font-weight: 700;
+    font-size: 1.1em;
+    color: var(--SmartThemeBodyColor);
+}
+.gd-stat-label {
+    display: block;
+    font-size: 0.65em;
+    color: var(--grey70a);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.gd-dashboard-refresh {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 0.7em;
+    padding: 2px 6px;
+    align-self: center;
+}
+
+.gd-dashboard-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.gd-preset-select {
+    flex: 1;
+    width: auto !important;
+    font-size: 0.8em !important;
+    margin: 0 !important;
+}
+.gd-dashboard-btn {
+    font-size: 0.78em;
+    padding: 3px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+    white-space: nowrap;
+}
+.gd-dashboard-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+}
+.gd-dashboard-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--SmartThemeBorderColor);
+}
+.gd-dashboard-btn-secondary:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.gd-stat-clickable {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.gd-stat-clickable:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+/* ── Dashboard expandable panels (profiles, memories, npcs, ledger) ── */
+.gd-dash-panel {
+    padding: 6px 8px; margin-bottom: 4px; border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+}
+.gd-dash-panel-header {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85em; font-weight: 600; margin-bottom: 4px;
+}
+.gd-dash-panel-body { font-size: 0.82em; max-height: 200px; overflow-y: auto; }
+.gd-dash-panel-body .gd-list-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px; border-radius: 2px;
+}
+.gd-dash-panel-body .gd-list-item:nth-child(odd) { background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent); }
+.gd-dash-panel-body .gd-list-name { font-weight: 500; }
+.gd-dash-panel-body .gd-list-meta { font-size: 0.85em; color: var(--grey70a); }
+.gd-list-expandable:hover { background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent) !important; }
+.gd-list-detail { border-left: 2px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent); margin: 2px 4px; }
+.gd-edit-btn { opacity: 0; transition: opacity 0.15s ease; }
+.gd-edit-field:hover .gd-edit-btn { opacity: 1; }
+.gd-stat-caret { font-size: 0.65em; color: var(--grey70a); transition: transform 0.2s ease; }
+
+.gd-dash-worldbooks {
+    padding: 6px 8px;
+    margin-bottom: 0;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+}
+.gd-dash-worldbooks-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.gd-dash-worldbooks-count {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: var(--grey70a);
+}
+.gd-dash-worldbooks .checkbox_label {
+    font-size: 0.82em;
+    margin: 1px 0;
+}
+
+.gd-dashboard-rule {
+    margin: 6px 0 8px 0;
+    border: none;
+    height: 1px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  COLLAPSIBLE CARDS                                                  */
+/* ═══════════════════════════════════════════════════════════════════ */
+.gd-card {
+    margin-bottom: 4px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.gd-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.88em;
+    font-weight: 500;
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+.gd-card-header:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+.gd-card.is-expanded > .gd-card-header {
+    border-radius: 4px 4px 0 0;
+    border-bottom-color: transparent;
+}
+.gd-card-caret {
+    font-size: 0.7em;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+    color: var(--grey70a);
+}
+.gd-card.is-expanded > .gd-card-header .gd-card-caret {
+    transform: rotate(90deg);
+}
+.gd-card-status {
+    margin-left: auto;
+    font-size: 0.75em;
+    color: var(--grey70a);
+}
+.gd-card-body {
+    display: none;
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+}
+.gd-card.is-expanded > .gd-card-body {
+    display: block;
+}
+
+/* ── Mode selector row ── */
+.gd-mode-selector {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0;
+}
+.gd-mode-selector .checkbox_label {
+    flex: 1;
+    text-align: center;
+    padding: 4px 0;
+    margin: 0;
+    border-radius: 3px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    cursor: pointer;
+    font-size: 0.85em;
+}
+.gd-mode-selector .checkbox_label:has(input:checked) {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+}
+
+/* ── Row of buttons ── */
+.gd-row-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin: 4px 0;
+}
+
 /* ── Nested inline-drawer spacing ── */
 #gd-formula-section,
 #gd-llm-section .inline-drawer {
     margin: 6px 0;
 }
 
-.group-director-settings h4 {
+.group-world-settings h4 {
     margin: 8px 0 4px 0;
     font-size: 0.95em;
     color: var(--SmartThemeBodyColor);
 }
 
-.group-director-settings label {
+.group-world-settings label {
     display: block;
     margin-top: 6px;
     font-size: 0.9em;
 }
 
-.group-director-settings small {
+.group-world-settings small {
     display: block;
     color: var(--grey70a, #999);
     margin: 4px 0;
     font-size: 0.85em;
 }
 
-.group-director-settings hr {
+.group-world-settings hr {
     margin: 10px 0;
     border-color: var(--SmartThemeBorderColor);
     opacity: 0.4;
 }
 
-.group-director-settings input[type="number"] {
+.group-world-settings input[type="number"] {
     width: 100%;
     margin-top: 2px;
 }
 
-.group-director-settings textarea {
+.group-world-settings textarea {
     font-family: monospace;
     font-size: 0.85em;
 }

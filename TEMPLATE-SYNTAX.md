@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-Group Director 的模板系统支持六种占位符语法，可在**任何模板**中使用（Director Prompt、Script Wrapper、自定义 Prompt）：
+Group World 的模板系统支持六种占位符语法，可在**任何模板**中使用（Director Prompt、Script Wrapper、自定义 Prompt）：
 
 | 语法 | 用途 | 示例 |
 |------|------|------|

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "type": "script-executor-export",
+  "exportedAt": "2026-06-29T00:00:00.000Z",
+  "executors": [
+    {
+      "name": "HelloWorld",
+      "triggerOn": "both",
+      "priority": 0,
+      "code": "console.log('=== Hello World ==='); console.log('trigger:', ctx.message ? 'message' : 'round'); console.log('params:', JSON.stringify(ctx.params)); console.log('shared:', JSON.stringify(ctx.shared)); console.log('chatLen:', ctx.chat?.length); if (ctx.message) console.log('speaker:', ctx.message?.name, '|', ctx.message?.mes?.slice(0, 50)); return { hello: true, time: Date.now() };",
+      "enabled": true,
+      "params": [],
+      "renderParams": false,
+      "returnMode": "shared"
+    }
+  ],
+  "migrations": []
+}

@@ -43,7 +43,7 @@ export function createWorldInfoSystem({ settings, getChat, getCharacters, checkW
 
             return { text, entries };
         } catch (e) {
-            console.warn('[GroupDirector] World Info fetch failed:', e.message);
+            console.warn('[GroupWorld] World Info fetch failed:', e.message);
             return { text: '', entries: [] };
         }
     }
