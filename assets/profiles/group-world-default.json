@@ -1,36 +1,37 @@
 {
   "version": 1,
   "type": "config-profile",
-  "exportedAt": "2026-06-22T00:00:00.000Z",
-  "name": "Group World 默认配置",
-  "description": "开箱即用的推荐配置：LLM 导演模式，开启剧本与角色档案，强制发言 LLM 接管，多模态关闭。导入后按需微调即可。",
+  "exportedAt": "2026-07-05T06:26:15.229Z",
+  "name": "默认模式-default",
+  "description": "",
+  "createdAt": 1783232775230,
   "drawers": {
     "directorLlm": true,
     "worldBooks": true,
     "profilesAndData": true,
     "contextLedger": true,
-    "multimodal": false,
-    "assetManager": false,
+    "multimodal": true,
+    "assetManager": true,
     "agentsTools": true
   },
   "settings": {
-    "mode": "llm",
-    "topN": 1,
+    "llmPrompt": "",
     "llmMaxSpeakers": 3,
-    "llmRespectOrder": true,
     "llmContextDepth": 10,
     "llmCharDescMode": "slice",
     "llmCharDescLength": 200,
     "llmScriptEnabled": true,
     "llmScriptPrompt": "",
     "llmScriptWrapper": "{{charMemoryCurrent}}{{characterLore}}[Director's stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n",
+    "llmJsonSchema": "Reply with ONLY a JSON object, no prose, no code fences:\n{\n  \"speakers\": [\"NameOfFirstSpeaker\", \"NameOfSecondSpeaker\"],\n  \"reason\": \"short justification\"{{scriptField}},\n  \"ledger_update\": {},\n  \"loreAssignments\": {\n    \"NameOfFirstSpeaker\": [\"exact entry name\", \"another entry\"],\n    \"NameOfSecondSpeaker\": []\n  }\n}",
+    "llmScriptPosition": 0,
     "llmHistoryEnabled": true,
-    "llmScriptContinuity": false,
-    "llmScriptContinuityMode": "last",
-    "llmScriptContinuityCount": 0,
+    "llmScriptContinuity": true,
+    "llmScriptContinuityMode": "history",
+    "llmScriptContinuityCount": 10,
     "llmScriptContinuityWrapper": "[Previous round's director plan — reference this for continuity, but update for the current situation:\n{{previousPlan}}\n]",
     "llmScriptContinuityHistoryWrapper": "[Director plans from previous rounds:\n{{previousPlans}}\n]",
-    "llmWorldInfoEnabled": false,
+    "llmWorldInfoEnabled": true,
     "llmWorldInfoWrapper": "[Current world context / lorebook entries:\n{{worldInfo}}\n]",
     "templateMaxPasses": 5,
     "templateRecursive": true,
@@ -38,7 +39,6 @@
     "knowledgeText": "",
     "forceSpeakMode": "llm",
     "forceSpeakPrompt": "",
-    "llmScriptPosition": 0,
     "worldBookMaxEntries": 20,
     "profileEnabled": true,
     "profileTokenBudget": 2000,
@@ -54,6 +54,9 @@
     "memoryKeepRecent": 5,
     "memoryMaxEntries": 200,
     "memoryCompressPrompt": "",
+    "autoMemoryEnabled": false,
+    "autoMemoryInterval": 10,
+    "autoMemorySpeakers": false,
     "identityPrompt": "",
     "npcEnabled": false,
     "npcMaxCount": 10,
@@ -63,15 +66,124 @@
     "summaryEnabled": false,
     "summaryReusePrevious": true,
     "summaryPrompt": "",
+    "autoSummaryEnabled": false,
+    "autoSummaryInterval": 10,
+    "critiqueEnabled": false,
+    "critiqueReusePrevious": true,
+    "critiquePrompt": "",
+    "critiqueSchema": "",
+    "autoCritiqueEnabled": false,
+    "autoCritiqueInterval": 10,
     "postSpeechMessageEnabled": false,
     "postSpeechMessagePrompt": "",
     "postSpeechRoundEnabled": false,
     "postSpeechRoundPrompt": "",
     "postSpeechBlocking": true,
     "postSpeechDecisionLimit": 20,
-    "agentConfigs": {},
+    "userProviders": [],
+    "userCapabilities": [],
     "customPrompts": [],
     "customPromptsEnabled": true,
-    "traceMaxEntries": 50
+    "scriptExecutors": [],
+    "agentConfigs": {
+      "director": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "force-speak": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "profile": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "summary": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "critique": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "npc": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "post-speech": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      },
+      "memory": {
+        "useCustom": false,
+        "protocol": "openai",
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "call": {
+          "retries": 2,
+          "timeout": 30000
+        },
+        "strictMode": false
+      }
+    },
+    "traceMaxEntries": 50,
+    "customAgents": []
   }
 }
