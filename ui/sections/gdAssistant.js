@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
+import { getCharacters } from '../../../../../../script.js';
 
 registerSection('gdAssistant', function (ctx) {
     const { settings, $c, toastr } = ctx;
@@ -116,11 +117,14 @@ registerSection('gdAssistant', function (ctx) {
             const wbResult = await wbImportResp.json();
             console.log('[GD Assistant] World book imported:', wbResult.name);
 
+            // 刷新前端角色列表（getCharacters 内部会 printCharacters 渲染）
+            await getCharacters();
+
             // ── Done ──
             toastr.success(
                 L(
-                    '暮羽领养成功！刷新页面后，在角色列表中找到「暮羽」并打开对话——她已经在紫色台灯下等着了 🦉',
-                    'Mu adopted! Refresh the page, find "Mu" in your character list — she\'s waiting under her purple lamp 🦉'
+                    '暮羽领养成功！已在角色列表中，打开「暮羽」开始对话——她已经在紫色台灯下等着了 🦉',
+                    'Mu adopted! Find "Mu" in your character list and start chatting — she\'s waiting under her purple lamp 🦉'
                 ),
                 '',
                 { timeOut: 8000 }
