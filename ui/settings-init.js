@@ -119,7 +119,8 @@ export async function reloadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
     const $panel = $('#gd-settings-panel');
     if (!$panel.length) {
-        return loadSettingsUI(deps);
+        // 主路径未走（fallback 模式下不存在 panel）。不委托 loadSettingsUI，否则会重复 append。
+        return;
     }
     const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
     $panel.empty().append(html);

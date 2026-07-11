@@ -2216,6 +2216,7 @@ eventSource.on(event_types.APP_READY, async () => {
     // 暴露重载入口：应用配置档后无需刷新页面即可生效（重渲染设置面板 + 重注册 user providers）
     window.__gdReloadExtension = async () => {
         await reloadSettingsUI(deps);
+        customPromptsSystem.initAll();
         const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
         userProviderLoader.restoreAll('provider', ud);
         userProviderLoader.restoreAll('capability', ud);

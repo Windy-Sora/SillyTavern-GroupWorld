@@ -592,7 +592,7 @@ registerSection('dashboard', function (ctx) {
                 // User profile — apply directly by ID
                 const id = rawValue.slice(PROF_PREFIX.length);
                 ctx.configProfileSystem?.applyProfile(id);
-                await window.__gdReloadExtension?.();
+                try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 const p = ctx.configProfileSystem?.getProfiles?.().find(p => p.id === id);
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${p?.name || id}」`
@@ -601,7 +601,7 @@ registerSection('dashboard', function (ctx) {
                 // System preset — load then apply
                 const profile = await loadConfigPreset(rawValue);
                 ctx.configProfileSystem?.applyProfile(profile.id);
-                await window.__gdReloadExtension?.();
+                try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${profile.name}」`
                     : `"${profile.name}" applied.`);
