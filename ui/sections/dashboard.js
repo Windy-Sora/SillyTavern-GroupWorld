@@ -592,17 +592,19 @@ registerSection('dashboard', function (ctx) {
                 // User profile — apply directly by ID
                 const id = rawValue.slice(PROF_PREFIX.length);
                 ctx.configProfileSystem?.applyProfile(id);
+                await window.__gdReloadExtension?.();
                 const p = ctx.configProfileSystem?.getProfiles?.().find(p => p.id === id);
                 toastr?.success?.(lang === 'zh'
-                    ? `已应用「${p?.name || id}」，请刷新页面以完全生效`
-                    : `"${p?.name || id}" applied. Refresh page for full effect.`);
+                    ? `已应用「${p?.name || id}」`
+                    : `"${p?.name || id}" applied.`);
             } else {
                 // System preset — load then apply
                 const profile = await loadConfigPreset(rawValue);
                 ctx.configProfileSystem?.applyProfile(profile.id);
+                await window.__gdReloadExtension?.();
                 toastr?.success?.(lang === 'zh'
-                    ? `已应用「${profile.name}」，请刷新页面以完全生效`
-                    : `"${profile.name}" applied. Refresh page for full effect.`);
+                    ? `已应用「${profile.name}」`
+                    : `"${profile.name}" applied.`);
             }
             syncConfigList();
             refreshAll();
@@ -827,6 +829,7 @@ registerSection('dashboard', function (ctx) {
     // Auto-refresh when the GD settings panel is opened (ST drawer expands)
     const panelEl = document.getElementById('gd-settings-panel');
     if (panelEl) {
+        panelEl.__gdPanelObserver?.disconnect();
         let panelRefreshQueued = false;
         const panelObserver = new MutationObserver(() => {
             // 防重入 + 去抖：合并短时间多次触发，避免与其它插件的 observer 互相点燃
@@ -839,6 +842,7 @@ registerSection('dashboard', function (ctx) {
                 }
             });
         });
+        panelEl.__gdPanelObserver = panelObserver;
         panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
     }
 

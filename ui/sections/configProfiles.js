@@ -95,6 +95,7 @@ registerSection('configProfiles', function (ctx) {
             }
 
             const result = sys.applyProfile(id, mergeMode);
+            await window.__gdReloadExtension?.();
             let msg = isZh()
                 ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
                 : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;
@@ -106,7 +107,7 @@ registerSection('configProfiles', function (ctx) {
             if (mergeMode === 'skip') {
                 msg += isZh() ? ' 自定义 Prompt 未导入。' : ' Custom prompts not imported.';
             }
-            toastr.success(msg + (isZh() ? ' 请刷新页面以完全生效。' : ' Refresh the page for full effect.'));
+            toastr.success(msg);
         });
 
         // Export

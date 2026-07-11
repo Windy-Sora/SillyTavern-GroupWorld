@@ -55,7 +55,7 @@ import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
-import { loadSettingsUI } from './ui/settings-init.js';
+import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
 
@@ -2143,7 +2143,7 @@ customAgentSystem.refreshProviders();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 eventSource.on(event_types.APP_READY, async () => {
-    await loadSettingsUI({
+    const deps = {
         settings, EXT_KEY, chat_metadata, saveChatConditional, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
@@ -2178,7 +2178,8 @@ eventSource.on(event_types.APP_READY, async () => {
         getConfigPresetNames, loadConfigPreset,
         customPromptsSystem,
         scriptExecutorSystem,
-    });
+    };
+    await loadSettingsUI(deps);
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupWorld so user modules don't need relative imports.
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
@@ -2211,4 +2212,12 @@ eventSource.on(event_types.APP_READY, async () => {
         console.warn(`[GroupWorld] ${uncovered.length} setting(s) not in any export drawer:`, uncovered.join(', '));
     }
     console.log(`Group World extension loaded (mode=${settings.mode})`);
+
+    // 暴露重载入口：应用配置档后无需刷新页面即可生效（重渲染设置面板 + 重注册 user providers）
+    window.__gdReloadExtension = async () => {
+        await reloadSettingsUI(deps);
+        const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
+        userProviderLoader.restoreAll('provider', ud);
+        userProviderLoader.restoreAll('capability', ud);
+    };
 });

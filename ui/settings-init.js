@@ -108,3 +108,30 @@ export async function loadSettingsUI(deps) {
     const ctx = { ...deps, $c };
     initAllSections(ctx);
 }
+
+/**
+ * Re-render the settings panel in-place after a config profile is applied.
+ * empty() removes child elements AND their jQuery event handlers, so re-running
+ * initAllSections on the fresh DOM is safe (no duplicate bindings).
+ * Falls back to loadSettingsUI if the panel doesn't exist yet.
+ */
+export async function reloadSettingsUI(deps) {
+    const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
+    const $panel = $('#gd-settings-panel');
+    if (!$panel.length) {
+        return loadSettingsUI(deps);
+    }
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    $panel.empty().append(html);
+    const $c = (sel) => $(`#gd-${sel}`);
+    $c('lang').val(settings.lang);
+    applyI18n(settings.lang, EXT_KEY, chat_metadata);
+    $c('lang').on('change', function () {
+        settings.lang = $(this).val();
+        applyI18n(settings.lang, EXT_KEY, chat_metadata);
+        saveSettings();
+        window.__gdRefreshDashboard?.();
+    });
+    const ctx = { ...deps, $c };
+    initAllSections(ctx);
+}
