@@ -2142,7 +2142,7 @@ registerNpcList(() => npcSystem.getNpcs());
 customAgentSystem.refreshProviders();
 
 // ─── Init ─────────────────────────────────────────────────────────────
-jQuery(async () => {
+eventSource.on(event_types.APP_READY, async () => {
     await loadSettingsUI({
         settings, EXT_KEY, chat_metadata, saveChatConditional, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,

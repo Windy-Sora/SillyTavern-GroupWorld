@@ -827,10 +827,17 @@ registerSection('dashboard', function (ctx) {
     // Auto-refresh when the GD settings panel is opened (ST drawer expands)
     const panelEl = document.getElementById('gd-settings-panel');
     if (panelEl) {
+        let panelRefreshQueued = false;
         const panelObserver = new MutationObserver(() => {
-            if (!panelEl.classList.contains('closedDrawer')) {
-                refreshAll();
-            }
+            // 防重入 + 去抖：合并短时间多次触发，避免与其它插件的 observer 互相点燃
+            if (panelRefreshQueued) return;
+            panelRefreshQueued = true;
+            requestAnimationFrame(() => {
+                panelRefreshQueued = false;
+                if (!panelEl.classList.contains('closedDrawer')) {
+                    refreshAll();
+                }
+            });
         });
         panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
     }

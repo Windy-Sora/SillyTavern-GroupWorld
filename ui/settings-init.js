@@ -41,6 +41,12 @@ import './sections/gdAssistant.js';
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
 
+    // 幂等防护：多插件环境下若 ST 重渲染导致二次调用，避免重复注入破坏 DOM
+    if ($('#gd-settings-panel').length) {
+        console.warn('[GroupWorld] Settings UI already initialized, skipping');
+        return;
+    }
+
     const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
 
     // Create a top-level settings drawer at the same level as Extensions,
