@@ -38,6 +38,19 @@ import './sections/customAgents.js';
 import './sections/agents.js';
 import './sections/gdAssistant.js';
 
+// 绑定语言选择器：设当前值 + on-change。提取出来让 loadSettingsUI / reloadSettingsUI / fallback 共用一份。
+function bindLanguageHandler(deps, $c) {
+    const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
+    $c('lang').val(settings.lang);
+    applyI18n(settings.lang, EXT_KEY, chat_metadata);
+    $c('lang').on('change', function () {
+        settings.lang = $(this).val();
+        applyI18n(settings.lang, EXT_KEY, chat_metadata);
+        saveSettings();
+        window.__gdRefreshDashboard?.();
+    });
+}
+
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
 
@@ -77,13 +90,7 @@ export async function loadSettingsUI(deps) {
         $('#extensions_settings').append(html);
         console.warn('[GroupWorld] Could not find extensions drawer for top-level tab — falling back to inline');
         const $c = (sel) => $(`#gd-${sel}`);
-        $c('lang').val(settings.lang);
-        applyI18n(settings.lang, EXT_KEY, chat_metadata);
-        $c('lang').on('change', function () {
-            settings.lang = $(this).val();
-            applyI18n(settings.lang, EXT_KEY, chat_metadata);
-            saveSettings();
-        });
+        bindLanguageHandler(deps, $c);
         const ctx = { ...deps, $c };
         initAllSections(ctx);
         return;
@@ -95,14 +102,7 @@ export async function loadSettingsUI(deps) {
     const $c = (sel) => $(`#gd-${sel}`);
 
     // Language
-    $c('lang').val(settings.lang);
-    applyI18n(settings.lang, EXT_KEY, chat_metadata);
-    $c('lang').on('change', function () {
-        settings.lang = $(this).val();
-        applyI18n(settings.lang, EXT_KEY, chat_metadata);
-        saveSettings();
-        window.__gdRefreshDashboard?.();
-    });
+    bindLanguageHandler(deps, $c);
 
     // Delegate to registered sections
     const ctx = { ...deps, $c };
@@ -125,14 +125,7 @@ export async function reloadSettingsUI(deps) {
     const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
-    $c('lang').val(settings.lang);
-    applyI18n(settings.lang, EXT_KEY, chat_metadata);
-    $c('lang').on('change', function () {
-        settings.lang = $(this).val();
-        applyI18n(settings.lang, EXT_KEY, chat_metadata);
-        saveSettings();
-        window.__gdRefreshDashboard?.();
-    });
+    bindLanguageHandler(deps, $c);
     const ctx = { ...deps, $c };
     initAllSections(ctx);
 }

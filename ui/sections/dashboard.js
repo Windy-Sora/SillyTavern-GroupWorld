@@ -607,7 +607,6 @@ registerSection('dashboard', function (ctx) {
                     : `"${profile.name}" applied.`);
             }
             syncConfigList();
-            refreshAll();
         } catch (e) {
             toastr?.error?.(lang === 'zh' ? `应用失败: ${e.message}` : `Failed: ${e.message}`);
         } finally { btn.prop('disabled', false); }
