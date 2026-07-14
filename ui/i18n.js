@@ -220,6 +220,9 @@ const I18N = {
 
         scriptWrapper: '角色 Prompt 注入模版',
         scriptWrapperHint: '<code>{{script}}</code> 占位符会被替换为实际剧本内容。',
+        jsonSchemaCard: '高级：JSON 输出格式',
+        jsonSchemaHint: '<code>{{scriptField}}</code> 在启用剧本时替换为 scripts 字段，禁用时清空。',
+        jsonSchemaWarning: '⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。',
 
         promptTitle: 'Director Prompt 模板',
         promptHint: '模型需返回 JSON：<code>{"speakers":["Name1","Name2"],"reason":"..."}</code>。',
@@ -734,6 +737,9 @@ const I18N = {
 
         scriptWrapper: 'Character Prompt Injection Template',
         scriptWrapperHint: '<code>{{script}}</code> is replaced with the actual script content.',
+        jsonSchemaCard: 'Advanced: JSON Output Format',
+        jsonSchemaHint: '<code>{{scriptField}}</code> is replaced with the scripts field when enabled, cleared when disabled.',
+        jsonSchemaWarning: '⚠ If you instruct the LLM to return extra fields in the Director Prompt, you must add them to this schema template, otherwise the fields will be silently dropped.',
 
         promptTitle: 'Director Prompt Template',
         promptHint: 'Model returns JSON: <code>{"speakers":["Name1","Name2"],"reason":"..."}</code>.',
