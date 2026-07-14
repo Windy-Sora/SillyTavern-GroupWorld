@@ -98,6 +98,11 @@ const I18N = {
         scriptHint: '导演为每个发言角色输出场景剧本，注入角色 prompt 指导表演。',
         scriptEnabled: '启用导演剧本',
         resetBtn: '默认',
+        refreshBtn: '刷新',
+        refreshListBtn: '刷新列表',
+        exportBtn: '导出',
+        importBtn: '导入',
+        importJsBtn: '导入 .js',
         llmScriptPosition: '剧本注入位置',
         llmScriptPositionTop: 'Prompt 开头（弱干预）',
         llmScriptPositionChat: '对话附近（强干预）',
@@ -616,6 +621,11 @@ const I18N = {
         scriptHint: 'Director outputs per-character stage directions injected into character prompts.',
         scriptEnabled: 'Enable Director Script',
         resetBtn: 'Reset',
+        refreshBtn: 'Refresh',
+        refreshListBtn: 'Refresh list',
+        exportBtn: 'Export',
+        importBtn: 'Import',
+        importJsBtn: 'Import .js',
         llmScriptPosition: 'Script injection position',
         llmScriptPositionTop: 'Top of prompt (gentle guidance)',
         llmScriptPositionChat: 'Near dialog (strong intervention)',
@@ -1059,6 +1069,12 @@ export function applyI18n(lang, EXT_KEY, chat_metadata) {
         const key = $(this).attr('data-i18n-placeholder');
         if (t[key] !== undefined) {
             $(this).attr('placeholder', t[key]);
+        }
+    });
+    $('[data-i18n-title]').each(function () {
+        const key = $(this).attr('data-i18n-title');
+        if (t[key] !== undefined) {
+            $(this).attr('title', t[key]);
         }
     });
     const persistedScript = chat_metadata?.[EXT_KEY]?.historyMeta?.scriptPrompt;

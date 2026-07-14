@@ -53,7 +53,7 @@
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statWorldBooks">世界书 <i class="fa-solid fa-caret-down" style="font-size:0.7em;"></i></span>
             </div>
-            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dashboard-refresh" title="刷新" onclick="window.__gdRefreshDashboard && window.__gdRefreshDashboard(); var i=this.querySelector('i'); if(i){i.classList.add('fa-spin');setTimeout(function(){i.classList.remove('fa-spin')},600)}">
+            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dashboard-refresh" title="刷新" data-i18n-title="refreshBtn" onclick="window.__gdRefreshDashboard && window.__gdRefreshDashboard(); var i=this.querySelector('i'); if(i){i.classList.add('fa-spin');setTimeout(function(){i.classList.remove('fa-spin')},600)}">
                 <i class="fa-solid fa-rotate"></i>
             </span>
         </div>
@@ -71,7 +71,7 @@
                 <option value="" data-i18n="dashCfgPresetPlaceholder">配置档...</option>
             </select>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dashboard-preset-apply" data-i18n="applyPreset">应用</span>
-            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dash-preset-refresh" title="刷新列表"><i class="fa-solid fa-rotate"></i></span>
+            <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dash-preset-refresh" title="刷新列表" data-i18n-title="refreshListBtn"><i class="fa-solid fa-rotate"></i></span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-preset-delete" title="删除" style="display:none;color:#ff5555;font-size:0.8em;" data-i18n-title="dashDeleteCfgTitle"><i class="fa-solid fa-trash"></i></span>
         </div>
         <div class="gd-dashboard-actions">
@@ -472,7 +472,7 @@
                         <span class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <hr>
                         <div class="gd-row-buttons">
-                            <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                             <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
                             <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> 提取全部</span>
                             <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> 检测失联</span>
@@ -652,7 +652,7 @@
                         <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
                         <span class="menu_button menu_button_icon" id="gd-critique-revert"><i class="fa-solid fa-undo"></i> 回退</span>
                         <span class="menu_button menu_button_icon" id="gd-critique-reset"><i class="fa-solid fa-trash"></i> 重置</span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                     </div>
                     <span id="gd-critique-status" style="font-size:0.85em;color:var(--grey70a);"></span>
                     <div id="gd-critique-result-section" style="display:none;">
@@ -676,7 +676,7 @@
                     <div id="gd-ledger-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                         <span id="gd-ledger-count" style="font-size:0.9em;color:var(--grey70a)"></span>
                         <span style="flex:1"></span>
-                        <span class="menu_button menu_button_icon" id="gd-ledger-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-ledger-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                         <span class="menu_button menu_button_icon" id="gd-ledger-raw-toggle"><i class="fa-solid fa-code"></i> Raw</span>
                     </div>
                     <div id="gd-ledger-list" style="margin-top:8px;max-height:300px;overflow-y:auto;"></div>
@@ -691,7 +691,7 @@
                 <div class="gd-card-body">
                     <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目</label>
                     <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
-                    <span class="menu_button menu_button_icon" id="gd-world-book-refresh"><i class="fa-solid fa-rotate"></i> 刷新列表</span>
+                    <span class="menu_button menu_button_icon" id="gd-world-book-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshListBtn">刷新列表</span></span>
                     <div id="gd-world-book-list" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;"></div>
                 </div>
             </div>
@@ -757,7 +757,7 @@
                     <span data-i18n="capabilitiesCard">已注册能力</span>
                 </div>
                 <div class="gd-card-body">
-                    <span class="menu_button menu_button_icon" id="gd-cap-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                    <span class="menu_button menu_button_icon" id="gd-cap-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                     <div id="gd-ps-capabilities-list" style="margin-top:6px;"></div>
                 </div>
             </div>
@@ -803,7 +803,7 @@
                 </div>
                 <div class="gd-card-body">
                     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                        <span class="menu_button menu_button_icon" id="gd-ps-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-ps-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                         <label for="gd-ps-decision-limit" data-i18n="psDecisionLimit">显示</label>
                         <input type="number" id="gd-ps-decision-limit" class="text_pole" min="1" max="500" step="1" style="width:60px;">
                     </div>
@@ -836,7 +836,7 @@
                     <div id="gd-config-profiles-list" style="margin:6px 0;"></div>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-cfg-save-btn"><i class="fa-solid fa-floppy-disk"></i> 保存为配置档</span>
-                        <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-import"></i> 导入配置档</span>
+                        <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="dashImportCfg">导入配置档</span></span>
                         <input type="file" id="gd-cfg-import-file" accept=".zip,.json" style="display:none;">
                     </div>
                     <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;margin-top:4px;" placeholder="配置档名称">
@@ -863,8 +863,8 @@
                     <!-- Group export/import -->
                     <span style="font-weight:bold;font-size:0.9em;" data-i18n="exportImportGroup">群聊</span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
                     </div>
                     <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
@@ -873,8 +873,8 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportProfile">档案</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-profile-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
-                        <span class="menu_button menu_button_icon" id="gd-profile-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-profile-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-profile-import-file" accept=".json" style="display:none;">
                         <select id="gd-profile-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
                             <option value="" data-i18n="profileImportPresetPlaceholder">预设...</option>
@@ -889,7 +889,7 @@
                         <span data-i18n="profileImportTemplateShort">含模板</span>
                     </label>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-profile-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
                         <span class="menu_button menu_button_icon" id="gd-profile-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
                     </div>
 
@@ -897,8 +897,8 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportMemory">记忆</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-memory-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
-                        <span class="menu_button menu_button_icon" id="gd-memory-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-memory-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-memory-import-file" accept=".json" style="display:none;">
                     </div>
                     <div id="gd-memory-export-list" style="margin-top:4px;"></div>
@@ -910,7 +910,7 @@
                         <span data-i18n="memoryImportTemplateShort">含模板</span>
                     </label>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-memory-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
                         <span class="menu_button menu_button_icon" id="gd-memory-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
                     </div>
 
@@ -918,8 +918,8 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportNpc">NPC</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-npc-export-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
-                        <span class="menu_button menu_button_icon" id="gd-npc-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-npc-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-npc-import-file" accept=".json" style="display:none;">
                         <select id="gd-npc-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
                             <option value="" data-i18n="npcImportPresetPlaceholder">预设...</option>
@@ -934,7 +934,7 @@
                         <span data-i18n="npcImportTemplateShort">含Prompt</span>
                     </label>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-npc-import-apply"><i class="fa-solid fa-check"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
                         <span class="menu_button menu_button_icon" id="gd-npc-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
                     </div>
 
@@ -942,8 +942,8 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportSummary">摘要</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-summary-import-panel-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-summary-import-file" accept=".json" style="display:none;">
                     </div>
                     <label for="gd-summary-export-note" data-i18n="summaryExportNoteShort">备注</label>
@@ -954,8 +954,8 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="exportImportCritique">批判</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-critique-import-panel-refresh" style="font-size:0.8em;"><i class="fa-solid fa-rotate"></i></span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-critique-import-file" accept=".json" style="display:none;">
                     </div>
                     <label for="gd-critique-export-note" data-i18n="critiqueExportNoteShort">备注</label>
@@ -993,8 +993,8 @@
                         <i class="fa-solid fa-plus"></i> 添加
                     </span>
                     <div class="gd-row-buttons" style="margin-top:6px;">
-                        <span class="menu_button menu_button_icon" id="gd-cp-export-btn"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-cp-import-btn"><i class="fa-solid fa-file-import"></i> 导入</span>
+                        <span class="menu_button menu_button_icon" id="gd-cp-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-cp-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
                         <input type="file" id="gd-cp-import-file" accept=".json" style="display:none;">
                     </div>
                 </div>
@@ -1008,13 +1008,13 @@
                 <div class="gd-card-body">
                     <span style="font-weight:bold;font-size:0.9em;" data-i18n="userProviderTitleShort">Provider</span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-user-provider-import"><i class="fa-solid fa-file-import"></i> 导入 .js</span>
+                        <span class="menu_button menu_button_icon" id="gd-user-provider-import"><i class="fa-solid fa-file-import"></i> <span data-i18n="importJsBtn">导入 .js</span></span>
                         <input type="file" id="gd-user-provider-file" accept=".js" style="display:none;">
                     </div>
                     <div id="gd-user-provider-list" style="margin:4px 0;"></div>
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="userCapabilityTitleShort">Capability</span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-user-capability-import"><i class="fa-solid fa-file-import"></i> 导入 .js</span>
+                        <span class="menu_button menu_button_icon" id="gd-user-capability-import"><i class="fa-solid fa-file-import"></i> <span data-i18n="importJsBtn">导入 .js</span></span>
                         <input type="file" id="gd-user-capability-file" accept=".js" style="display:none;">
                     </div>
                     <div id="gd-user-capability-list" style="margin:4px 0;"></div>
@@ -1056,7 +1056,7 @@
                     <hr>
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="traceTitle">执行追踪</span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-trace-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-trace-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                         <span class="menu_button menu_button_icon" id="gd-trace-clear"><i class="fa-solid fa-trash"></i> 清空</span>
                         <label for="gd-trace-max" data-i18n="traceMaxLabel">最大条数</label>
                         <input type="number" id="gd-trace-max" class="text_pole" min="1" max="200" step="1" style="width:60px;">
