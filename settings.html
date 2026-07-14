@@ -91,24 +91,24 @@
     </div>
 
     <div class="gd-dash-panel gd-dash-panel-summary" id="gd-dash-panel-summary" style="display:none;">
-        <div class="gd-dash-panel-header"><span data-i18n="dashSummaryTitle">上下文总结</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="summary" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashSummaryTitle">上下文总结</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="summary" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-summary-list" class="gd-dash-panel-body"></div>
     </div>
 
     <div class="gd-dash-panel gd-dash-panel-profiles" id="gd-dash-panel-profiles" style="display:none;">
-        <div class="gd-dash-panel-header"><span data-i18n="dashProfilesTitle">角色档案</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="profiles" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashProfilesTitle">角色档案</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="profiles" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-profiles-list" class="gd-dash-panel-body"></div>
     </div>
     <div class="gd-dash-panel gd-dash-panel-memories" id="gd-dash-panel-memories" style="display:none;">
-        <div class="gd-dash-panel-header"><span data-i18n="dashMemoriesTitle">角色记忆</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="memories" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashMemoriesTitle">角色记忆</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="memories" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-memories-list" class="gd-dash-panel-body"></div>
     </div>
     <div class="gd-dash-panel gd-dash-panel-npcs" id="gd-dash-panel-npcs" style="display:none;">
-        <div class="gd-dash-panel-header"><span data-i18n="dashNpcsTitle">NPC 列表</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="npcs" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashNpcsTitle">NPC 列表</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="npcs" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-npcs-list" class="gd-dash-panel-body"></div>
     </div>
     <div class="gd-dash-panel gd-dash-panel-ledger" id="gd-dash-panel-ledger" style="display:none;">
-        <div class="gd-dash-panel-header"><span data-i18n="dashLedgerTitle">导演账本</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="ledger" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashLedgerTitle">导演账本</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="ledger" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-ledger-list" class="gd-dash-panel-body"></div>
     </div>
 
@@ -116,7 +116,7 @@
         <div class="gd-dash-worldbooks-header">
             <span data-i18n="dashWorldBooksTitle">世界书选择</span>
             <span class="gd-dash-worldbooks-count" id="gd-dash-worldbooks-count"></span>
-            <span class="gd-dash-worldbooks-toggle menu_button menu_button_icon" id="gd-dash-worldbooks-close" style="font-size:0.7em;margin-left:auto;">收起</span>
+            <span class="gd-dash-worldbooks-toggle menu_button menu_button_icon" id="gd-dash-worldbooks-close" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span>
         </div>
         <div id="gd-dash-worldbook-list" style="max-height:160px;overflow-y:auto;padding:4px 0;"></div>
     </div>
@@ -473,10 +473,10 @@
                         <hr>
                         <div class="gd-row-buttons">
                             <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
-                            <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
-                            <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> 提取全部</span>
-                            <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> 检测失联</span>
-                            <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanBtn">扫描</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="qsMemoryExtractAll">提取全部</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="memoryDetectOrphans">检测失联</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="resetFieldBtn">重置</span></span>
                         </div>
                         <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent">压缩保留最近</label>
                         <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
@@ -496,7 +496,7 @@
                                 <option value="mixed">😶 mixed</option>
                             </select>
                             <div style="margin-top:4px;display:flex;gap:4px;">
-                                <span class="menu_button menu_button_icon" id="gd-mem-edit-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                                <span class="menu_button menu_button_icon" id="gd-mem-edit-save"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="saveBtn">保存</span></span>
                                 <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> <span data-i18n="memoryEditCancel">取消</span></span>
                             </div>
                         </div>
@@ -528,8 +528,8 @@
                         <textarea id="gd-npc-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-npc-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <div class="gd-row-buttons">
-                            <span class="menu_button menu_button_icon" id="gd-npc-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> 生成</span>
-                            <span class="menu_button menu_button_icon" id="gd-npc-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
+                            <span class="menu_button menu_button_icon" id="gd-npc-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="generateBtn">生成</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-npc-scan"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanBtn">扫描</span></span>
                         </div>
                         <div id="gd-npc-list" style="margin-top:8px;"></div>
                     </div>
@@ -571,12 +571,12 @@
                     </div>
                     <div id="gd-summary-scan-notice" style="display:none;margin:6px 0;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
                         <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> 清除存档</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryScanClear">清除存档</span></span>
                     </div>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> 扫描存档</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> 清除禁用</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> 隐藏禁用</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanArchiveBtn">扫描存档</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> <span data-i18n="clearDisabledBtn">清除禁用</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> <span data-i18n="hideDisabledBtn">隐藏禁用</span></span>
                     </div>
                     <label class="checkbox_label" for="gd-summary-enabled">
                         <input type="checkbox" id="gd-summary-enabled">
@@ -600,16 +600,16 @@
                     <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> 执行</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> 回退</span>
-                        <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> <span data-i18n="executeBtn">执行</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> <span data-i18n="regenerateBtn">重新</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="memoryRevert">回退</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="resetFieldBtn">重置</span></span>
                     </div>
                     <span id="gd-summary-status" style="font-size:0.9em;color:var(--grey70a);"></span>
                     <span class="menu_button menu_button_icon" id="gd-summary-refresh" style="font-size:0.8em;padding:2px 6px;"><i class="fa-solid fa-rotate"></i></span>
                     <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果</label>
                     <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-summary-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                    <span class="menu_button menu_button_icon" id="gd-summary-result-save"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="saveBtn">保存</span></span>
                 </div>
             </div>
 
@@ -648,17 +648,17 @@
                     <textarea id="gd-critique-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-critique-execute"><i class="fa-solid fa-play"></i> 执行</span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-revert"><i class="fa-solid fa-undo"></i> 回退</span>
-                        <span class="menu_button menu_button_icon" id="gd-critique-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-execute"><i class="fa-solid fa-play"></i> <span data-i18n="executeBtn">执行</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> <span data-i18n="regenerateBtn">重新</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="memoryRevert">回退</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="resetFieldBtn">重置</span></span>
                         <span class="menu_button menu_button_icon" id="gd-critique-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                     </div>
                     <span id="gd-critique-status" style="font-size:0.85em;color:var(--grey70a);"></span>
                     <div id="gd-critique-result-section" style="display:none;">
                         <label for="gd-critique-result" data-i18n="critiqueResultLabel">批判结果（JSON）</label>
                         <textarea id="gd-critique-result" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-critique-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-result-save"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="saveBtn">保存</span></span>
                     </div>
                 </div>
             </div>
@@ -835,7 +835,7 @@
                     </select>
                     <div id="gd-config-profiles-list" style="margin:6px 0;"></div>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-cfg-save-btn"><i class="fa-solid fa-floppy-disk"></i> 保存为配置档</span>
+                        <span class="menu_button menu_button_icon" id="gd-cfg-save-btn"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="configProfilesSaveBtn">保存为配置档</span></span>
                         <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="dashImportCfg">导入配置档</span></span>
                         <input type="file" id="gd-cfg-import-file" accept=".zip,.json" style="display:none;">
                     </div>
@@ -990,7 +990,7 @@
                     <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
                     <textarea id="gd-cp-new-content" class="text_pole textarea_compact" rows="2" style="width:100%;margin-top:2px;" placeholder="content"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-cp-add-btn" style="margin-top:4px;">
-                        <i class="fa-solid fa-plus"></i> 添加
+                        <i class="fa-solid fa-plus"></i> <span data-i18n="providerRefAdd">添加</span>
                     </span>
                     <div class="gd-row-buttons" style="margin-top:6px;">
                         <span class="menu_button menu_button_icon" id="gd-cp-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
