@@ -497,7 +497,7 @@
                             </select>
                             <div style="margin-top:4px;display:flex;gap:4px;">
                                 <span class="menu_button menu_button_icon" id="gd-mem-edit-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
-                                <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> 取消</span>
+                                <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> <span data-i18n="memoryEditCancel">取消</span></span>
                             </div>
                         </div>
                     </div>
@@ -544,7 +544,7 @@
                 <div class="gd-card-body">
                     <small data-i18n="identityHintShort">自定义的身份锚定提示词。通过 {{identity}} 手动注入。</small>
                     <textarea id="gd-identity-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-identity-reset"><i class="fa-solid fa-trash"></i> 清空</span>
+                    <span class="menu_button menu_button_icon" id="gd-identity-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="identityReset">清空</span></span>
                 </div>
             </div>
 
@@ -890,7 +890,7 @@
                     </label>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-profile-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-profile-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                        <span class="menu_button menu_button_icon" id="gd-profile-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> <span data-i18n="profileImportCancel">取消</span></span>
                     </div>
 
                     <!-- Memory export/import -->
@@ -911,7 +911,7 @@
                     </label>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-memory-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-memory-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> <span data-i18n="memoryImportCancel">取消</span></span>
                     </div>
 
                     <!-- NPC export/import -->
@@ -935,7 +935,7 @@
                     </label>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-npc-import-apply"><i class="fa-solid fa-check"></i> <span data-i18n="importBtn">导入</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-npc-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> 取消</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-import-cancel" style="background:rgba(244,67,54,0.15);"><i class="fa-solid fa-xmark"></i> <span data-i18n="npcImportCancel">取消</span></span>
                     </div>
 
                     <!-- Summary export/import -->
@@ -1049,7 +1049,7 @@
                     <textarea id="gd-tester-input" class="text_pole textarea_compact" rows="4" style="width:100%;margin-top:4px;" placeholder="{{recentMessages}}"></textarea>
                     <label for="gd-tester-locals" style="margin-top:4px;font-size:0.9em;" data-i18n="testerLocalsShort">Locals (JSON)</label>
                     <textarea id="gd-tester-locals" class="text_pole textarea_compact" rows="2" style="width:100%;" placeholder='{"key":"value"}'></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-tester-run" style="margin-top:4px;"><i class="fa-solid fa-flask"></i> 测试</span>
+                    <span class="menu_button menu_button_icon" id="gd-tester-run" style="margin-top:4px;"><i class="fa-solid fa-flask"></i> <span data-i18n="testBtn">测试</span></span>
                     <label for="gd-tester-output" style="margin-top:6px;" data-i18n="testerOutputShort">结果</label>
                     <textarea id="gd-tester-output" class="text_pole textarea_compact" rows="6" style="width:100%;" readonly></textarea>
 
@@ -1057,7 +1057,7 @@
                     <span style="font-weight:bold;font-size:0.9em;display:block;margin-top:8px;" data-i18n="traceTitle">执行追踪</span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-trace-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
-                        <span class="menu_button menu_button_icon" id="gd-trace-clear"><i class="fa-solid fa-trash"></i> 清空</span>
+                        <span class="menu_button menu_button_icon" id="gd-trace-clear"><i class="fa-solid fa-trash"></i> <span data-i18n="traceClear">清空</span></span>
                         <label for="gd-trace-max" data-i18n="traceMaxLabel">最大条数</label>
                         <input type="number" id="gd-trace-max" class="text_pole" min="1" max="200" step="1" style="width:60px;">
                     </div>
