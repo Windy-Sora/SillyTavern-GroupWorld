@@ -49,7 +49,7 @@
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statSummary">总结</span>
             </div>
-            <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择" data-i18n-title="worldBookExpandHint">
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statWorldBooks">世界书 <i class="fa-solid fa-caret-down" style="font-size:0.7em;"></i></span>
             </div>
@@ -567,7 +567,7 @@
                 </div>
                 <div class="gd-card-body">
                     <div id="gd-summary-lock-warn" style="display:none;color:#ff9800;">
-                        <b>&#9888; 生成中，面板已锁定</b>
+                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
                     </div>
                     <div id="gd-summary-scan-notice" style="display:none;margin:6px 0;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
                         <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
@@ -621,7 +621,7 @@
                 </div>
                 <div class="gd-card-body">
                     <div id="gd-critique-lock-warn" style="display:none;color:#ff9800;">
-                        <b>&#9888; 生成中，面板已锁定</b>
+                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
                     </div>
                     <label class="checkbox_label" for="gd-critique-enabled" style="margin-top:6px;">
                         <input type="checkbox" id="gd-critique-enabled">
@@ -671,7 +671,7 @@
                 </div>
                 <div class="gd-card-body">
                     <div id="gd-ledger-lock-warn" style="display:none;color:#ff9800;">
-                        <b>&#9888; 生成中，面板已锁定</b>
+                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
                     </div>
                     <div id="gd-ledger-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                         <span id="gd-ledger-count" style="font-size:0.9em;color:var(--grey70a)"></span>
@@ -839,8 +839,8 @@
                         <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="dashImportCfg">导入配置档</span></span>
                         <input type="file" id="gd-cfg-import-file" accept=".zip,.json" style="display:none;">
                     </div>
-                    <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;margin-top:4px;" placeholder="配置档名称">
-                    <input type="text" id="gd-cfg-save-desc" class="text_pole" style="width:100%;margin-top:2px;" placeholder="备注（可选）">
+                    <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;margin-top:4px;" placeholder="配置档名称" data-i18n-placeholder="configProfilesSaveName">
+                    <input type="text" id="gd-cfg-save-desc" class="text_pole" style="width:100%;margin-top:2px;" placeholder="备注（可选）" data-i18n-placeholder="configProfilesSaveDesc">
                     <div style="margin-top:4px;font-size:0.85em;color:var(--grey70a);" data-i18n="configProfilesSaveDrawers">导出范围：</div>
                     <div style="display:flex;flex-wrap:wrap;gap:2px 12px;">
                         <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-directorLlm" checked> <span data-i18n="configDrawerDirectorLlm">导演</span></label>
