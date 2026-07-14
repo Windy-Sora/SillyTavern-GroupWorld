@@ -212,7 +212,7 @@
                 <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
                 <div class="gd-row-buttons">
                     <span class="menu_button menu_button_icon" id="gd-llm-prompt-reset">
-                        <i class="fa-solid fa-rotate-left"></i> 默认
+                        <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                     </span>
                     <span class="menu_button menu_button_icon" id="gd-llm-prompt-expand" style="display:none;">
                         <i class="fa-solid fa-maximize"></i>
@@ -223,7 +223,7 @@
                 <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">角色 Prompt 注入模版</label>
                 <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                 <span class="menu_button menu_button_icon" id="gd-llm-script-wrapper-reset" style="margin-top:4px;">
-                    <i class="fa-solid fa-rotate-left"></i> 默认
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                 </span>
 
                 <div class="gd-card gd-card-collapsible" data-card="jsonSchema" style="margin-top:8px;">
@@ -236,7 +236,7 @@
                         <textarea id="gd-llm-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
                         <small style="color:#ff9800;display:block;margin-top:4px;" data-i18n="jsonSchemaWarning">⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。</small>
                         <span class="menu_button menu_button_icon" id="gd-llm-json-schema-reset" style="margin-top:4px;">
-                            <i class="fa-solid fa-rotate-left"></i> 默认
+                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
                     </div>
                 </div>
@@ -409,18 +409,18 @@
                         <label for="gd-profile-generator-prompt" data-i18n="profileGeneratorPromptTitle">生成 Prompt</label>
                         <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-profile-generator-reset">
-                            <i class="fa-solid fa-rotate-left"></i> 默认
+                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
                         <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
                         <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-profile-schema-reset">
-                            <i class="fa-solid fa-rotate-left"></i> 默认
+                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
                         <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
                         <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                         <div id="gd-profile-template-warning" style="color:orange;display:none;"></div>
                         <span class="menu_button menu_button_icon" id="gd-profile-render-reset">
-                            <i class="fa-solid fa-rotate-left"></i> 默认
+                            <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
                         <hr>
                         <span class="menu_button menu_button_icon" id="gd-profile-regenerate-all">
@@ -460,16 +460,16 @@
                         <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100">
                         <label for="gd-memory-prompt" data-i18n="memoryPromptLabel">提取 Prompt</label>
                         <textarea id="gd-memory-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-memory-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-json-schema" data-i18n="memoryJsonSchemaTitle">JSON Schema</label>
                         <textarea id="gd-memory-json-schema" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-memory-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-render-template" data-i18n="memoryRenderTemplateTitle">渲染模板</label>
                         <textarea id="gd-memory-render-template" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-memory-render-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-render-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-compress-prompt" data-i18n="memoryCompressPromptLabel">压缩 Prompt</label>
                         <textarea id="gd-memory-compress-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <hr>
                         <div class="gd-row-buttons">
                             <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
@@ -526,7 +526,7 @@
                         </label>
                         <label for="gd-npc-prompt" data-i18n="npcPromptShort">生成 Prompt</label>
                         <textarea id="gd-npc-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-npc-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-npc-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <div class="gd-row-buttons">
                             <span class="menu_button menu_button_icon" id="gd-npc-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> 生成</span>
                             <span class="menu_button menu_button_icon" id="gd-npc-scan"><i class="fa-solid fa-magnifying-glass"></i> 扫描</span>
@@ -598,7 +598,7 @@
                     </span>
                     <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
                     <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> 执行</span>
                         <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
@@ -643,10 +643,10 @@
                     </span>
                     <label for="gd-critique-prompt" data-i18n="critiquePromptLabel">批判 Prompt</label>
                     <textarea id="gd-critique-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-critique-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <span class="menu_button menu_button_icon" id="gd-critique-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <label for="gd-critique-schema" data-i18n="critiqueSchemaLabel">JSON Schema（自定义输出格式）</label>
                     <textarea id="gd-critique-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-critique-execute"><i class="fa-solid fa-play"></i> 执行</span>
                         <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
@@ -722,7 +722,7 @@
                     <div id="gd-ps-msg-section" style="display:none;">
                         <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">Prompt</label>
                         <textarea id="gd-ps-msg-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-ps-msg-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-ps-msg-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     </div>
                 </div>
             </div>
@@ -742,7 +742,7 @@
                     <div id="gd-ps-round-section" style="display:none;">
                         <label for="gd-ps-round-prompt" data-i18n="psRoundPromptLabel">Prompt</label>
                         <textarea id="gd-ps-round-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-ps-round-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                        <span class="menu_button menu_button_icon" id="gd-ps-round-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     </div>
                     <label class="checkbox_label" for="gd-ps-blocking" style="margin-top:8px;">
                         <input type="checkbox" id="gd-ps-blocking">
