@@ -263,7 +263,12 @@ export function createConfigProfileSystem(deps) {
 
         const zip = new JSZip();
 
-        // manifest.json
+        // manifest.json — strip API keys before export (defense-in-depth:
+        // stored profiles should already be clean, but a manually injected
+        // profile could carry raw keys).
+        const expSettings = JSON.parse(JSON.stringify(profile.settings));
+        if (expSettings.agentConfigs) expSettings.agentConfigs = stripApiKeys(expSettings.agentConfigs);
+
         const manifest = {
             version: CONFIG_PROFILE_VERSION,
             type: 'config-profile',
@@ -272,7 +277,7 @@ export function createConfigProfileSystem(deps) {
             description: profile.description || '',
             createdAt: profile.createdAt,
             drawers: profile.drawers,
-            settings: profile.settings,
+            settings: expSettings,
         };
         zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
