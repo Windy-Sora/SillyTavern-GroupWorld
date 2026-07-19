@@ -105,7 +105,7 @@ registerSection('npcExport', function (ctx) {
             const result = parseNpcImportFile(reader.result);
             if (!result.ok) {
                 toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + result.error);
-                console.error('[GroupWorld] NPC import parse error:', result.error);
+                console.error('[GroupDirector] NPC import parse error:', result.error);
                 return;
             }
             renderImportList(result.data);
@@ -191,7 +191,7 @@ registerSection('npcExport', function (ctx) {
             toastr.success(msg);
         } catch (e) {
             toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + e.message);
-            console.error('[GroupWorld] NPC import apply error:', e);
+            console.error('[GroupDirector] NPC import apply error:', e);
         } finally {
             btn.prop('disabled', false);
         }

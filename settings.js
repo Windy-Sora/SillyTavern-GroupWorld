@@ -1,4 +1,4 @@
-export const EXT_KEY = 'group-world';
+export const EXT_KEY = 'group-director';
 export const MODE_OFF = 'off';
 export const MODE_FORMULA = 'formula';
 export const MODE_LLM = 'llm';
@@ -34,6 +34,10 @@ export const DEFAULT_SETTINGS = {
   "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
   "reason": "short justification"{{scriptField}},
   "ledger_update": {},
+  "variable_update": {
+    "global": { {{storyBlueprintDoneField}} },
+    "character": {}
+  },
   "loreAssignments": {
     "NameOfFirstSpeaker": ["exact entry name", "another entry"],
     "NameOfSecondSpeaker": []
@@ -63,6 +67,9 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     templateMaxPasses: 5,
     templateRecursive: true,
     templateDebugPlaceholders: false,
+    // Provider render timeout (ms). Per-provider ceiling; overridden by provider.timeoutMs
+    // or the providerTimeoutMs render option. 0 = no timeout. Wired via setProviderTimeoutDefault().
+    providerTimeoutMs: 10000,
     // Force Speak
     forceSpeakMode: 'native',
     forceSpeakPrompt: '',
@@ -75,6 +82,17 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     summaryPrompt: '',
     autoSummaryEnabled: false,
     autoSummaryInterval: 10,
+    // Story Blueprint
+    storyBlueprintEnabled: false,
+    storyBlueprintAutoContinue: false,
+    storyBlueprintProgressionMode: 'leaf',
+    storyBlueprintProgressionLevel: 0,
+    storyBlueprintCompletionVariable: 'gd_story_chapter_done',
+    storyBlueprintMaxNodes: 8,
+    storyBlueprintPrompt: '',
+    storyBlueprintContinuePrompt: '',
+    storyBlueprintJsonSchema: '',
+    storyBlueprintProviderTemplate: '',
     // Chat Critique
     critiqueEnabled: false,
     critiqueReusePrevious: true,
@@ -128,6 +146,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     customPromptsEnabled: true,
     scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
     providerReferenceList: [], // user-editable provider reference list
+    providerReferenceDeletedDefaultIds: [], // default provider reference ids hidden by the user
     // Custom Agents — user-defined LLM agents
     customAgents: [], // [{ id, name, providerName, prompt, schema, enabled, autoEnabled, autoInterval, order }]
 };

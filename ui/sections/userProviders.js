@@ -15,8 +15,8 @@ registerSection('userProviders', function (ctx) {
 
     const deps = {
         log: ctx.log || console.log,
-        registerProvider: window.GroupWorld?.registerProvider,
-        CapabilityRegistry: window.GroupWorld?.CapabilityRegistry,
+        registerProvider: window.GroupDirector?.registerProvider,
+        CapabilityRegistry: window.GroupDirector?.CapabilityRegistry,
     };
 
     const $pWarn = $(`<div class="neutral_warning" style="margin:6px 0;">

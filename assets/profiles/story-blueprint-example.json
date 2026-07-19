@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "title": "示例故事蓝图",
+  "meta": {
+    "premise": "角色们被卷入一场失踪事件。",
+    "style": "悬疑、缓慢升温、尊重玩家选择"
+  },
+  "nodes": [
+    {
+      "id": "chapter_001",
+      "type": "chapter",
+      "title": "第一章：异常的委托",
+      "content": {
+        "purpose": "让角色知道有人失踪，并获得第一个调查方向。",
+        "director_prompt": "引导群聊围绕委托、失踪者和最后出现地点展开。",
+        "completion_rule": "当玩家或主要角色明确知道失踪事件，并获得至少一个调查方向时，本块完成。"
+      },
+      "children": []
+    }
+  ]
+}

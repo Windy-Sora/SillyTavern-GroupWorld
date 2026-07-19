@@ -69,7 +69,7 @@ registerSection('npc', function (ctx) {
             }
         } catch (e) {
             toastr.error(L('NPC 生成失败: ' + e.message, 'NPC generation failed: ' + e.message));
-            console.error('[GroupWorld] NPC generation error:', e);
+            console.error('[GroupDirector] NPC generation error:', e);
         } finally {
             btn.prop('disabled', false);
         }

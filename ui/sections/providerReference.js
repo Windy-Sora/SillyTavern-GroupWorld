@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 const DEFAULT_ENTRIES = [
     { id: 'd1', placeholder: '{{recentMessages}}', name: 'Recent Messages', descZh: '最近的聊天消息，用于给 LLM 提供对话上下文。消息数由"最近消息条数"设置控制。', descEn: 'Recent chat messages for LLM context. Number controlled by recentMessageCount.' },
@@ -34,19 +35,44 @@ const DEFAULT_ENTRIES = [
     { id: 'd31', placeholder: '{{llmJsonSchema}}', name: 'LLM JSON Schema', descZh: '用户可自定义的 JSON 输出格式模板，决定 LLM 返回的 JSON 结构。包含 {{scriptField}} 占位符用于控制 scripts 字段的有无。', descEn: 'User-customizable JSON output format template that defines the JSON structure the LLM returns. Contains {{scriptField}} placeholder to control the scripts field.' },
     { id: 'd32', placeholder: '{{scriptField}}', name: 'Script Field', descZh: '展开为 scripts 字段的 JSON 片段（开启导演剧本时）或空字符串（关闭时），嵌入在 {{llmJsonSchema}} 中使用。', descEn: 'Expands to a scripts JSON fragment when Director Script is enabled, or empty string when disabled. Used within {{llmJsonSchema}}.' },
     { id: 'd33', placeholder: '{{test}}', name: 'Test Provider', descZh: '测试用接口，占位文本，用于验证 Provider 系统是否正常工作。', descEn: 'Test provider returning placeholder text to verify the Provider system works.' },
+    { id: 'd34', placeholder: '{{globalVars}}', name: 'Global Variables', descZh: '渲染所有全局变量为可读列表（label: value），用于向 LLM 展示当前全局状态。受变量系统控制。', descEn: 'Renders all global variables as a readable list (label: value) to show current global state to the LLM. Controlled by the Variable system.' },
+    { id: 'd35', placeholder: '{{charVars}}', name: 'Character Variables', descZh: '渲染角色变量为按角色分组的可读列表。有当前角色时只渲染该角色，否则渲染全部活跃角色。受变量系统控制。', descEn: 'Renders character variables grouped by character. With a current character, renders only that character; otherwise renders all active characters. Controlled by the Variable system.' },
+    { id: 'd36', placeholder: '{{vars}}', name: 'Variable Snapshot (JSON)', descZh: '完整变量快照 JSON，含 global、character、currentCharacter、最近 20 条日志。用于需要结构化变量数据的场景。', descEn: 'Full variable snapshot JSON including global, character, currentCharacter, and last 20 log entries. For scenarios needing structured variable data.' },
+    { id: 'd37', placeholder: '{{varsJson}}', name: 'Variable Snapshot JSON', descZh: '与 {{vars}} 输出相同，完整变量快照 JSON。', descEn: 'Same output as {{vars}}, full variable snapshot JSON.' },
+    { id: 'd38', placeholder: '{{variableMaintenance}}', name: 'Variable Maintenance', descZh: '变量维护说明文本，自动注入 Director Prompt 末尾。告知 LLM 当前有哪些变量需要维护、各自的更新规则，以及如何通过 JSON 返回 variable_update。这是变量系统与 LLM 交互的核心桥梁。', descEn: 'Variable maintenance instructions auto-injected at the end of the Director Prompt. Tells the LLM which variables need maintenance, their update rules, and how to return variable_update in JSON. This is the core bridge between the variable system and the LLM.' },
+    { id: 'd39', placeholder: '{{storyBlueprintCurrent}}', name: 'Story Blueprint Current', descZh: '当前故事蓝图推进块。包含当前路径、当前节点 JSON、进度，以及让 Director 在本块完成时把完成变量设为 true 的说明。故事蓝图关闭时输出为空。', descEn: 'Current Story Blueprint guidance block. Includes current path, current node JSON, progress, and instructions for Director to set the completion variable to true when done. Empty when Story Blueprint is disabled.' },
+    { id: 'd40', placeholder: '{{storyBlueprintCurrentJson}}', name: 'Story Blueprint Current JSON', descZh: '当前推进节点的结构化 JSON，适合放进需要精确读取当前章节/小节信息的 Prompt。故事蓝图关闭或无当前节点时输出为空。', descEn: 'Structured JSON for the current active blueprint node. Useful in prompts that need exact chapter/section data. Empty when disabled or when no current node exists.' },
+    { id: 'd41', placeholder: '{{storyBlueprintProgress}}', name: 'Story Blueprint Progress', descZh: '故事蓝图进度摘要，包含已完成数量、总数、是否已完成、当前索引和当前路径。适合仪表盘、续写 Prompt 或自定义诊断。', descEn: 'Story Blueprint progress summary, including completed count, total count, completion state, current index, and current path. Useful for dashboards, continuation prompts, or custom diagnostics.' },
+    { id: 'd42', placeholder: '{{storyBlueprintSchemaHint}}', name: 'Story Blueprint Schema Hint', descZh: '故事蓝图推进协议提示，说明 Director 应在当前块完成时更新哪个布尔变量。通常用于自定义 Director schema 或严格 JSON 输出说明。', descEn: 'Story Blueprint progression protocol hint. Explains which boolean variable Director should update when the current block is complete. Usually used in custom Director schemas or strict JSON output instructions.' },
+    { id: 'd43', placeholder: '{{storyBlueprintFullJson}}', name: 'Story Blueprint Full JSON', descZh: '完整故事蓝图 JSON，包含蓝图 meta、节点树、进度状态等。主要用于续写蓝图、调试或高级自定义 Prompt。故事蓝图关闭时输出为空。', descEn: 'Full Story Blueprint JSON, including meta, node tree, and progress state. Mainly for blueprint continuation, debugging, or advanced custom prompts. Empty when disabled.' },
+    { id: 'd44', placeholder: '{{storyBlueprintDoneField}}', name: 'Story Blueprint Done Field', descZh: 'Director JSON Schema 专用占位符。故事蓝图开启时展开为完成变量字段（默认 "gd_story_chapter_done": false），关闭时为空；建议放在 variable_update.global 内。', descEn: 'Director JSON Schema placeholder. Expands to the completion variable field when Story Blueprint is enabled (default "gd_story_chapter_done": false), or empty when disabled. Recommended inside variable_update.global.' },
 ];
 
 let nextUserIdx = 0;
 function genId() { return `u_${Date.now()}_${++nextUserIdx}`; }
+const DEFAULT_IDS = new Set(DEFAULT_ENTRIES.map(e => e.id));
 
 registerSection('providerReference', function (ctx) {
     const { settings, $c, saveSettings } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
+    if (!Array.isArray(settings.providerReferenceDeletedDefaultIds)) settings.providerReferenceDeletedDefaultIds = [];
 
-    // Init list
-    if (!settings.providerReferenceList || !settings.providerReferenceList.length) {
+    // Init list — migrate missing defaults on every load
+    if (!Array.isArray(settings.providerReferenceList)) {
         settings.providerReferenceList = DEFAULT_ENTRIES.map(e => ({ ...e }));
         saveSettings();
+    } else {
+        // Merge any new default entries not yet in the user's list (incremental migration)
+        const existingIds = new Set(settings.providerReferenceList.map(e => e.id));
+        const deletedDefaultIds = new Set(settings.providerReferenceDeletedDefaultIds);
+        let added = false;
+        for (const def of DEFAULT_ENTRIES) {
+            if (!existingIds.has(def.id) && !deletedDefaultIds.has(def.id)) {
+                settings.providerReferenceList.push({ ...def });
+                added = true;
+            }
+        }
+        if (added) saveSettings();
     }
     const list = settings.providerReferenceList;
 
@@ -71,14 +97,13 @@ registerSection('providerReference', function (ctx) {
 
         const html = filtered.map(e => {
             const desc = isZh() ? (e.descZh || e.descEn) : (e.descEn || e.descZh);
-            const isUser = e.id && e.id.startsWith('u_');
             return `
             <div class="gd-provider-ref-entry" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;">
                 <div style="display:flex;align-items:flex-start;gap:6px;">
                     <code style="background:var(--grey20a);padding:2px 6px;border-radius:3px;font-size:0.85em;white-space:nowrap;flex-shrink:0;">${escHtml(e.placeholder)}</code>
                     <span style="font-weight:bold;font-size:0.9em;flex:1;min-width:0;">${escHtml(e.name)}</span>
                     <span class="menu_button menu_button_icon gd-provider-ref-edit" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;" title="${isZh() ? '编辑' : 'Edit'}"><i class="fa-solid fa-pen-to-square"></i></span>
-                    ${isUser ? `<span class="menu_button menu_button_icon gd-provider-ref-delete" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;color:#ff5555;" title="${isZh() ? '删除' : 'Delete'}"><i class="fa-solid fa-trash"></i></span>` : ''}
+                    <span class="menu_button menu_button_icon gd-provider-ref-delete" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;color:#ff5555;" title="${isZh() ? '删除' : 'Delete'}"><i class="fa-solid fa-trash"></i></span>
                 </div>
                 <div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;margin-left:2px;">${escHtml(desc)}</div>
             </div>`;
@@ -93,14 +118,23 @@ registerSection('providerReference', function (ctx) {
         });
 
         // Delete
-        $container.find('.gd-provider-ref-delete').off('click').on('click', function () {
+        $container.find('.gd-provider-ref-delete').off('click').on('click', async function () {
             const id = $(this).data('id');
             const idx = list.findIndex(e => e.id === id);
-            if (idx >= 0) {
-                list.splice(idx, 1);
-                save();
-                render();
+            if (idx < 0) return;
+            const entry = list[idx];
+            if (!await callGenericPopup(
+                isZh()
+                    ? `删除接口「${entry.name || entry.placeholder}」？可通过“恢复默认”找回内置接口。`
+                    : `Delete "${entry.name || entry.placeholder}"? Built-in entries can be restored with Reset Defaults.`,
+                POPUP_TYPE.CONFIRM,
+            )) return;
+            if (DEFAULT_IDS.has(id) && !settings.providerReferenceDeletedDefaultIds.includes(id)) {
+                settings.providerReferenceDeletedDefaultIds.push(id);
             }
+            list.splice(idx, 1);
+            save();
+            render();
         });
     }
 
@@ -154,6 +188,7 @@ registerSection('providerReference', function (ctx) {
     // ── Reset ──
 
     $c('provider-ref-reset').off('click').on('click', () => {
+        settings.providerReferenceDeletedDefaultIds = [];
         settings.providerReferenceList = DEFAULT_ENTRIES.map(e => ({ ...e }));
         save();
         render();

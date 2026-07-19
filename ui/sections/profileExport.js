@@ -138,7 +138,7 @@ registerSection('profileExport', function (ctx) {
             const result = parseImportFile(reader.result);
             if (!result.ok) {
                 toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + result.error);
-                console.error('[GroupWorld] Profile import parse error:', result.error);
+                console.error('[GroupDirector] Profile import parse error:', result.error);
                 return;
             }
             renderImportList(result.data);
@@ -228,7 +228,7 @@ registerSection('profileExport', function (ctx) {
             toastr.success(msg);
         } catch (e) {
             toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + e.message);
-            console.error('[GroupWorld] Profile import apply error:', e);
+            console.error('[GroupDirector] Profile import apply error:', e);
         } finally {
             btn.prop('disabled', false);
         }

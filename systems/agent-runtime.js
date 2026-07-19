@@ -164,20 +164,15 @@ export async function managedCall(caller, prompt, callConfig = {}) {
     throw lastError;
 }
 
-async function withTimeout(promise, ms, signal) {
-    let timer;
-    let onAbort = null;
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
-    });
-    const abort = signal
-        ? new Promise((_, reject) => {
-            if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
-            onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
-            signal.addEventListener('abort', onAbort, { once: true });
-        })
-        : null;
-    const contenders = abort ? [promise, timeout, abort] : [promise, timeout];
+export async function withTimeout(promise, ms, signal) {
+    let timer, onAbort = null;
+    const contenders = [promise];
+    if (ms > 0) contenders.push(new Promise((_, reject) => { timer = setTimeout(() => { const e = new Error(`Request timed out after ${ms}ms`); e.name = 'TimeoutError'; reject(e); }, ms); }));
+    if (signal) contenders.push(new Promise((_, reject) => {
+        if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+        onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+        signal.addEventListener('abort', onAbort, { once: true });
+    }));
     try {
         return await Promise.race(contenders);
     } finally {

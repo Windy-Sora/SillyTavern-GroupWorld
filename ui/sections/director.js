@@ -95,6 +95,13 @@ registerSection('director', function (ctx) {
         saveSettings();
     });
 
+    // Provider render timeout (wires to settings.providerTimeoutMs → setProviderTimeoutDefault)
+    $c('provider-timeout').val(settings.providerTimeoutMs ?? 10000);
+    $c('provider-timeout').on('input', () => {
+        settings.providerTimeoutMs = Math.max(0, parseInt($c('provider-timeout').val()) || 0);
+        saveSettings();
+    });
+
     // Knowledge textarea
     $c('knowledge-text').val(settings.knowledgeText || '');
     $c('knowledge-text').on('input', () => {

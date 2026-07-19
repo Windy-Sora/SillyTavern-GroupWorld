@@ -254,6 +254,8 @@ const I18N = {
         templateMaxPassesHint: '推荐 3-5。',
         templateDebugPlaceholders: '调试模式：保留无法识别的占位符',
         templateDebugPlaceholdersHint: '开启后未注册的占位符会保留在输出中方便排查。',
+        providerTimeout: 'Provider 渲染超时 (ms)',
+        providerTimeoutHint: '单个 Provider 的渲染时间上限。0 = 不限制。需要重启或点击保存后生效。',
 
         knowledgeTitle: '知识库 (Knowledge)',
         knowledgeHint: '此区域的文本不会被渲染——通过 <code>{{knowledge}}</code> 占位符引用。',
@@ -789,6 +791,8 @@ const I18N = {
         templateMaxPassesHint: 'Recommended: 3-5.',
         templateDebugPlaceholders: 'Debug mode: keep unrecognized placeholders',
         templateDebugPlaceholdersHint: 'When on, unknown placeholders remain in output for troubleshooting.',
+        providerTimeout: 'Provider render timeout (ms)',
+        providerTimeoutHint: 'Per-provider render time ceiling. 0 = no timeout. Takes effect on save.',
 
         knowledgeTitle: 'Knowledge Base',
         knowledgeHint: 'Text in this area is NOT rendered — use <code>{{knowledge}}</code> placeholder to reference it.',

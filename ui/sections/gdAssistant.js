@@ -7,7 +7,7 @@ registerSection('gdAssistant', function (ctx) {
     if (!$c('dash-get-assistant').length) return;
 
     const L = (zh, en) => (settings.lang || 'zh') === 'zh' ? zh : en;
-    const ASSET_BASE = 'scripts/extensions/third-party/SillyTavern-GroupWorld/assets/gd-assistant';
+    const ASSET_BASE = 'scripts/extensions/third-party/SillyTavern-GroupDirector/assets/gd-assistant';
 
     // ── CSRF helpers ──
     let _csrfToken = null;

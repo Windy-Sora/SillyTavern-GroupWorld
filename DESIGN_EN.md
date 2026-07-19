@@ -4,7 +4,7 @@
 
 Group World is a **group-chat context pipeline**: collect data → Agent decision → inject character prompt.
 
-It ships with 9 Agent groups by default: Director, ForceSpeak, Profile, Summary, NPC, Memory, PostSpeech (multimodal strategy), Critique, and Custom Agent (user-defined — not registered as an Agent, calls LLM directly through the system). The first 8 Agents each have independent API configurations; Custom Agent shares the `custom-agent` API configuration.
+It ships with 10 configurable LLM call groups by default: Director, ForceSpeak, Profile, Summary, NPC, Memory, PostSpeech (multimodal strategy), Critique, Story Blueprint, and Custom Agent (user-defined — not registered as an Agent, calls LLM directly through the system). Runtime-registered Agents use the declarative pipeline; Story Blueprint and Custom Agent call the LLM directly through their systems, but still have independent API configurations.
 
 The framework is not bound to any specific use case — replace prompt templates to implement dungeon master, debate referee, combat system, social simulation, and other scenarios.
 
@@ -186,6 +186,7 @@ settings.agentConfigs = {
   'npc':         { ... },
   'memory':      { ... },
   'post-speech': { ... },
+  'story-blueprint': { ... }, // Story Blueprint generation/continuation
   'custom-agent': { ... },  // All Custom Agent instances coexist
 };
 ```
@@ -209,7 +210,15 @@ registerProvider({
 });
 ```
 
-### 3.2 Registered Providers (33 built-in + N Custom Agent dynamic registrations)
+### 3.2 Render Behavior (v0.6.1+)
+
+- **Parallel execution** — Phase 1 runs all providers via `Promise.allSettled` concurrently. One provider's timeout/error does not affect siblings.
+- **Per-provider timeout** — Default 10s (`settings.providerTimeoutMs`, GUI-adjustable). Providers may declare `timeoutMs` to override (priority: `provider.timeoutMs` > call option > global default). Set to 0 to disable. Timeouts log `[GroupDirector] Provider "xxx" timed out` in Console.
+- **Signal/abort** — `renderPrompt` accepts a `signal` option (wired from Director/ForceSpeak/PostSpeech agents). User-Stop aborts in-flight providers with AbortError.
+- **Error isolation** — Timed-out or throwing providers degrade to empty `{content:'', data:null}`. Sibling providers are unaffected.
+- **World-book scanner dedup** — `{{worldBooks}}` and `{{worldBookImportance}}` share an in-flight promise dedup so parallel Phase 1 does not duplicate `loadWorldInfo` calls.
+
+### 3.3 Registered Providers (44 built-in + N Custom Agent dynamic registrations)
 
 | Provider | Placeholder | Description |
 |----------|--------|------|
@@ -225,6 +234,7 @@ registerProvider({
 | `directorHistory` | `{{directorHistory}}` | Full Director history JSON |
 | `llmJsonSchema` | `{{llmJsonSchema}}` | User-editable JSON output format template, containing `{{scriptField}}` |
 | `scriptField` | `{{scriptField}}` | Expands to scripts field fragment when scripts enabled, or emptied when disabled |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Expands to the completion variable field when Story Blueprint is enabled, or empties when disabled |
 | `worldBooks` | `{{worldBooks}}` | Activated world book list |
 | `worldBookImportance` | `{{worldBookImportance}}` | Entry importance ranking |
 | `characterLore` | `{{characterLore}}` | Character world book trigger words |
@@ -246,8 +256,71 @@ registerProvider({
 | `script` | `{{script}}` | Current character's Director script (Character Prompt Injection Template only) |
 | `importedCritique` | `{{importedCritique}}` | Imported critiques (independent storage) |
 | `test` | `{{test}}` | Template syntax test |
+| `globalVars` | `{{globalVars}}` | Global variable list (readable text) |
+| `charVars` | `{{charVars}}` | Character variable list (grouped by character) |
+| `vars` | `{{vars}}` | Full variable snapshot JSON |
+| `varsJson` | `{{varsJson}}` | Full variable snapshot JSON (same as vars) |
+| `variableMaintenance` | `{{variableMaintenance}}` | Variable maintenance instructions (injected into Director Prompt, tells LLM how to return variable_update) |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | Current Story Blueprint step; completion notice is consumed once by Director |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | Current progression node JSON |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | Blueprint progress summary |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | Completion variable protocol hint |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | Full blueprint JSON |
 
-### 3.3 Coding Rules
+### 3.4 Variable System (v0.7)
+
+The variable system provides structured, long-term state tracking for Group World. Unlike `ledger_update` (free-form JSON), the variable system offers typed, validated, auto-updated named variables.
+
+**Core features:**
+- **22 built-in variable templates** — story_phase, current_goal, party_funds, danger_level, trust_user, emotion, health, etc., covering narrative/economic/relationship/status tracking
+- **Two scopes** — `global` and `character` (per-character independent values)
+- **Six data types** — string, number, boolean, enum, object, array
+- **Four update modes** — replace, delta (numeric increment/decrement), append, merge (shallow object merge)
+- **Value validation & clamping** — number has min/max, enum checks allowed values, delta auto-calculates
+- **Change log** — last 100 operations, with messageId/hash for stale detection
+- **Stale detection** — variables marked as "possibly stale" when messages are deleted or modified
+- **Rollback support** — revert to the previous non-ignored record
+- **Locking** — locked=true records LLM updates but does not write values
+- **Config profile integration** — variable data syncs with config profile export/import
+
+**LLM interaction:** `{{variableMaintenance}}` injected into Director system prompt → LLM returns `variable_update` field in JSON response → `applyUpdates()` parses and writes to `chat_metadata`.
+
+**Storage:** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**UI:** Tools drawer → Variables card (list + editor + templates + import/export); Dashboard → Variables panel (click "Variables" button to expand, real-time view/edit/rollback/lock).
+
+### 3.5 Story Blueprint System
+
+Story Blueprint is the story-structure system in the continuity layer. The framework only stores a structured blueprint and progress; it does not decide in code whether the story is narratively complete. Director/ForceSpeak declare completion through a boolean variable protocol.
+
+**Core protocol:**
+- The completion variable defaults to `gd_story_chapter_done`, stored as a global boolean variable.
+- The Director JSON schema uses `{{storyBlueprintDoneField}}` inside `variable_update.global`; when Story Blueprint is disabled, this placeholder renders empty.
+- When the LLM sets the completion variable to `true`, the system advances one step and immediately resets it to `false`.
+- If ForceSpeak returns the completion variable, the signal is consumed there too so it does not leak into the next Director round.
+
+**Blueprint shape:** `nodes` is a dynamic tree: flat, chapter/section/beat, or deeper. Progression modes are `leaf`, `all`, and `level`. `content` is a free-form object owned by prompt authors.
+
+**Generation and continuation:**
+- Generation/continuation prompts use the normal Provider renderer, so they can reference characters, profiles, world books, ledgers, summaries, variables, and custom interfaces.
+- The default generation prompt includes `{{storyBlueprintFullJson}}` and `{{storyBlueprintProgress}}` so regeneration can preserve existing continuity; users can remove those interfaces from the prompt for a hard restart.
+- Story Blueprint uses `agentConfigs['story-blueprint']`, configurable in the Tools drawer's Agent Configuration card.
+- Auto-continuation runs in the background and does not block the current Director decision; `continuePending` drives the "continuing" UI state.
+- Continuation appends nodes after re-normalizing ids with the current top-level offset, then recursively resolves id collisions to protect `doneSignals`.
+- Continuation that returns no nodes fails explicitly instead of reporting success with no change.
+
+**Manual editing:**
+- The UI can create a user-authored blank blueprint, append root-level chapters, inspect progression rows, and use the location button separately to set the current step.
+- Blueprint title, meta fields, and current/viewed node `content` fields are inline-editable. Saves reuse `setBlueprint(..., { resetProgress:false })` and do not reset progress.
+
+**State and safety:**
+- Blueprint content and progress live in `chat_metadata[EXT_KEY].storyBlueprint`; configuration lives in `extension_settings`.
+- `doneSignals` records completed node id, step index, chat length, timestamp, and source.
+- The completion notice is consumed once only by Director prompt rendering; UI preview and ForceSpeak cannot steal it.
+- Import and advanced JSON editing validate a non-empty `nodes` array before saving.
+- Config profiles sync Story Blueprint configuration plus variable definitions/data, not the current chat's blueprint body or progress. Blueprint body uses the Story Blueprint card's own import/export.
+
+### 3.6 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters
@@ -261,7 +334,7 @@ registerProvider({
 
 ```
 Phase 0   — {[{...}]} passthrough slots → sentinel replacement
-Phase 1   — Execute all Providers, cache to cache[id] = { content, data }
+Phase 1   — Execute all Providers in parallel (Promise.allSettled + per-provider timeout + signal abort), cache to cache[id] = { content, data }
 Phase 1.5 — Block loops {{#provider:path}}...{{/provider}}
 Phase 2   — Simple placeholders {{name}} → cache[id].content
 Phase 3   — Path queries {{?name:path|fallback}}
@@ -441,7 +514,7 @@ Save/delete/import operations auto-refresh both dropdowns and the config profile
 ## 10. Directory Structure
 
 ```
-SillyTavern-GroupWorld/
+SillyTavern-GroupDirector/
 ├── manifest.json
 ├── index.js                   # Entry point: assembly layer, runtime state, interceptor, event listeners
 ├── settings.js                # Constants + default settings (single source of truth)
@@ -465,6 +538,7 @@ SillyTavern-GroupWorld/
 │   │   ├── director-critique.js
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
+│   │   ├── variables.js          # Variable system Provider (5 placeholders)
 │   │   └── ...
 │   └── capabilities/          # 3 built-in Capabilities
 │       ├── manifest.js
@@ -499,6 +573,7 @@ SillyTavern-GroupWorld/
 │   ├── post-speech-system.js  # PostSpeech decision persistence
 │   ├── config-profile-system.js # Config profile management (with JSZip fallback loading)
 │   ├── custom-prompts-system.js # Custom Prompt templates
+│   ├── variable-system.js      # Variable system (defs/values/validation/log/rollback/stale detection)
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
 │   ├── critique-system.js     # AI critique
@@ -526,6 +601,7 @@ SillyTavern-GroupWorld/
         ├── continuity.js      # Continuity mode
         ├── worldinfo.js       # World book toggles
         ├── worldBooks.js      # World book selection
+        ├── variables.js       # Variable settings + dashboard panel
         ├── ledger.js          # Ledger browser
         ├── forceSpeak.js      # Force speak
         ├── chatSummary.js     # Context summary
@@ -827,7 +903,7 @@ Unified loading of extension modules under `assets/`. Each subdirectory has a `m
 
 ### User Import System
 
-Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupWorld` global.
+Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupDirector` global.
 
 ---
 
@@ -851,6 +927,7 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | Add new protocol | `utils/custom-api.js` → add `makeXxxCaller()` |
 | Add Prompt placeholder | `assets/providers/xxx.js` + manifest.js + `index.js` import/register |
 | Add business logic module | `systems/*.js` (new) + `index.js` import/assemble |
+| Add variable definition | UI Variables card → New/Template; or `variableSystem.upsertDefinition()` |
 | Add settings item | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | Add/modify UI area | `settings.html` + `ui/sections/newname.js` + `ui/settings-init.js` import |
 | Add UI text | `ui/i18n.js` (one line each in zh+en) |

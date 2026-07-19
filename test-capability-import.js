@@ -6,7 +6,7 @@
  * Uses deps pattern — no relative imports needed.
  */
 export function register(deps) {
-    const CapabilityRegistry = deps.CapabilityRegistry || window.GroupWorld?.CapabilityRegistry;
+    const CapabilityRegistry = deps.CapabilityRegistry || window.GroupDirector?.CapabilityRegistry;
     const log = deps.log || (() => {});
 
     CapabilityRegistry.register({

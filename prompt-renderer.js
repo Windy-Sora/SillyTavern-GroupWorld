@@ -3,6 +3,20 @@ import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
 import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
 import { unescapeKnowledge } from './assets/providers/knowledge.js';
 
+// Default per-provider render timeout (ms). Overridden by provider.timeoutMs or
+// the providerTimeoutMs render option. 0 disables the timeout for a provider.
+// index.js wires this to settings.providerTimeoutMs via setProviderTimeoutDefault().
+let providerTimeoutDefault = 10000;
+export function setProviderTimeoutDefault(ms) {
+    if (ms == null) return;  // reject null/undefined - Number(null)=0 would silently disable all timeouts
+    const n = Number(ms);
+    if (Number.isFinite(n) && n >= 0) providerTimeoutDefault = n;
+}
+
+// Lightweight typed errors (avoid DOMException dependency).
+function mkAbortErr()  { const e = new Error('Aborted'); e.name = 'AbortError';  return e; }
+function mkTimeoutErr(msg) { const e = new Error(msg); e.name = 'TimeoutError'; return e; }
+
 /**
  * Render a template by executing all registered providers once,
  * caching their results, then replacing all placeholders in passes:
@@ -20,7 +34,7 @@ import { unescapeKnowledge } from './assets/providers/knowledge.js';
  * value (0, 1, 2...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough, signal, providerTimeoutMs } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -39,21 +53,67 @@ export async function renderPrompt(template, context, options = {}) {
         return `${RAW_MARKER}${idx}\x00`;
     });
 
-    // ── Phase 1: execute every provider, cache normalized results ──
+    // ── Phase 1: execute providers in parallel, each with optional timeout + abort ──
     const cache = Object.create(null);
+    const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
 
+    if (signal?.aborted) throw mkAbortErr();
+
+    const enabledProviders = [];
     for (const provider of providers.values()) {
         if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
+        enabledProviders.push(provider);
+    }
+
+    const results = await Promise.allSettled(enabledProviders.map(provider => (async () => {
+        let timeoutId, onUserAbort;
+        const providerAbort = new AbortController();
         try {
-            const raw = await provider.render(context);
+            const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
+            let raw;
+            if (timeoutMs > 0 || signal) {
+                const racers = [provider.render(context, providerAbort.signal)];
+                if (signal) racers.push(new Promise((_, reject) => {
+                    if (signal.aborted) {
+                        providerAbort.abort(mkAbortErr());
+                        reject(mkAbortErr());
+                        return;
+                    }
+                    onUserAbort = () => {
+                        providerAbort.abort(mkAbortErr());
+                        reject(mkAbortErr());
+                    };
+                    signal.addEventListener('abort', onUserAbort, { once: true });
+                }));
+                if (timeoutMs > 0) racers.push(new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        const err = mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`);
+                        providerAbort.abort(err);
+                        reject(err);
+                    }, timeoutMs);
+                }));
+                raw = await Promise.race(racers);
+            } else {
+                raw = await provider.render(context, providerAbort.signal);
+            }
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };
-            cache[provider.id] = normalized;
+            return { id: provider.id, normalized };
         } catch (e) {
-            console.warn(`[GroupWorld] Provider "${provider.id}" render failed:`, e.message);
-            cache[provider.id] = { content: '', data: null };
+            if (signal?.aborted) throw e?.name === 'AbortError' ? e : mkAbortErr();
+            const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
+            console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
+            return { id: provider.id, normalized: { content: '', data: null } };
+        } finally {
+            clearTimeout(timeoutId);
+            if (onUserAbort) { signal.removeEventListener('abort', onUserAbort); onUserAbort = null; }
         }
+    })()));
+
+    for (const r of results) {
+        if (r.status === 'fulfilled') cache[r.value.id] = r.value.normalized;
+        else { if (signal?.aborted) throw r.reason?.name === 'AbortError' ? r.reason : mkAbortErr(); }
     }
 
     // Inject local resolvers — per-call placeholder overrides that don't
@@ -263,7 +323,7 @@ function resolveInnerPlaceholders(pathStr, cache, context) {
     let prev;
     let guard = 0;
     do {
-        if (++guard > 16) { console.warn('[GroupWorld] resolveInnerPlaceholders exceeded max iterations (16) — possible circular reference'); break; }
+        if (++guard > 16) { console.warn('[GroupDirector] resolveInnerPlaceholders exceeded max iterations (16) — possible circular reference'); break; }
         prev = pathStr;
         pathStr = pathStr.replace(/\{\{([^{}]+)\}\}/g, (_match, inner) => {
             if (/^\w+$/.test(inner)) {

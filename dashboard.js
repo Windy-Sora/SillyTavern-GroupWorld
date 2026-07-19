@@ -522,7 +522,7 @@ registerSection('dashboard', function (ctx) {
         const btn = $('#gd-dash-memories'); btn.prop('disabled', true);
         let done = 0;
         for (const avatar of members) {
-            try { await memorySystem.generateForCharacter(avatar); } catch (e) { console.warn('[GroupWorld] Memory extraction failed for', avatar, e); }
+            try { await memorySystem.generateForCharacter(avatar); } catch (e) { console.warn('[GroupDirector] Memory extraction failed for', avatar, e); }
             done++;
         }
         btn.prop('disabled', false);
@@ -588,7 +588,7 @@ registerSection('dashboard', function (ctx) {
     refreshWorldBookStat();
 
     // Refresh when any GD drawer is toggled
-    $('.group-world-settings .inline-drawer-toggle').on('click', function () {
+    $('.group-director-settings .inline-drawer-toggle').on('click', function () {
         setTimeout(refreshAll, 300);
     });
 

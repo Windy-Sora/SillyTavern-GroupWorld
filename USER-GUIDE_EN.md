@@ -25,7 +25,7 @@
 
 ### Installation
 
-Place the `SillyTavern-GroupWorld` folder into ST's `public/scripts/extensions/third-party/` directory, restart ST. Enable it in the extension management panel.
+Place the `SillyTavern-GroupDirector` folder into ST's `public/scripts/extensions/third-party/` directory, restart ST. Enable it in the extension management panel.
 
 ### Three Steps to Start
 
@@ -219,6 +219,7 @@ ST's native force-speak feature requires plugin adaptation to avoid timeline cor
 | Recursive rendering | Continue parsing `{{...}}` inside placeholder outputs |
 | Max recursive passes | Prevent infinite loops. Recommended: 5 |
 | Debug placeholders | Preserve unrecognized placeholders for troubleshooting |
+| Provider render timeout (ms) | Per-provider render time ceiling. Default: 10000 (10s), 0 = unlimited. Timed-out providers degrade to empty content |
 | Character description control | Full inclusion / sliced truncation (recommended: 200 chars) |
 
 #### Director Script
@@ -289,7 +290,7 @@ Custom prompt to uniformly declare usage rules and priorities for profiles/memor
 
 ### 3.3 Continuity
 
-**What the Director remembers.** Three collapsible cards.
+**What the Director remembers.** Includes context summaries, Story Blueprint, AI critique, Director ledger, world books, and related continuity tools.
 
 #### Context Summary (Card)
 
@@ -308,6 +309,31 @@ Compresses chat context into concise summaries, reducing token consumption. When
 | Edit summary result | Edit text directly then save |
 
 The dashboard summary panel also has an identical set of auto-summary controls, kept in sync. Summary content supports inline editing in the panel, with changes bidirectionally synced to the drawer's textarea.
+
+#### Story Blueprint (Card)
+
+Uses a structured outline to guide Director so the story can progress through dynamic chapters, sections, beats, or deeper layers. When enabled, the default Director Prompt injects `{{storyBlueprintCurrent}}`.
+
+| Control | Purpose |
+|------|------|
+| Enable Story Blueprint Provider | Master switch. When disabled, blueprint providers are empty; Director cannot see chapter information and is not asked to return the completion variable |
+| Auto-continue when complete | After the current blueprint is complete, call the LLM in the background to append the next segment without blocking the current Director round |
+| Progression mode | `leaf` advances only leaf nodes; `all` advances all nodes depth-first; `level` advances a selected depth |
+| Completion variable | Default `gd_story_chapter_done`. Director/ForceSpeak set it to `true` to advance one step; the system resets it to `false` immediately |
+| Generated node count | Suggested number of leaf nodes for generation/continuation |
+| New Blueprint | Create a user-authored blank blueprint with one editable starting chapter |
+| Add Chapter | Append a blank root-level chapter without resetting existing progress |
+| Generate / Continue | Use the independent Story Blueprint API configuration to create a new blueprint or append nodes |
+| Rollback one / Reset progress | Correct progress after context deletion or accidental completion |
+| Progression node list | Click a row to view that node in the right panel; click the location icon to set it as the current step |
+| Blueprint title / node cards | Click the title, meta values, or node content fields to edit and autosave |
+| Advanced JSON editor | Directly edit blueprint JSON; saving validates that `nodes` is non-empty |
+| Generation Prompt / Continuation Prompt / Schema / Provider Template | Customizable with restore-default buttons; generation and continuation prompts support normal Provider rendering |
+| Export / Import | Export or import the current chat's blueprint body and progress |
+
+The default generation prompt includes `{{storyBlueprintFullJson}}` and `{{storyBlueprintProgress}}` so regeneration can preserve existing continuity. Remove those placeholders from the prompt when you intentionally want a clean restart.
+
+Blueprint body and progress are stored in the current chat. Config profiles sync blueprint configuration only, not the concrete story blueprint. Story Blueprint uses the `story-blueprint` independent API settings in the Tools drawer's Agent Configuration card.
 
 #### AI Critique (Card)
 
@@ -359,7 +385,7 @@ Recent multimodal policy decisions. Persisted with chat, auto-deduplicated.
 
 ### 3.5 Tools
 
-**Config profiles, export/import, Agents, Custom Agents, Custom Prompts, API reference, Script Executor, debugging.** Drawer collapsed by default. Nine collapsible cards.
+**Config profiles, export/import, Agents, Custom Agents, Custom Prompts, Variables, API reference, Script Executor, debugging.** Drawer collapsed by default.
 
 #### Config Profile Management (Card)
 
@@ -371,7 +397,7 @@ Export/import for four data types: Group Chat (character cards + world books `.z
 
 #### Agent Configuration (Card)
 
-Each Agent (Director / ForceSpeak / Profile / Summary / NPC / Memory / PostSpeech) can independently set its API endpoint and key. Supports OpenAI or Anthropic protocols. Test connection available.
+Each LLM call group (Director / ForceSpeak / Profile / Summary / NPC / Memory / PostSpeech / Critique / Story Blueprint / Custom Agent) can independently set its API endpoint and key. Supports OpenAI or Anthropic protocols. Test connection available.
 
 #### Custom Agent (Card)
 
@@ -398,7 +424,22 @@ Import custom `.js` Provider or Capability files. Must export `register(deps)`. 
 
 #### API Reference (Card)
 
-Pure reference documentation listing all 31 registered Provider placeholders and their descriptions (bilingual Chinese/English). Supports search filtering, add/edit/delete custom entries, export/import JSON files, one-click restore to defaults. No functional side effects—purely for helping users quickly understand available `{{placeholder}}` options in prompts.
+Pure reference documentation listing all 44 built-in Provider placeholders and their descriptions (bilingual Chinese/English). Supports search filtering, add/edit/delete custom entries, export/import JSON files, one-click restore to defaults. No functional side effects—purely for helping users quickly understand available `{{placeholder}}` options in prompts.
+
+#### Variables (Card)
+
+Manages Group World's variable tracking system. 22 built-in templates (story_phase, party_funds, trust_user, health, etc.) with global and character scopes. The LLM auto-maintains variable values each round; the dashboard variable panel provides real-time view/edit/rollback/lock. Supports import/export of variable definitions and data.
+
+| Control | Purpose |
+|------|------|
+| New Variable | Create a custom variable (id/label/scope/type/updateMode/rule) |
+| Template dropdown | Select from 22 presets to add to the current chat |
+| Variable list | Browse/edit/delete existing variables, copy `{{?vars:...}}` query tokens |
+| Editor | Modify variable definition (scope/type/update mode/validation rules/default value) |
+| Maintenance preview | View the actual {{variableMaintenance}} content injected into the Director Prompt |
+| Export/Import | Export variable definitions + data as JSON, reusable across group chats |
+
+> **Dashboard Variable Panel**: Click the "Variables" button on the dashboard action bar to expand. Includes index quick-jump, template dropdown, new variable creation, and export/import. Variable values are grouped by global/character with inline editing, rollback to previous record, and variable locking. Check "Hide unchanged character vars" to filter inactive rows.
 
 #### Script Executor (Card)
 
@@ -500,6 +541,31 @@ One extra LLM call per round. The Director analyzes context and returns JSON:
 | `{{randomDice}}` | 0.00-1.00 random number |
 | `{{dice}}` | Dice + luck value |
 | `{{maxSpeakers}}` | Max speakers per round |
+
+### Variable System (v0.7)
+
+| Placeholder | Content | DSL Query |
+|------|------|------|
+| `{{globalVars}}` | Readable list of global variables (label: value) | `{{?globalVars:party_funds.value}}` |
+| `{{charVars}}` | Character variables grouped by character | `{{?charVars:trust_user.values.$character}}` |
+| `{{vars}}` | Full variable snapshot JSON | `{{?vars:global.story_phase.value}}` |
+| `{{varsJson}}` | Full variable snapshot JSON (same as vars) | Same as above |
+| `{{variableMaintenance}}` | Variable maintenance instructions (auto-injected into Director Prompt) | — |
+
+The variable system provides 22 built-in variable templates (story_phase, party_funds, trust_user, health, etc.). The LLM can auto-update values each round via the `variable_update` JSON field. Variables support four update modes: replace/delta/append/merge. Click the "Variables" button on the dashboard to view/edit/rollback/lock values in real time.
+
+### Story Blueprint
+
+| Placeholder | Content | DSL Query |
+|------|------|------|
+| `{{storyBlueprintCurrent}}` | Current Story Blueprint progression block. The completion notice is consumed once only in Director prompt rendering | — |
+| `{{storyBlueprintCurrentJson}}` | Current progression node JSON | `{{?storyBlueprintCurrentJson:content.completion_rule}}` |
+| `{{storyBlueprintProgress}}` | Progress summary, e.g. `3/8 current chapter` | `{{?storyBlueprintProgress:complete}}` |
+| `{{storyBlueprintSchemaHint}}` | Completion variable protocol hint | `{{?storyBlueprintSchemaHint:completionVariable}}` |
+| `{{storyBlueprintFullJson}}` | Full blueprint JSON | `{{?storyBlueprintFullJson:title}}` |
+| `{{storyBlueprintDoneField}}` | Director JSON Schema field fragment, usually placed inside `variable_update.global` | — |
+
+When Story Blueprint is disabled, these providers return empty content or do not advance progress. `{{storyBlueprintDoneField}}` expands to an empty string when disabled.
 
 ### Custom Agents
 

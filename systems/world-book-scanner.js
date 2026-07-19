@@ -11,6 +11,11 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
 
     let cache = null;
     let cacheKey = '';
+    // Concurrency guard: promise-based in-flight dedup — when two providers call
+    // scanAll() concurrently (e.g. {{worldBooks}} and {{worldBookImportance}} under
+    // parallel Phase 1), the second waiter returns the same promise instead of
+    // duplicating all loadWorldInfo calls.
+    let inFlight = null;
 
     /**
      * Scan only the world books the user has manually selected
@@ -22,15 +27,20 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
         if (names.length === 0) return [];
         const key = names.sort().join('|') + '|' + (getMaxEntries ? getMaxEntries() : 20);
         if (cache && cacheKey === key) return cache;
+        if (inFlight && inFlight.key === key) return inFlight.promise;
 
-        const results = [];
+        // No cached result and no in-flight scan — start a new one.
+        // If a concurrent caller arrives during this scan it will hit the inFlight guard.
+        const promise = (async () => {
+            try {
+                const results = [];
 
-        const books = await Promise.all(names.map(async (name) => {
+                const books = await Promise.all(names.map(async (name) => {
             try {
                 const data = await loadWorldInfo(name);
                 return { name, data };
             } catch (e) {
-                console.warn(`[GroupWorld] Failed to load world book "${name}":`, e.message);
+                console.warn(`[GroupDirector] Failed to load world book "${name}":`, e.message);
                 return { name, data: null };
             }
         }));
@@ -71,14 +81,21 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
             });
         }
 
-        if (results.length === 0) {
-            console.warn('[GroupWorld] World book scanner: NO activated books found. Check that world books are selected in ST\'s World Info panel for this chat.');
-        } else if (log) {
-            log(`World book scanner: loaded ${results.length} activated books (${results.reduce((s, b) => s + b.entryCount, 0)} entries)`);
-        }
-        cache = results;
-        cacheKey = key;
-        return results;
+            if (results.length === 0) {
+                console.warn('[GroupDirector] World book scanner: NO activated books found. Check that world books are selected in ST\'s World Info panel for this chat.');
+            } else if (log) {
+                log(`World book scanner: loaded ${results.length} activated books (${results.reduce((s, b) => s + b.entryCount, 0)} entries)`);
+            }
+            cache = results;
+            cacheKey = key;
+            return results;
+            } finally {
+                inFlight = null;
+            }
+        })();
+
+        inFlight = { key, promise };
+        return promise;
     }
 
     /**

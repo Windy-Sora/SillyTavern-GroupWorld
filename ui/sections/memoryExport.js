@@ -242,7 +242,7 @@ registerSection('memoryExport', function (ctx) {
             toastr.success(msg);
         } catch (e) {
             toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + e.message);
-            console.error('[GroupWorld] Memory import error:', e);
+            console.error('[GroupDirector] Memory import error:', e);
         } finally {
             btn.prop('disabled', false);
         }

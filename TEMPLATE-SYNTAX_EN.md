@@ -20,6 +20,9 @@ Group World's template system supports six placeholder syntax types, usable in *
 {{recentMessages}}  {{characters}}  {{previousPlan}}  {{directorLedger}}
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
+{{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
+{{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
+{{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
 ```
 
 Inserts the Provider's rendered result for `name` directly into the template. Behavior for unregistered placeholders is controlled by the `templateDebugPlaceholders` setting:
@@ -210,6 +213,196 @@ return {
 | `moonPhase` | `{{moonPhase}}` | Moon phase (8 phases + illumination) | Structured moon phase fields | `providers/moon-phase.js` |
 | `timeOfDay` | `{{timeOfDay}}` | Time of day + season | `{ timeOfDay, season }` | `providers/time-of-day.js` |
 | `test` | `{{test}}` | Test text | Test data | `providers/test-provider.js` |
+| `globalVars` | `{{globalVars}}` | Global variable list | `{ [id]: { ...def, value } }` | `providers/variables.js` |
+| `charVars` | `{{charVars}}` | Character variable list (grouped by character) | `{ [id]: { ...def, values, names } }` | `providers/variables.js` |
+| `vars` | `{{vars}}` | Full variable snapshot JSON | `{ global, character, currentCharacter, log }` | `providers/variables.js` |
+| `varsJson` | `{{varsJson}}` | Full variable snapshot JSON (same as vars) | Same as above | `providers/variables.js` |
+| `variableMaintenance` | `{{variableMaintenance}}` | Variable maintenance instructions (injected into Director Prompt) | Full snapshot object | `providers/variables.js` |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | Current Story Blueprint step; completion notice consumed once by Director | `{ blueprint, progress, current, doneSignals }` | `providers/story-blueprint.js` |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | Current progression node JSON | Current node object | `providers/story-blueprint.js` |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | Blueprint progress summary | `{ current, done, total, complete, currentIndex }` | `providers/story-blueprint.js` |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | Completion variable protocol hint | `{ completionVariable }` | `providers/story-blueprint.js` |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | Full blueprint JSON | Blueprint object | `providers/story-blueprint.js` |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Director JSON Schema field fragment | `{ enabled, variableName }` | `index.js` |
+
+### 5.3 Variable System Provider Details
+
+Group World v0.7 adds a variable tracking system. The following 5 providers are all registered by `providers/variables.js`.
+
+#### `{{globalVars}}` — Global Variable List
+
+Renders all `scope: "global"` variables as readable text:
+
+```
+- Story Phase (story_phase): Prologue
+- Current Goal (current_goal): Explore the ruins
+- Party Funds (party_funds): 150
+- Danger Level (danger_level): 25
+```
+
+**data structure:**
+```json
+{
+  "story_phase": { "id": "story_phase", "label": "Story Phase", "scope": "global", "type": "string", "value": "Prologue", "rule": "..." },
+  "party_funds": { "id": "party_funds", "label": "Party Funds", "scope": "global", "type": "number", "value": 150, "min": 0, "updateMode": "delta" }
+}
+```
+
+**Path query examples:**
+```
+{{?globalVars:story_phase.value}}          → Prologue
+{{?globalVars:party_funds.value}}          → 150
+{{?globalVars:danger_level.value|0}}       → 25 (falls back to 0)
+```
+
+---
+
+#### `{{charVars}}` — Character Variable List
+
+Renders character variables based on context. With a current character, renders only that character; without, renders all active characters:
+
+```
+[Alice]
+  - Trust Toward User (trust_user): 60
+  - Emotion (emotion): curious
+  - Health (health): 95
+[Bob]
+  - Trust Toward User (trust_user): 30
+  - Emotion (emotion): wary
+  - Health (health): 80
+```
+
+**data structure:**
+```json
+{
+  "trust_user": {
+    "id": "trust_user", "label": "Trust Toward User", "scope": "character", "type": "number", "updateMode": "delta", "min": 0, "max": 100,
+    "values": { "alice_avatar_hash": 60, "bob_avatar_hash": 30 },
+    "names": { "alice_avatar_hash": "Alice", "bob_avatar_hash": "Bob" }
+  }
+}
+```
+
+**Path query examples:**
+```
+{{?charVars:trust_user.values.$character}}          → current character's trust
+{{?charVars:health.values.$character|100}}          → current character's health, defaults to 100
+```
+
+> **Note:** `$character` is only available in Script Wrapper context (value is the current character name). In Director Prompt, use a specific avatar or character name.
+
+---
+
+#### `{{vars}}` / `{{varsJson}}` — Full Snapshot JSON
+
+Both output the same content: a complete JSON snapshot of all variables.
+
+**data structure:**
+```json
+{
+  "global": {
+    "story_phase": { "id": "story_phase", "label": "Story Phase", "type": "string", "value": "Prologue", "rule": "..." },
+    "party_funds": { "id": "party_funds", "type": "number", "value": 150, "min": 0, "updateMode": "delta" }
+  },
+  "character": {
+    "trust_user": { "id": "trust_user", "type": "number", "values": { "alice_hash": 60, "bob_hash": 30 }, "names": { "alice_hash": "Alice", "bob_hash": "Bob" } }
+  },
+  "currentCharacter": "alice_hash",
+  "log": [ /* last 20 change log entries */ ]
+}
+```
+
+**Path query examples:**
+```
+{{?vars:global.story_phase.value}}                    → Prologue
+{{?vars:character.trust_user.values.alice_hash}}      → 60
+{{?vars:currentCharacter}}                            → alice_hash
+```
+
+---
+
+#### `{{variableMaintenance}}` — Variable Maintenance Instructions
+
+**This is the core bridge between the variable system and the LLM.** It is automatically injected at the end of the Director's system prompt, telling the LLM which variables need maintenance, their update rules, and how to return updates via JSON.
+
+**Rendered content example:**
+```md
+[Variables to maintain]
+Update these only when the conversation gives clear evidence. Use small numeric deltas when updateMode is delta.
+For character variables, use only the character names listed below as keys in the character object.
+
+Valid character names: "Alice", "Bob", "Charlie"
+
+- global.story_phase (string, replace) current=Prologue
+  Rule: Update when the story phase clearly changes. Keep it short.
+- global.party_funds (number, delta) current=150
+  Rule: Adjust when the group gains or spends money. Use deltas for changes.
+- character.*.trust_user (number, delta) default=50
+  Rule: Adjust only when this character gains or loses trust in the user. Use small deltas.
+- character.*.emotion (string, replace) default=
+  Rule: Track the character current dominant emotion in a few words.
+
+Return updates in this optional JSON field:
+"variable_update": {
+  "global": { "var_id": { "value": "...", "reason": "..." } },
+  "character": { "Exact Character Name": { "var_id": { "value": "+1 or new value", "reason": "..." } } }
+}
+```
+
+**LLM return format specification:**
+
+```json
+{
+  "speakers": ["Alice", "Bob"],
+  "reason": "...",
+  "variable_update": {
+    "global": {
+      "story_phase": { "value": "Chapter 2 - Departure", "reason": "Story transitions from prologue to chapter 2" },
+      "party_funds": { "value": "-30", "reason": "Spent 30 gold at the tavern" }
+    },
+    "character": {
+      "Alice": {
+        "trust_user": { "value": "+5", "reason": "User saved her" },
+        "emotion": { "value": "grateful" }
+      },
+      "Bob": {
+        "suspicion": { "value": "+10", "reason": "User's behavior is suspicious" }
+      }
+    }
+  },
+  "scripts": { ... }
+}
+```
+
+**Update mode reference:**
+
+| updateMode | Value format | Example | Behavior |
+|---|---|---|---|
+| `replace` | Any matching type | `"Chapter 2"` | Directly replaces old value |
+| `delta` (number only) | `"+5"` / `-10` / `3` | `"+5"` | Old value + delta, clamped to [min, max] |
+| `append` (array/string) | Single value or array | `"new entry"` / `["a","b"]` | Appends to end |
+| `merge` (object only) | JSON object | `{"key": "val"}` | Shallow merge into old object |
+
+**Injection location:** `{{variableMaintenance}}` is appended to the system prompt in `index.js`'s `buildDirectorSystemPrompt()` (before `{{llmJsonSchema}}`), so the LLM sees the variable maintenance instructions in every Director round and Force Speak.
+
+**`variable_update` processing flow:**
+
+```
+LLM returns JSON
+  → initRoundWithLLM() / initForceSpeakLLM() parses parsed.variable_update
+    → variableSystem.applyUpdates(update, { source: 'director' | 'force-speak' })
+      → Iterates global and character fields
+        → Per variable: checks autoUpdate / locked
+          → Calls setValue() → coerceValue() type validation
+            → Writes to chat_metadata → saveChatConditional()
+              → pushLog() records change
+                → Refreshes dashboard UI
+```
+
+**Auto-update controls:**
+- `autoUpdate: false` — LLM updates are recorded as `ignored` (log kept, value unchanged)
+- `locked: true` — Same as above, plus dashboard shows lock icon
+- `injectMode: "manual"` — Variable does not appear in `{{variableMaintenance}}` output (LLM won't see it)
 
 ---
 

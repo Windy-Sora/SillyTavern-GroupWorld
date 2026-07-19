@@ -207,7 +207,7 @@ export function createCustomPromptsSystem(deps) {
             if (!p.name || !NAME_RE.test(p.name)) continue;
             const nameCheck = validateName(p.name);
             if (!nameCheck.ok) {
-                console.warn(`[GroupWorld] Import prompt skipped: "${p.name}" — ${nameCheck.error}`);
+                console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${nameCheck.error}`);
                 continue;
             }
             const existing = list.find(e => e.name === p.name);

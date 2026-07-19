@@ -8,7 +8,7 @@ import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, s
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, unregisterProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
-import { renderPrompt } from './prompt-renderer.js';
+import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
@@ -55,9 +55,13 @@ import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
+import { createVariableSystem } from './systems/variable-system.js';
+import { createStoryBlueprintSystem } from './systems/story-blueprint-system.js';
 import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
+import { register as registerVariables } from './assets/providers/variables.js';
+import { register as registerStoryBlueprint } from './assets/providers/story-blueprint.js';
 
 // ─── Agent Runtime ──────────────────────────────────────────────────
 import { AgentRegistry, execute, createScopedPool, AgentTrace } from './systems/agent-runtime.js';
@@ -87,10 +91,20 @@ delete loaded.directorLlmEnabled;
 delete loaded.directorLlmModel;
 if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.directorLlmPrompt;
 delete loaded.directorLlmPrompt;
+if (typeof loaded.llmJsonSchema === 'string'
+    && !loaded.llmJsonSchema.includes('{{storyBlueprintDoneField}}')
+    && /"global"\s*:\s*\{\s*\}/.test(loaded.llmJsonSchema)) {
+    loaded.llmJsonSchema = loaded.llmJsonSchema.replace(
+        /"global"\s*:\s*\{\s*\}/,
+        '"global": { {{storyBlueprintDoneField}} }',
+    );
+}
 
 let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 settings.scoreWeights = Object.assign({}, DEFAULT_SETTINGS.scoreWeights, loaded.scoreWeights || {});
 extension_settings[EXT_KEY] = settings;
+// Wire the live provider timeout default into the renderer (kept in sync in saveSettings).
+setProviderTimeoutDefault(settings.providerTimeoutMs);
 
 // ─── Runtime State ────────────────────────────────────────────────────
 let roundScores = {};               // { avatar: score }
@@ -120,6 +134,7 @@ let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
+let postSpeechMessageAbortController = null;    // AbortController for PostSpeech per-message LLM call
 let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
@@ -154,7 +169,8 @@ async function getScriptForChar(charName, extraContext) {
     // (Previously it was injected after renderPrompt via a sentinel,
     // which left nested {{?directorLedger:xxx}} unresolved.)
     const combined = wrapper.split('{{script}}').join(script);
-    const ctx = { character: charName, ...extraContext };
+    const char = characters.find(c => c.name === charName);
+    const ctx = { character: charName, avatar: char?.avatar, ...extraContext };
     return await renderPrompt(combined, ctx, {
         maxPasses: settings.templateMaxPasses,
         recursive: settings.templateRecursive,
@@ -164,6 +180,8 @@ async function getScriptForChar(charName, extraContext) {
 
 function saveSettings() {
     extension_settings[EXT_KEY] = settings;
+    // Keep the renderer's provider timeout default in sync with GUI changes.
+    setProviderTimeoutDefault(settings.providerTimeoutMs);
     saveSettingsDebounced();
 }
 
@@ -173,6 +191,39 @@ function saveSettings() {
 const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
+
+const variableSystem = createVariableSystem({
+    getChatMetadata,
+    EXT_KEY,
+    saveChatConditional,
+    getCharacters,
+    getCurrentGroup,
+    getChat,
+    getLang: () => settings.lang || 'zh',
+    log,
+});
+
+const storyBlueprintSystem = createStoryBlueprintSystem({
+    settings,
+    getChatMetadata,
+    getChat,
+    EXT_KEY,
+    saveChatConditional,
+    renderPrompt,
+    generateRaw: (opts) => getContext().generateRaw(opts),
+    createCaller,
+    parseJson: (raw) => {
+        const extracted = extractJsonObject(raw || '');
+        if (!extracted) return null;
+        try { return JSON.parse(sanitizeJson(extracted)); }
+        catch (e) { log('Story Blueprint JSON parse failed:', e.message); return null; }
+    },
+    variableSystem,
+    getCurrentGroup,
+    getLang: () => settings.lang || 'zh',
+    log,
+});
+storyBlueprintSystem.ensureCompletionVariable();
 
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
@@ -230,7 +281,7 @@ const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfil
 
 function log(...args) {
     if (settings.debugLogging) {
-        console.log('[GroupWorld]', ...args);
+        console.log('[GroupDirector]', ...args);
     }
 }
 
@@ -277,7 +328,7 @@ const critiqueExportSystem = createCritiqueExportSystem({
 // ─── Memory Export System ───────────────────────────────────────────
 const memoryExportSystem = createMemoryExportSystem({
     settings, EXT_KEY, getChatMetadata, getCharacters, getCurrentGroup,
-    saveChatConditional, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
+    saveChatConditional, saveSettings, log,
     defaultMemoryPrompt: DEFAULT_MEMORY_PROMPT,
     defaultMemorySchema: DEFAULT_MEMORY_SCHEMA,
     defaultMemoryRender: DEFAULT_MEMORY_RENDER,
@@ -286,13 +337,13 @@ const memoryExportSystem = createMemoryExportSystem({
 
 // ─── Config Profile System ──────────────────────────────────────────
 const configProfileSystem = createConfigProfileSystem({
-    settings, EXT_KEY, extension_settings, saveSettingsDebounced, log,
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
 // ─── Custom Prompts System ──────────────────────────────────────────
 const customPromptsSystem = createCustomPromptsSystem({
-    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    settings, saveSettings,
     registerProvider: (p) => registerProvider(p),
     unregisterProvider: (id) => unregisterProvider(id),
     getProviders: () => getProviders(),
@@ -300,7 +351,7 @@ const customPromptsSystem = createCustomPromptsSystem({
 });
 
 const scriptExecutorSystem = createScriptExecutorSystem({
-    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    settings, saveSettings,
     renderPrompt, AgentTrace, log,
 });
 
@@ -449,8 +500,8 @@ const userProviderLoader = createUserProviderLoader({
 
 // ─── Expose core modules globally for user-imported .js files ───────
 // User modules loaded via Blob URL can't resolve relative imports.
-// These globals let user code use: const { CapabilityRegistry } = window.GroupWorld;
-window.GroupWorld = {
+// These globals let user code use: const { CapabilityRegistry } = window.GroupDirector;
+window.GroupDirector = {
     CapabilityRegistry,
     registerProvider: (p) => registerProvider(p),
     unregisterProvider: (id) => unregisterProvider(id),
@@ -769,7 +820,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (isReroll) {
                 takeoverSwipeCount++;
                 if (takeoverSwipeCount > 5) {
-                    console.warn(`[GroupWorld] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting takeover for ${char.name}`);
+                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting takeover for ${char.name}`);
                     takeoverFailed = true;
                     takeoverGenCount = 0;
                     abort(false);
@@ -782,7 +833,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             }
             // Verify this character is actually in the director's plan
             if (llmPickedAvatars && !llmPickedAvatars.includes(avatar)) {
-                console.error(`[GroupWorld] TAKEOVER MISMATCH: ${char.name} (${avatar}) not in director plan — aborting!`);
+                console.error(`[GroupDirector] TAKEOVER MISMATCH: ${char.name} (${avatar}) not in director plan — aborting!`);
                 abort(false);
                 return;
             }
@@ -795,12 +846,12 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, getScriptPosition(), 0, true);
             }
-            console.warn(`[GroupWorld] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
             return;
         }
         // ST's activation loop is being suppressed — abort all
         if (takeoverPending) {
-            console.warn(`[GroupWorld] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
+            console.warn(`[GroupDirector] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
             abort(false);
             return;
         }
@@ -832,7 +883,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         }
         // Validate: this character must be in the picked set
         if (!llmPickedSet.has(avatar)) {
-            console.warn(`[GroupWorld] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
+            console.warn(`[GroupDirector] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
             abort(false);
             return;
         }
@@ -880,7 +931,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
     if (takeoverGenCount > 0) {
-        console.warn('[GroupWorld] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
+        console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
 
@@ -896,7 +947,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         roundSpeakerCount = 0;
         roundInitialized = true; // reuse existing director decision as documented
         roundGenerateType = data?.type || 'normal';
-        console.warn('[GroupWorld] Retry after takeover failure — reusing existing director plan');
+        console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
         return;
     }
 
@@ -1384,6 +1435,10 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechAbortController.abort();
         log('PostSpeech round aborted by user');
     }
+    if (postSpeechMessageAbortController) {
+        postSpeechMessageAbortController.abort();
+        log('PostSpeech message aborted by user');
+    }
     if (directorAbortController) {
         directorAbortController.abort();
         log('Director LLM aborted by user');
@@ -1438,6 +1493,10 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 });
     }
 
+    // Per-message PostSpeech uses its own AbortController so user-Stop can cut
+    // the render prompt (including slow providers) mid-flight.
+    postSpeechMessageAbortController = new AbortController();
+
     try {
         const charName = msg.name || '';
         const char = characters.find(c => c.name === charName);
@@ -1457,6 +1516,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         const callCfg = {
             ...agentConfig.call,
+            signal: postSpeechMessageAbortController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 log(`PostSpeech retry ${attempt}/${maxRetries}`);
             },
@@ -1522,6 +1582,12 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     } catch (e) {
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
+    } finally {
+        if (postSpeechMessageAbortController) {
+            const wasAborted = postSpeechMessageAbortController.signal.aborted;
+            postSpeechMessageAbortController = null;
+            if (wasAborted) log('PostSpeech message aborted by user');
+        }
     }
 });
 
@@ -1553,6 +1619,8 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await postSpeechSystem.pruneAfter(newChatLength - 1);
+    window.__gdRefreshVariables?.();
+    window.__gdRefreshDashboard?.();
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
@@ -1575,6 +1643,8 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
+    window.__gdRefreshVariables?.();
+    window.__gdRefreshDashboard?.();
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -1588,8 +1658,8 @@ async function runManualOrderedGeneration() {
     const savedChId = ctx.characterId;
     const savedChName = characters[savedChId]?.name || '';
 
-    console.warn('[GroupWorld] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
-    console.warn('[GroupWorld] takeoverGenCount:', takeoverGenCount);
+    console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
+    console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
 
     try {
         for (let i = 0; i < orderedList.length; i++) {
@@ -1597,13 +1667,13 @@ async function runManualOrderedGeneration() {
             // Resume after failure: skip characters already generated
             if (takeoverCompleted.has(avatar)) {
                 takeoverGenCount--;
-                console.warn(`[GroupWorld] SKIP already completed: ${characters.find(c => c.avatar === avatar)?.name}, takeoverGenCount→${takeoverGenCount}`);
+                console.warn(`[GroupDirector] SKIP already completed: ${characters.find(c => c.avatar === avatar)?.name}, takeoverGenCount→${takeoverGenCount}`);
                 continue;
             }
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
                 takeoverGenCount--;
-                console.warn('[GroupWorld] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
+                console.warn('[GroupDirector] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
                 continue;
             }
             setCharacterId(chId);
@@ -1612,11 +1682,11 @@ async function runManualOrderedGeneration() {
             const verifyChId = getContext().characterId;
             const verifyAvatar = characters[verifyChId]?.avatar;
             if (verifyAvatar !== avatar) {
-                console.error(`[GroupWorld] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
+                console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
                 takeoverGenCount--;
                 continue;
             }
-            console.warn(`[GroupWorld] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
             // Inject per-character director script with order context.
             // Use original plan position so retries/skips don't shift the index.
@@ -1644,16 +1714,16 @@ async function runManualOrderedGeneration() {
                     const lastMsg = chat[chat.length - 1];
                     const expectedName = characters[chId]?.name || '?';
                     if (lastMsg && !lastMsg.is_user && !lastMsg.is_system) {
-                        console.log(`[GroupWorld] POST-GEN #${i + 1}: expected="${expectedName}" actual="${lastMsg.name}" mes=${(lastMsg.mes || '').substring(0, 80)} reasoning=${lastMsg.extra?.reasoning ? (lastMsg.extra.reasoning.substring(0, 80) + '...') : 'none'} swipes=${lastMsg.swipes?.length || 0}`);
+                        console.log(`[GroupDirector] POST-GEN #${i + 1}: expected="${expectedName}" actual="${lastMsg.name}" mes=${(lastMsg.mes || '').substring(0, 80)} reasoning=${lastMsg.extra?.reasoning ? (lastMsg.extra.reasoning.substring(0, 80) + '...') : 'none'} swipes=${lastMsg.swipes?.length || 0}`);
                         if (lastMsg.name !== expectedName) {
-                            console.error(`[GroupWorld] POST-GEN MISMATCH: expected "${expectedName}" but got "${lastMsg.name}" — identity swapped!`);
+                            console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${expectedName}" but got "${lastMsg.name}" — identity swapped!`);
                         }
                     }
                 }
-                console.warn(`[GroupWorld] GEN #${i + 1} DONE: ${characters[chId].name}`);
+                console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
                 takeoverCompleted.add(avatar);
             } catch (e) {
-                console.error('[GroupWorld] GEN FAILED:', e.message, e.stack);
+                console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
                 takeoverGenCount = 0;
                 takeoverFailed = true;
                 // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
@@ -1666,9 +1736,9 @@ async function runManualOrderedGeneration() {
             }
         }
 
-        console.warn('[GroupWorld] TAKEOVER COMPLETE — all speakers generated');
+        console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
     } finally {
-        console.warn('[GroupWorld] TAKEOVER FINALLY — resetting flags');
+        console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
         takeoverGenCount = 0;
         manualGenInProgress = false;
         // Restore the original character context so ST doesn't stay stuck
@@ -1678,6 +1748,57 @@ async function runManualOrderedGeneration() {
             setCharacterName(savedChName);
         }
     }
+}
+
+/**
+ * Story Blueprint completion handling is deliberately isolated from Director
+ * decision parsing so blueprint state errors do not discard a valid speaker plan.
+ */
+function handleStoryBlueprintAdvance(source = 'director') {
+    let storyAdvance;
+    try {
+        storyAdvance = storyBlueprintSystem.consumeCompletionSignal(source);
+    } catch (e) {
+        console.warn('[GroupDirector] Story Blueprint advance failed:', e.message || e);
+        toastr.error(e.message || (settings.lang === 'zh' ? '故事蓝图推进失败' : 'Story Blueprint advance failed'));
+        window.__gdRefreshStoryBlueprint?.();
+        window.__gdRefreshDashboard?.();
+        return;
+    }
+
+    if (!storyAdvance.advanced) return;
+
+    const done = storyAdvance.complete;
+    toastr.info(done
+        ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
+        : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
+    window.__gdRefreshStoryBlueprint?.();
+    window.__gdRefreshDashboard?.();
+
+    if (!done || !settings.storyBlueprintAutoContinue || storyBlueprintSystem.isGenerating()) return;
+
+    let continuation;
+    try {
+        continuation = storyBlueprintSystem.generateBlueprint('continue');
+    } catch (e) {
+        toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+        window.__gdRefreshStoryBlueprint?.();
+        window.__gdRefreshDashboard?.();
+        return;
+    }
+
+    toastr.info(settings.lang === 'zh' ? '正在后台续写故事蓝图...' : 'Continuing Story Blueprint in the background...');
+    continuation
+        .then(() => {
+            toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshDashboard?.();
+        })
+        .catch((e) => {
+            toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshDashboard?.();
+        });
 }
 
 /**
@@ -1702,7 +1823,7 @@ async function initForceSpeakLLM(char, avatar) {
 
     const agent = AgentRegistry.get('force-speak');
     if (!agent) {
-        console.warn('[GroupWorld] ForceSpeak agent not registered');
+        console.warn('[GroupDirector] ForceSpeak agent not registered');
         return;
     }
 
@@ -1768,6 +1889,15 @@ async function initForceSpeakLLM(char, avatar) {
             }
         }
 
+        if (parsed.variable_update) {
+            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'force-speak' });
+            if (result.applied || result.ignored) {
+                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
+                window.__gdRefreshDashboard?.();
+            }
+        }
+        handleStoryBlueprintAdvance('force-speak');
+
         // Extract script for this character
         let script = '';
         if (parsed.scripts && typeof parsed.scripts === 'object') {
@@ -1792,10 +1922,10 @@ async function initForceSpeakLLM(char, avatar) {
     } catch (e) {
         directorAbortController = null;
         if (generationStopped || e?.name === 'AbortError') {
-            console.warn('[GroupWorld] Force-speak LLM aborted');
+            console.warn('[GroupDirector] Force-speak LLM aborted');
             return;
         }
-        console.warn('[GroupWorld] Force-speak LLM failed:', e.message);
+        console.warn('[GroupDirector] Force-speak LLM failed:', e.message);
     }
 }
 
@@ -1806,7 +1936,7 @@ async function initRoundWithLLM() {
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
     const agent = AgentRegistry.get('director');
     if (!agent) {
-        console.warn('[GroupWorld] Director agent not registered');
+        console.warn('[GroupDirector] Director agent not registered');
         return;
     }
 
@@ -1836,7 +1966,22 @@ async function initRoundWithLLM() {
         // Clean up QUIET_PROMPT
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
-        if (!parsed || !parsed.speakers?.length) {
+        if (!parsed) {
+            log('LLM returned no valid response');
+            return;
+        }
+
+        if (parsed.variable_update) {
+            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'director' });
+            if (result.applied || result.ignored) {
+                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
+                window.__gdRefreshDashboard?.();
+            }
+        }
+
+        handleStoryBlueprintAdvance('director');
+
+        if (!parsed.speakers?.length) {
             log('LLM returned no valid speakers');
             return;
         }
@@ -1873,7 +2018,7 @@ async function initRoundWithLLM() {
         // Takeover
         if (settings.llmRespectOrder) {
             takeoverPending = true;
-            console.warn('[GroupWorld] TAKEOVER SET — picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
+            console.warn('[GroupDirector] TAKEOVER SET — picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
         }
 
         log('LLM picked order:', capped.map(a =>
@@ -1883,19 +2028,19 @@ async function initRoundWithLLM() {
     } catch (e) {
         directorAbortController = null;
         if (generationStopped || e?.name === 'AbortError') {
-            console.warn('[GroupWorld] Director LLM aborted by user');
+            console.warn('[GroupDirector] Director LLM aborted by user');
             llmPickedSet = new Set();
             llmPickedAvatars = null;
             return;
         }
-        console.error('[GroupWorld] Director LLM failed:', e.message || e);
+        console.error('[GroupDirector] Director LLM failed:', e.message || e);
 
         // Fallback: reuse last plan from history
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
             toastr.warning('导演决策失败，正在复用上一轮决策...');
-            console.warn('[GroupWorld] Director failed — reusing last plan from history');
+            console.warn('[GroupDirector] Director failed — reusing last plan from history');
             const avatars = [];
             for (const name of lastPlan.speakers) {
                 const c = matchCharacterByName(name, enabledMembers);
@@ -2016,6 +2161,14 @@ by their exact displayed names. Use the "loreAssignments" field.
 Only assign entries that are actually relevant to that character's current situation.
 It is OK to assign none (empty array) or different entries to different characters.`;
 
+    base += `
+
+{{variableMaintenance}}`;
+
+    base += `
+
+{{storyBlueprintCurrent}}`;
+
     base += '\n\n{{llmJsonSchema}}';
     return base;
 }
@@ -2024,9 +2177,13 @@ function buildJsonSchema() {
     const scriptField = settings.llmScriptEnabled
         ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
         : '';
+    const storyBlueprintDoneField = settings.storyBlueprintEnabled
+        ? `\n      "${storyBlueprintSystem.getCompletionVariable()}": false\n    `
+        : '';
     const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
     return schema
         .replace(/\{\{scriptField\}\}/g, scriptField)
+        .replace(/\{\{storyBlueprintDoneField\}\}/g, storyBlueprintDoneField)
         .replace(/\{\{llmJsonSchema\}\}/g, '');
 }
 
@@ -2061,6 +2218,22 @@ registerProvider({
     },
 });
 
+// StoryBlueprintDoneField — expands inside variable_update.global when Story Blueprint is enabled.
+registerProvider({
+    id: 'storyBlueprintDoneField',
+    placeholder: '{{storyBlueprintDoneField}}',
+    render: () => {
+        const enabled = settings.storyBlueprintEnabled;
+        const variableName = storyBlueprintSystem.getCompletionVariable();
+        return {
+            content: enabled
+                ? `\n      "${variableName}": false\n    `
+                : '',
+            data: { enabled, variableName },
+        };
+    },
+});
+
 // LlmJsonSchema — user-customizable JSON output format template
 registerProvider({
     id: 'llmJsonSchema',
@@ -2071,6 +2244,8 @@ registerProvider({
 registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
+registerVariables({ variableSystem });
+registerStoryBlueprint({ settings, storyBlueprintSystem });
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
@@ -2178,10 +2353,12 @@ eventSource.on(event_types.APP_READY, async () => {
         getConfigPresetNames, loadConfigPreset,
         customPromptsSystem,
         scriptExecutorSystem,
+        variableSystem,
+        storyBlueprintSystem,
     };
     await loadSettingsUI(deps);
     // Restore user-imported providers and capabilities from persistent storage.
-    // Inject window.GroupWorld so user modules don't need relative imports.
+    // Inject window.GroupDirector so user modules don't need relative imports.
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
@@ -2209,13 +2386,15 @@ eventSource.on(event_types.APP_READY, async () => {
     // Warn about settings keys not covered by any config profile drawer
     const uncovered = configProfileSystem.getUncoveredKeys();
     if (uncovered.length) {
-        console.warn(`[GroupWorld] ${uncovered.length} setting(s) not in any export drawer:`, uncovered.join(', '));
+        console.warn(`[GroupDirector] ${uncovered.length} setting(s) not in any export drawer:`, uncovered.join(', '));
     }
     console.log(`Group World extension loaded (mode=${settings.mode})`);
 
     // 暴露重载入口：应用配置档后无需刷新页面即可生效（重渲染设置面板 + 重注册 user providers）
     window.__gdReloadExtension = async () => {
         await reloadSettingsUI(deps);
+        // Keep the renderer's provider timeout default in sync after hot-reload.
+        setProviderTimeoutDefault(extension_settings[EXT_KEY]?.providerTimeoutMs ?? 10000);
         customPromptsSystem.initAll();
         const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
         userProviderLoader.restoreAll('provider', ud);

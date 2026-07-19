@@ -25,7 +25,7 @@
 
 ### 安装
 
-将 `SillyTavern-GroupWorld` 文件夹放入 ST 的 `public/scripts/extensions/third-party/` 目录，重启 ST。在扩展管理面板中启用。
+将 `SillyTavern-GroupDirector` 文件夹放入 ST 的 `public/scripts/extensions/third-party/` 目录，重启 ST。在扩展管理面板中启用。
 
 ### 三步启动
 
@@ -219,6 +219,7 @@ ST 群聊原生的强制发言功能需要插件适配处理，否则会导致�
 | 递归渲染 | 占位符输出中的 `{{...}}` 继续解析 |
 | 最大递归轮数 | 防无限循环。推荐 5 |
 | 调试占位符 | 保留未识别占位符方便排查 |
+| Provider 渲染超时 (ms) | 单个 Provider 渲染时间上限。默认 10000（10s），0=不限制。超时的 Provider 降级为空内容 |
 | 角色描述控制 | 全量传入 / 切片截断（推荐 200 字符） |
 
 #### 导演剧本 (Director Script)
@@ -289,7 +290,7 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 ### 3.3 连续性
 
-**导演记得什么。** 三个折叠卡片。
+**导演记得什么。** 包含上下文总结、故事蓝图、AI 批判、导演账本、世界书等连续性工具。
 
 #### 上下文总结（卡片）
 
@@ -308,6 +309,31 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 | 编辑总结结果 | 直接编辑文本后保存 |
 
 仪表盘总结面板中也有一组相同的自动总结控件，两边保持同步。总结内容在面板中支持行内编辑，修改后双向同步到抽屉的文本框。
+
+#### 故事蓝图（卡片）
+
+用结构化大纲指导 Director，让剧情按章、节、小结等动态层级连续推进。启用后默认 Director Prompt 会注入 `{{storyBlueprintCurrent}}`。
+
+| 控件 | 作用 |
+|------|------|
+| 启用 Story Blueprint Provider | 总开关。关闭时蓝图 provider 为空，Director 看不到章节信息，也不会被要求返回完成变量 |
+| 蓝图完成时自动续写 | 当前蓝图全部完成后，在后台调用 LLM 续写下一段蓝图，不阻塞当前 Director 轮次 |
+| 推进模式 | `leaf` 只推进最底层；`all` 深度优先推进全部节点；`level` 推进指定层级 |
+| 完成变量 | 默认 `gd_story_chapter_done`。Director/ForceSpeak 把它设为 `true` 时推进一步，然后系统自动重置为 `false` |
+| 生成节点数 | 生成/续写时建议 LLM 输出的叶子节点数量 |
+| 新建蓝图 | 创建用户自建的空白蓝图，默认带一个可编辑的起始章节 |
+| 添加章节 | 在根级追加一个空白章节，不重置已有进度 |
+| 生成 / 续写 | 调用 Story Blueprint 独立 API 配置生成新蓝图或追加节点 |
+| 回滚一步 / 重置进度 | 修正推进记录，适合用户删除上下文或误判完成时使用 |
+| 推进节点列表 | 点击整行只在右侧查看该节点；点击定位图标才会把该行设为当前推进步骤 |
+| 蓝图标题 / 节点卡片 | 点击标题、Meta 值或节点内容字段即可编辑，失焦自动保存 |
+| 高级 JSON 编辑 | 直接编辑蓝图 JSON，保存前会校验必须有非空 `nodes` |
+| 生成 Prompt / 续写 Prompt / Schema / Provider 模板 | 均可自定义并恢复默认，生成和续写 prompt 支持普通 Provider 渲染 |
+| 导出 / 导入 | 导出或导入当前聊天的蓝图正文与进度 |
+
+默认生成 Prompt 会带上 `{{storyBlueprintFullJson}}` 和 `{{storyBlueprintProgress}}`，让重新生成时也能参考已有蓝图和当前进度以保护连续性。如果用户明确想彻底重启，可以自行从 Prompt 中删除这两个接口。
+
+蓝图正文和进度存储在当前聊天中；配置档只同步蓝图配置，不同步具体剧情蓝图。Story Blueprint 使用工具抽屉 Agent 配置里的 `story-blueprint` 独立 API 设置。
 
 #### AI 批判（卡片）
 
@@ -359,7 +385,7 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 ### 3.5 工具
 
-**配置档、导出导入、Agent、自定义 Agent、自定义 Prompt、接口参考、脚本执行器、调试。** 默认抽屉折叠。九个折叠卡片。
+**配置档、导出导入、Agent、自定义 Agent、自定义 Prompt、变量、接口参考、脚本执行器、调试。** 默认抽屉折叠。
 
 #### 配置档管理（卡片）
 
@@ -371,7 +397,7 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 #### Agent 配置（卡片）
 
-每个 Agent（Director / ForceSpeak / Profile / Summary / NPC / Memory / PostSpeech）可独立设置 API 端点和密钥。支持 OpenAI 或 Anthropic 协议。可测试连接。
+每个 LLM 调用组（Director / ForceSpeak / Profile / Summary / NPC / Memory / PostSpeech / Critique / Story Blueprint / Custom Agent）可独立设置 API 端点和密钥。支持 OpenAI 或 Anthropic 协议。可测试连接。
 
 #### 自定义 Agent（卡片）
 
@@ -398,7 +424,22 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 #### 接口参考（卡片）
 
-纯参考文档，列出系统中所有 31 个已注册的 Provider 占位符及其说明（中英双语）。支持搜索过滤、添加/编辑/删除自定义条目、导出导入 JSON 文件、一键恢复默认。无功能副作用——仅帮助用户快速了解可在 Prompt 中使用的 `{{placeholder}}`。
+纯参考文档，列出系统中所有 44 个内置 Provider 占位符及其说明（中英双语）。支持搜索过滤、添加/编辑/删除自定义条目、导出导入 JSON 文件、一键恢复默认。无功能副作用——仅帮助用户快速了解可在 Prompt 中使用的 `{{placeholder}}`。
+
+#### 变量（卡片）
+
+管理 Group World 的变量追踪系统。22 个内置模板（story_phase、party_funds、trust_user、health 等），支持全局和角色两种作用域。LLM 每轮自动维护变量值，仪表盘变量面板可实时查看/编辑/回滚/锁定。支持导入/导出变量定义与数据。
+
+| 控件 | 作用 |
+|------|------|
+| 新建变量 | 创建自定义变量（id/label/scope/type/updateMode/rule） |
+| 内置模板下拉 | 从 22 个预设变量中选择添加到当前群聊 |
+| 变量列表 | 浏览/编辑/删除已有变量，复制 `{{?vars:...}}` 查询 token |
+| 编辑器 | 修改变量定义（作用域/类型/更新方式/校验规则/默认值） |
+| 维护说明预览 | 查看注入 Director Prompt 的 {{variableMaintenance}} 实际内容 |
+| 导出/导入 | 导出变量定义+数据为 JSON，支持跨群聊复用 |
+
+> **仪表盘变量面板**：仪表盘操作栏点击「变量」按钮展开，包含索引快速定位、内置模板下拉、新建变量、导出导入。按全局/角色分组展示变量值，支持行内编辑、回滚到上次记录、锁定变量。可勾选"隐藏无更新角色变量"过滤未变化的行。
 
 #### 脚本执行器（卡片）
 
@@ -500,6 +541,31 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 | `{{randomDice}}` | 0.00-1.00 随机数 |
 | `{{dice}}` | 骰子 + 幸运值 |
 | `{{maxSpeakers}}` | 每轮最多发言人数 |
+
+### 变量系统（v0.7）
+
+| 占位符 | 内容 | DSL 查询 |
+|------|------|------|
+| `{{globalVars}}` | 全局变量可读列表（label: value） | `{{?globalVars:party_funds.value}}` |
+| `{{charVars}}` | 角色变量按角色分组列表 | `{{?charVars:trust_user.values.$character}}` |
+| `{{vars}}` | 完整变量快照 JSON | `{{?vars:global.story_phase.value}}` |
+| `{{varsJson}}` | 完整变量快照 JSON（同 vars） | 同上 |
+| `{{variableMaintenance}}` | 变量维护说明（自动注入 Director Prompt） | — |
+
+变量系统提供 22 个内置变量模板（story_phase、party_funds、trust_user、health 等），LLM 每轮可通过 `variable_update` JSON 字段自动更新。变量值支持 replace/delta/append/merge 四种更新模式。仪表盘点击「变量」按钮可实时查看/编辑/回滚/锁定。
+
+### 故事蓝图
+
+| 占位符 | 内容 | DSL 查询 |
+|------|------|------|
+| `{{storyBlueprintCurrent}}` | 当前故事蓝图推进块。蓝图完成提示只在 Director prompt 中消费一次 | — |
+| `{{storyBlueprintCurrentJson}}` | 当前推进节点 JSON | `{{?storyBlueprintCurrentJson:content.completion_rule}}` |
+| `{{storyBlueprintProgress}}` | 进度摘要，如 `3/8 当前章节` | `{{?storyBlueprintProgress:complete}}` |
+| `{{storyBlueprintSchemaHint}}` | 完成变量协议提示 | `{{?storyBlueprintSchemaHint:completionVariable}}` |
+| `{{storyBlueprintFullJson}}` | 完整蓝图 JSON | `{{?storyBlueprintFullJson:title}}` |
+| `{{storyBlueprintDoneField}}` | Director JSON Schema 专用字段片段，通常放在 `variable_update.global` 内 | — |
+
+故事蓝图关闭时这些 provider 输出为空或不产生推进。`{{storyBlueprintDoneField}}` 在关闭时展开为空字符串。
 
 ### 自定义 Agent
 

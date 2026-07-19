@@ -6,7 +6,7 @@ registerSection('dashboard', function (ctx) {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
         isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
-        configProfileSystem, onLatestEntryEdited,
+        configProfileSystem, onLatestEntryEdited, storyBlueprintSystem,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -113,6 +113,11 @@ registerSection('dashboard', function (ctx) {
             const history = getDirectorHistory();
             $('#gd-stat-ledger .gd-stat-value').text(history.length);
         } catch (_) {}
+
+        try {
+            const p = storyBlueprintSystem?.getProgress?.();
+            $('#gd-stat-story-blueprint .gd-stat-value').text(p?.total ? `${p.doneCount}/${p.total}` : '-');
+        } catch (_) {}
     }
 
     // ── Dashboard: card status labels ────────────────────────────
@@ -163,6 +168,15 @@ registerSection('dashboard', function (ctx) {
             const presets = getConfigPresetNames?.() || [];
             const $s = $('#gd-card-status-config');
             if (presets.length) { $s.text(presets.length + ' saved').show(); }
+        } catch (_) {}
+
+        try {
+            const p = storyBlueprintSystem?.getProgress?.();
+            const $s = $('#gd-story-blueprint-card-status');
+            if ($s.length) {
+                $s.text(p?.total ? `${p.doneCount}/${p.total}` : settings.storyBlueprintEnabled ? 'empty' : 'off');
+                $s.css('color', p?.total ? '#4caf50' : '');
+            }
         } catch (_) {}
     }
 
@@ -219,9 +233,44 @@ registerSection('dashboard', function (ctx) {
         memories: { stat: 'gd-stat-memories', panel: 'gd-dash-panel-memories', list: 'gd-dash-panel-memories-list' },
         npcs:     { stat: 'gd-stat-npcs',     panel: 'gd-dash-panel-npcs',     list: 'gd-dash-panel-npcs-list' },
         ledger:   { stat: 'gd-stat-ledger',   panel: 'gd-dash-panel-ledger',   list: 'gd-dash-panel-ledger-list' },
+        storyBlueprint: { stat: 'gd-stat-story-blueprint', panel: 'gd-dash-panel-story-blueprint', list: 'gd-dash-panel-story-blueprint-list' },
     };
 
     function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    function openSettingsLabel() {
+        return (settings.lang || 'zh') === 'zh' ? '打开设置' : 'Open settings';
+    }
+
+    function openSettingsCard(cardName) {
+        const $card = $(`[data-card="${cardName}"]`).first();
+        if (!$card.length) return;
+        const $drawer = $card.closest('.inline-drawer-content');
+        const $drawerRoot = $card.closest('.inline-drawer');
+        if ($drawer.length && !$drawer.is(':visible')) {
+            $drawer.show();
+            $drawerRoot.find('> .inline-drawer-toggle .inline-drawer-icon')
+                .removeClass('fa-circle-chevron-right right')
+                .addClass('fa-circle-chevron-down down');
+        }
+        if (!$card.hasClass('is-expanded')) {
+            $card.addClass('is-expanded');
+            if (cardName) {
+                settings.uiState.cardStates[cardName] = true;
+                saveUiState();
+            }
+            $card.find('> .gd-card-body').show();
+        }
+        try { $card[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+    }
+
+    function appendOpenSettingsButton($list, cardName) {
+        const $bar = $(`<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+            <span class="menu_button menu_button_icon gd-dash-open-settings"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
+        </div>`);
+        $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard(cardName));
+        $list.append($bar);
+    }
 
     function makeToggleRow($row, $detail) {
         $row.css('cursor', 'pointer');
@@ -266,6 +315,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelSummary() {
         const active = ctx.summarySystem?.getLatestActive?.();
         const $list = $('#gd-dash-panel-summary-list').empty();
+        appendOpenSettingsButton($list, 'summary');
         if (!active) {
             $list.append(`<small>${lang === 'zh' ? '暂无上下文总结' : 'No summary yet'}</small>`);
         } else {
@@ -313,6 +363,7 @@ registerSection('dashboard', function (ctx) {
         const profiles = getProfiles?.() || {};
         const chars = ctx.getCharacters?.() || [];
         const $list = $('#gd-dash-panel-profiles-list').empty();
+        appendOpenSettingsButton($list, 'profile');
         const entries = Object.entries(profiles).filter(([, p]) => p);
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色档案' : 'No profiles'}</small>`); return; }
         for (const [av, p] of entries) {
@@ -338,6 +389,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelMemories() {
         const stats = memorySystem.getStats?.() || {};
         const $list = $('#gd-dash-panel-memories-list').empty();
+        appendOpenSettingsButton($list, 'memory');
         const entries = Object.entries(stats);
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色记忆' : 'No memories'}</small>`); return; }
         for (const [av, s] of entries) {
@@ -369,6 +421,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelNpcs() {
         const npcs = npcSystem.getNpcs?.() || [];
         const $list = $('#gd-dash-panel-npcs-list').empty();
+        appendOpenSettingsButton($list, 'npc');
         if (!npcs.length) { $list.append(`<small>${lang === 'zh' ? '暂无 NPC' : 'No NPCs'}</small>`); return; }
         npcs.forEach((n, ni) => {
             const shortDesc = (n.description || '').slice(0, 40);
@@ -398,6 +451,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelLedger() {
         const history = getDirectorHistory();
         const $list = $('#gd-dash-panel-ledger-list').empty();
+        appendOpenSettingsButton($list, 'ledger');
         if (!history.length) { $list.append(`<small>${lang === 'zh' ? '暂无账本记录' : 'No ledger entries'}</small>`); return; }
         const recent = history.slice(-8).reverse();
         for (let i = 0; i < recent.length; i++) {
@@ -447,7 +501,54 @@ registerSection('dashboard', function (ctx) {
         }
     }
 
-    const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger };
+    function renderPanelStoryBlueprint() {
+        const $list = $('#gd-dash-panel-story-blueprint-list').empty();
+        appendOpenSettingsButton($list, 'storyBlueprint');
+        const state = storyBlueprintSystem?.getState?.();
+        const p = storyBlueprintSystem?.getProgress?.();
+        const data = storyBlueprintSystem?.getProviderData?.();
+        if (!p || !p.total) {
+            const hasBlueprint = !!data?.blueprint;
+            $list.append(`<small>${hasBlueprint
+                ? (lang === 'zh' ? '蓝图存在，但当前推进模式无匹配节点' : 'Blueprint loaded, but no matching progression steps')
+                : (lang === 'zh' ? '暂无故事蓝图' : 'No Story Blueprint')}</small>`);
+        } else {
+            $list.append(`<div class="gd-list-item"><span class="gd-list-name">${esc(data?.blueprint?.title || 'Story Blueprint')}</span><span class="gd-list-meta">${p.doneCount}/${p.total}</span></div>`);
+            $list.append(`<div style="font-size:0.9em;color:var(--grey70a);padding:4px 0;">${esc(p.complete ? (lang === 'zh' ? '已完成' : 'complete') : (data?.current?.path || ''))}</div>`);
+            $list.append(`<div style="font-size:0.85em;color:var(--grey70a);">${settings.storyBlueprintEnabled ? (lang === 'zh' ? 'Provider 已启用' : 'Provider enabled') : (lang === 'zh' ? 'Provider 未启用' : 'Provider disabled')}</div>`);
+        }
+        if (state?.continuePending) {
+            $list.append(`<div style="font-size:0.85em;color:#ff9800;">${lang === 'zh' ? '后台续写中...' : 'Continuing in background...'}</div>`);
+        }
+        $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;flex-wrap:wrap;">` +
+            `<label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-story-enabled" ${settings.storyBlueprintEnabled ? 'checked' : ''}>${lang === 'zh' ? '启用' : 'Enable'}</label>` +
+            `<span class="menu_button menu_button_icon" id="gd-dash-panel-story-generate" style="font-size:0.8em;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${lang === 'zh' ? '生成蓝图' : 'Generate'}</span>` +
+            `<span class="menu_button menu_button_icon" id="gd-dash-panel-story-preview" style="font-size:0.8em;"><i class="fa-solid fa-eye"></i> ${lang === 'zh' ? '预览' : 'Preview'}</span>` +
+            `</div><textarea id="gd-dash-panel-story-preview-text" class="text_pole textarea_compact" rows="5" style="width:100%;font-family:monospace;font-size:0.82em;margin-top:4px;display:none;" readonly></textarea>`);
+        $('#gd-dash-panel-story-enabled').on('change', function () {
+            settings.storyBlueprintEnabled = !!$(this).prop('checked');
+            $('#gd-story-blueprint-enabled').prop('checked', settings.storyBlueprintEnabled);
+            if (settings.storyBlueprintEnabled) storyBlueprintSystem?.ensureCompletionVariable?.();
+            storyBlueprintSystem?.clearCompletionSignal?.(settings.storyBlueprintEnabled ? 'enabled-reset' : 'disabled-reset');
+            saveSettings();
+            refreshAll();
+        });
+        $('#gd-dash-panel-story-generate').on('click', function () {
+            if (!settings.storyBlueprintEnabled) {
+                settings.storyBlueprintEnabled = true;
+                $('#gd-story-blueprint-enabled').prop('checked', true);
+                storyBlueprintSystem?.ensureCompletionVariable?.();
+                saveSettings();
+            }
+            $('#gd-story-blueprint-generate').trigger('click');
+        });
+        $('#gd-dash-panel-story-preview').on('click', function () {
+            const $t = $('#gd-dash-panel-story-preview-text');
+            $t.val(storyBlueprintSystem?.renderCurrent?.() || '').toggle();
+        });
+    }
+
+    const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger, storyBlueprint: renderPanelStoryBlueprint };
 
     let openPanel = null;
     function togglePanel(name) {
@@ -506,6 +607,7 @@ registerSection('dashboard', function (ctx) {
         const names = ctx.world_names || [];
         const sel = settings.worldBookSelection;
         $wbList.empty();
+        appendOpenSettingsButton($wbList, 'worldbooks');
         if (!names.length) {
             $wbList.append(`<small>${lang === 'zh' ? '未找到任何世界书' : 'No world books found'}</small>`);
             return;
@@ -783,6 +885,8 @@ registerSection('dashboard', function (ctx) {
         $('#gd-dash-profiles').toggle(group && settings.profileEnabled);
         $('#gd-dash-memories').toggle(group && settings.memoryEnabled);
         $('#gd-dash-summary').toggle(group);
+        $('#gd-dash-vars').toggle(group);
+        if (!group) $('#gd-dash-panel-vars').hide();
     }
 
     // ── Script detail card toggle ───────────────────────────────
@@ -808,6 +912,7 @@ registerSection('dashboard', function (ctx) {
         refreshPresetSelector();
         refreshSummaryStat();
         refreshWorldBookStat();
+        window.__gdRefreshVariables?.();
     }
 
     // Initial load
@@ -819,6 +924,7 @@ registerSection('dashboard', function (ctx) {
     refreshPresetSelector();
     refreshSummaryStat();
     refreshWorldBookStat();
+    window.__gdRefreshVariables?.();
 
     // Refresh when any GD drawer is toggled
     $('.group-director-settings .inline-drawer-toggle').on('click', function () {

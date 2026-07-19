@@ -36,6 +36,7 @@ const DRAWER_KEYS = {
         'llmScriptContinuityHistoryWrapper',
         'llmWorldInfoEnabled', 'llmWorldInfoWrapper',
         'templateMaxPasses', 'templateRecursive', 'templateDebugPlaceholders',
+        'providerTimeoutMs',
         'knowledgeText',
         'forceSpeakMode', 'forceSpeakPrompt',
     ],
@@ -54,6 +55,11 @@ const DRAWER_KEYS = {
     contextLedger: [
         'summaryEnabled', 'summaryReusePrevious', 'summaryPrompt',
         'autoSummaryEnabled', 'autoSummaryInterval',
+        'storyBlueprintEnabled', 'storyBlueprintAutoContinue',
+        'storyBlueprintProgressionMode', 'storyBlueprintProgressionLevel',
+        'storyBlueprintCompletionVariable', 'storyBlueprintMaxNodes',
+        'storyBlueprintPrompt', 'storyBlueprintContinuePrompt',
+        'storyBlueprintJsonSchema', 'storyBlueprintProviderTemplate',
         'critiqueEnabled', 'critiqueReusePrevious', 'critiquePrompt',
         'critiqueSchema',
         'autoCritiqueEnabled', 'autoCritiqueInterval',
@@ -124,7 +130,7 @@ function stripApiKeys(configs) {
 // ─── Factory ─────────────────────────────────────────────────────────
 
 export function createConfigProfileSystem(deps) {
-    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, log } = deps;
+    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log } = deps;
 
     function getProfiles() {
         if (!settings.configProfiles) settings.configProfiles = [];
@@ -133,6 +139,7 @@ export function createConfigProfileSystem(deps) {
 
     function saveAll() {
         extension_settings[EXT_KEY] = settings;
+        if (setProviderTimeoutDefault) setProviderTimeoutDefault(settings.providerTimeoutMs);
         saveSettingsDebounced();
     }
 
@@ -159,6 +166,9 @@ export function createConfigProfileSystem(deps) {
             drawers: { ...drawers },
             settings: snap,
         };
+        if (drawers.contextLedger && variableSystem) {
+            profile.variables = variableSystem.getExportData({ includeLog: true });
+        }
         getProfiles().push(profile);
         saveAll();
         log(`Config profile saved: "${name}"`);
@@ -187,8 +197,16 @@ export function createConfigProfileSystem(deps) {
             customPromptConflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
         }
 
+        let variablesChanged = false;
+        if (profile.drawers?.contextLedger && profile.variables && variableSystem) {
+            const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
+            if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
+            variablesChanged = true;
+        }
+
         // ── Apply snapshot ──
         const changed = applySnapshot(settings, profile.settings);
+        if (variablesChanged) changed.push('variables');
 
         // ── Merge custom prompts ──
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {
@@ -243,9 +261,9 @@ export function createConfigProfileSystem(deps) {
         script.src = JSZIP_PATH;
         document.head.appendChild(script);
         await new Promise((resolve, reject) => {
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('JSZip script load failed'));
-            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            const tid = setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            script.onload = () => { clearTimeout(tid); resolve(); };
+            script.onerror = () => { clearTimeout(tid); reject(new Error('JSZip script load failed')); };
         });
         if (window.JSZip) { _JSZip = window.JSZip; return _JSZip; }
         throw new Error('JSZip not available');
@@ -279,6 +297,7 @@ export function createConfigProfileSystem(deps) {
             drawers: profile.drawers,
             settings: expSettings,
         };
+        if (profile.variables) manifest.variables = JSON.parse(JSON.stringify(profile.variables));
         zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
         // User providers/capabilities as .js files (only if assetManager drawer was selected)
@@ -309,7 +328,7 @@ export function createConfigProfileSystem(deps) {
         const a = document.createElement('a');
         a.href = url;
         const safeName = (profile.name || 'config').replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
-        a.download = `group-world-config-${safeName}.zip`;
+        a.download = `group-director-config-${safeName}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -358,13 +377,14 @@ export function createConfigProfileSystem(deps) {
             drawers: profile.drawers,
             settings: snap,
         };
+        if (profile.variables) manifest.variables = JSON.parse(JSON.stringify(profile.variables));
 
         const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         const safeName = (profile.name || 'config').replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
-        a.download = `group-world-manifest-${safeName}.json`;
+        a.download = `group-director-manifest-${safeName}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -394,6 +414,9 @@ export function createConfigProfileSystem(deps) {
             drawers: { ...drawers },
             settings: snap,
         };
+        if (drawers.contextLedger && variableSystem) {
+            manifest.variables = variableSystem.getExportData({ includeLog: true });
+        }
 
         if (format === 'json') {
             // Strip provider/capability source code, keep metadata
@@ -414,7 +437,7 @@ export function createConfigProfileSystem(deps) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'group-world-config.json';
+            a.download = 'group-director-config.json';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -451,7 +474,7 @@ export function createConfigProfileSystem(deps) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'group-world-config.zip';
+            a.download = 'group-director-config.zip';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -521,6 +544,7 @@ export function createConfigProfileSystem(deps) {
             createdAt: Date.now(),
             drawers: manifest.drawers || {},
             settings: manifest.settings || {},
+            variables: manifest.variables || null,
         };
         getProfiles().push(profile);
         saveAll();
@@ -568,6 +592,7 @@ export function createConfigProfileSystem(deps) {
             createdAt: Date.now(),
             drawers: manifest.drawers || {},
             settings: manifest.settings || {},
+            variables: manifest.variables || null,
         };
         getProfiles().push(profile);
         saveAll();
@@ -596,7 +621,7 @@ export function createConfigProfileSystem(deps) {
         },
         getPresetNames: () => [...configPresets],
         loadPreset: async (name) => {
-            const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupWorld/assets/profiles/${name}.json`);
+            const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupDirector/assets/profiles/${name}.json`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const manifest = await resp.json();
             if (manifest.type !== 'config-profile') throw new Error('Not a config profile preset');
@@ -607,6 +632,7 @@ export function createConfigProfileSystem(deps) {
                 createdAt: Date.now(),
                 drawers: manifest.drawers || {},
                 settings: manifest.settings || {},
+                variables: manifest.variables || null,
             };
             getProfiles().push(profile);
             saveAll();

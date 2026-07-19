@@ -20,6 +20,9 @@ Group World 的模板系统支持六种占位符语法，可在**任何模板**�
 {{recentMessages}}  {{characters}}  {{previousPlan}}  {{directorLedger}}
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
+{{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
+{{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
+{{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
 ```
 
 将 `name` 对应的 Provider 渲染结果直接插入模板。未注册的占位符行为由 `templateDebugPlaceholders` 设置控制：
@@ -210,6 +213,196 @@ return {
 | `moonPhase` | `{{moonPhase}}` | 月相（8 相 + 光照） | 结构化月相字段 | `providers/moon-phase.js` |
 | `timeOfDay` | `{{timeOfDay}}` | 时段 + 季节 | `{ timeOfDay, season }` | `providers/time-of-day.js` |
 | `test` | `{{test}}` | 测试文本 | 测试数据 | `providers/test-provider.js` |
+| `globalVars` | `{{globalVars}}` | 全局变量列表 | `{ [id]: { ...def, value } }` | `providers/variables.js` |
+| `charVars` | `{{charVars}}` | 角色变量列表（按角色分组） | `{ [id]: { ...def, values, names } }` | `providers/variables.js` |
+| `vars` | `{{vars}}` | 完整变量快照 JSON | `{ global, character, currentCharacter, log }` | `providers/variables.js` |
+| `varsJson` | `{{varsJson}}` | 完整变量快照 JSON（同 vars） | 同上 | `providers/variables.js` |
+| `variableMaintenance` | `{{variableMaintenance}}` | 变量维护说明（注入 Director Prompt） | 完整快照对象 | `providers/variables.js` |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | 当前故事蓝图推进块；完成提示仅 Director 消费一次 | `{ blueprint, progress, current, doneSignals }` | `providers/story-blueprint.js` |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | 当前推进节点 JSON | 当前节点对象 | `providers/story-blueprint.js` |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | 蓝图进度摘要 | `{ current, done, total, complete, currentIndex }` | `providers/story-blueprint.js` |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | 完成变量协议提示 | `{ completionVariable }` | `providers/story-blueprint.js` |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | 完整蓝图 JSON | 蓝图对象 | `providers/story-blueprint.js` |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Director JSON Schema 专用字段片段 | `{ enabled, variableName }` | `index.js` |
+
+### 5.3 变量系统 Provider 详解
+
+Group World v0.7 新增变量追踪系统，以下 5 个 provider 全部由 `providers/variables.js` 注册。
+
+#### `{{globalVars}}` — 全局变量列表
+
+渲染所有 `scope: "global"` 的变量为可读文本：
+
+```
+- Story Phase (story_phase): 序幕
+- Current Goal (current_goal): 探索废都
+- Party Funds (party_funds): 150
+- Danger Level (danger_level): 25
+```
+
+**data 结构：**
+```json
+{
+  "story_phase": { "id": "story_phase", "label": "Story Phase", "scope": "global", "type": "string", "value": "序幕", "rule": "..." },
+  "party_funds": { "id": "party_funds", "label": "Party Funds", "scope": "global", "type": "number", "value": 150, "min": 0, "updateMode": "delta" }
+}
+```
+
+**路径查询示例：**
+```
+{{?globalVars:story_phase.value}}          → 序幕
+{{?globalVars:party_funds.value}}          → 150
+{{?globalVars:danger_level.value|0}}       → 25（无值时回退 0）
+```
+
+---
+
+#### `{{charVars}}` — 角色变量列表
+
+根据上下文渲染角色变量。有当前角色时只渲染该角色，无当前角色时渲染全部活跃角色：
+
+```
+[Alice]
+  - Trust Toward User (trust_user): 60
+  - Emotion (emotion): 好奇
+  - Health (health): 95
+[Bob]
+  - Trust Toward User (trust_user): 30
+  - Emotion (emotion): 警惕
+  - Health (health): 80
+```
+
+**data 结构：**
+```json
+{
+  "trust_user": {
+    "id": "trust_user", "label": "Trust Toward User", "scope": "character", "type": "number", "updateMode": "delta", "min": 0, "max": 100,
+    "values": { "alice_avatar_hash": 60, "bob_avatar_hash": 30 },
+    "names": { "alice_avatar_hash": "Alice", "bob_avatar_hash": "Bob" }
+  }
+}
+```
+
+**路径查询示例：**
+```
+{{?charVars:trust_user.values.$character}}          → 当前角色的信任度
+{{?charVars:health.values.$character|100}}          → 当前角色生命值，无值默认 100
+```
+
+> **注意：** `$character` 只在 Script Wrapper 上下文中可用（值为当前角色名）。在 Director Prompt 中需要用具体 avatar 或角色名。
+
+---
+
+#### `{{vars}}` / `{{varsJson}}` — 完整快照 JSON
+
+两者输出相同，均为完整变量快照的 JSON 字符串。
+
+**data 结构：**
+```json
+{
+  "global": {
+    "story_phase": { "id": "story_phase", "label": "Story Phase", "type": "string", "value": "序幕", "rule": "..." },
+    "party_funds": { "id": "party_funds", "type": "number", "value": 150, "min": 0, "updateMode": "delta" }
+  },
+  "character": {
+    "trust_user": { "id": "trust_user", "type": "number", "values": { "alice_hash": 60, "bob_hash": 30 }, "names": { "alice_hash": "Alice", "bob_hash": "Bob" } }
+  },
+  "currentCharacter": "alice_hash",
+  "log": [ /* 最近 20 条变更日志 */ ]
+}
+```
+
+**路径查询示例：**
+```
+{{?vars:global.story_phase.value}}                    → 序幕
+{{?vars:character.trust_user.values.alice_hash}}      → 60
+{{?vars:currentCharacter}}                            → alice_hash
+```
+
+---
+
+#### `{{variableMaintenance}}` — 变量维护说明
+
+**这是变量系统与 LLM 交互的核心桥梁。** 它被自动注入到 Director 的 system prompt 末尾，告知 LLM 有哪些变量需要维护、各自的更新规则，以及如何通过 JSON 返回更新。
+
+**渲染内容示例：**
+```md
+[Variables to maintain]
+Update these only when the conversation gives clear evidence. Use small numeric deltas when updateMode is delta.
+For character variables, use only the character names listed below as keys in the character object.
+
+Valid character names: "Alice", "Bob", "Charlie"
+
+- global.story_phase (string, replace) current=序幕
+  Rule: Update when the story phase clearly changes. Keep it short.
+- global.party_funds (number, delta) current=150
+  Rule: Adjust when the group gains or spends money. Use deltas for changes.
+- character.*.trust_user (number, delta) default=50
+  Rule: Adjust only when this character gains or loses trust in the user. Use small deltas.
+- character.*.emotion (string, replace) default=
+  Rule: Track the character current dominant emotion in a few words.
+
+Return updates in this optional JSON field:
+"variable_update": {
+  "global": { "var_id": { "value": "...", "reason": "..." } },
+  "character": { "Exact Character Name": { "var_id": { "value": "+1 or new value", "reason": "..." } } }
+}
+```
+
+**LLM 返回格式规范：**
+
+```json
+{
+  "speakers": ["Alice", "Bob"],
+  "reason": "...",
+  "variable_update": {
+    "global": {
+      "story_phase": { "value": "第二章 - 启程", "reason": "故事从序幕过渡到第二章" },
+      "party_funds": { "value": "-30", "reason": "在酒馆花费了 30 金币" }
+    },
+    "character": {
+      "Alice": {
+        "trust_user": { "value": "+5", "reason": "用户救了她" },
+        "emotion": { "value": "感激" }
+      },
+      "Bob": {
+        "suspicion": { "value": "+10", "reason": "用户行为可疑" }
+      }
+    }
+  },
+  "scripts": { ... }
+}
+```
+
+**更新模式说明：**
+
+| updateMode | 值格式 | 示例 | 行为 |
+|---|---|---|---|
+| `replace` | 任意匹配类型 | `"第二章"` | 直接替换旧值 |
+| `delta`（仅 number） | `"+5"` / `-10` / `3` | `"+5"` | 旧值 + delta，钳制到 [min, max] |
+| `append`（array/string） | 单个值或数组 | `"新条目"` / `["a","b"]` | 追加到末尾 |
+| `merge`（仅 object） | JSON 对象 | `{"key": "val"}` | 浅合并到旧对象 |
+
+**注入位置：** `{{variableMaintenance}}` 在 `index.js` 的 `buildDirectorSystemPrompt()` 中被拼接到 system prompt 末尾（`{{llmJsonSchema}}` 之前），因此 LLM 在每轮 Director 回合和 Force Speak 中都能看到变量维护指令。
+
+**`variable_update` 处理流程：**
+
+```
+LLM 返回 JSON
+  → initRoundWithLLM() / initForceSpeakLLM() 解析 parsed.variable_update
+    → variableSystem.applyUpdates(update, { source: 'director' | 'force-speak' })
+      → 遍历 global 和 character 字段
+        → 逐个变量检查 autoUpdate / locked
+          → 调用 setValue() → coerceValue() 类型校验
+            → 写入 chat_metadata → saveChatConditional()
+              → pushLog() 记录变更
+                → 刷新仪表盘 UI
+```
+
+**自动更新控制：**
+- `autoUpdate: false` — LLM 的更新被记录为 `ignored`（日志保留，值不变）
+- `locked: true` — 同上，且仪表盘显示锁定图标
+- `injectMode: "manual"` — 变量不出现于 `{{variableMaintenance}}` 输出中（LLM 不会看到它）
 
 ---
 

@@ -15,6 +15,7 @@ import './sections/worldBooks.js';
 import './sections/ledger.js';
 import './sections/forceSpeak.js';
 import './sections/chatSummary.js';
+import './sections/storyBlueprint.js';
 import './sections/critique.js';
 import './sections/summaryExport.js';
 import './sections/critiqueExport.js';
@@ -35,6 +36,7 @@ import './sections/userProviders.js';
 import './sections/customPrompts.js';
 import './sections/scriptExecutors.js';
 import './sections/customAgents.js';
+import './sections/variables.js';
 import './sections/agents.js';
 import './sections/gdAssistant.js';
 
@@ -56,11 +58,11 @@ export async function loadSettingsUI(deps) {
 
     // 幂等防护：多插件环境下若 ST 重渲染导致二次调用，避免重复注入破坏 DOM
     if ($('#gd-settings-panel').length) {
-        console.warn('[GroupWorld] Settings UI already initialized, skipping');
+        console.warn('[GroupDirector] Settings UI already initialized, skipping');
         return;
     }
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
 
     // Create a top-level settings drawer at the same level as Extensions,
     // then render the Group World settings inside it.
@@ -88,7 +90,7 @@ export async function loadSettingsUI(deps) {
     } else {
         // Fallback: if the sidebar isn't loaded yet, append to extensions panel
         $('#extensions_settings').append(html);
-        console.warn('[GroupWorld] Could not find extensions drawer for top-level tab — falling back to inline');
+        console.warn('[GroupDirector] Could not find extensions drawer for top-level tab — falling back to inline');
         const $c = (sel) => $(`#gd-${sel}`);
         bindLanguageHandler(deps, $c);
         const ctx = { ...deps, $c };
@@ -122,7 +124,7 @@ export async function reloadSettingsUI(deps) {
         // 主路径未走（fallback 模式下不存在 panel）。不委托 loadSettingsUI，否则会重复 append。
         return;
     }
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
     bindLanguageHandler(deps, $c);

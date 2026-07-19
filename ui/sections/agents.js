@@ -6,7 +6,17 @@ const AGENT_DISPLAY = {
     profile:     { zh: '角色档案 (Profile)',       en: 'Profile' },
     summary:     { zh: '上下文总结 (Summary)',     en: 'Summary' },
     critique:    { zh: '批判 (Critique)',         en: 'Critique' },
+    'story-blueprint': { zh: '故事蓝图 (Story Blueprint)', en: 'Story Blueprint' },
 };
+
+const CONFIG_ONLY_AGENTS = [
+    {
+        id: 'story-blueprint',
+        displayName: 'Story Blueprint',
+        contextAccess: ['chat', 'settings', 'providers'],
+        pipelineOrder: ['prompt', 'call', 'parse'],
+    },
+];
 
 const DEFAULT_AGENT_CONFIG = {
     useCustom: false,
@@ -57,7 +67,9 @@ async function fetchModels(endpoint, apiKey, protocol) {
 registerSection('agents', function (ctx) {
     const { settings, $c, saveSettings, AgentRegistry, createCaller, getContext } = ctx;
     const lang = settings.lang || 'zh';
-    const agents = AgentRegistry.list();
+    const registeredAgents = AgentRegistry.list();
+    const registeredIds = new Set(registeredAgents.map(a => a.id));
+    const agents = registeredAgents.concat(CONFIG_ONLY_AGENTS.filter(a => !registeredIds.has(a.id)));
 
     const container = $('#gd-agents-list');
     if (!container.length) return;

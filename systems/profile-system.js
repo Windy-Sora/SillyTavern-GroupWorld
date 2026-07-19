@@ -39,7 +39,7 @@ function migrateProfileData(container) {
     }
     const currentHash = computeProfileSchemaHash();
     if (container.profileSchemaHash && container.profileSchemaHash !== currentHash) {
-        console.warn('[GroupWorld] Profile schema changed since last save. Old profiles may use outdated field set.');
+        console.warn('[GroupDirector] Profile schema changed since last save. Old profiles may use outdated field set.');
     }
     container.profileSchemaHash = currentHash;
 }
@@ -136,7 +136,7 @@ function normalizeProfileFields(parsed) {
 async function generateSingleProfile(avatar) {
     if (!settings.profileEnabled) return null;
     if (isRoundActive()) {
-        console.warn('[GroupWorld] Profile generation skipped — director round is active, will retry later');
+        console.warn('[GroupDirector] Profile generation skipped — director round is active, will retry later');
         return null;
     }
     const char = getCharacters().find(c => c.avatar === avatar);
@@ -221,14 +221,14 @@ async function generateProfilesBatch(avatars) {
                 }
             }
         } catch (e) {
-            console.error(`[GroupWorld] Profile generation failed for ${char.name}:`, e.message);
+            console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
             base.state = 'failed';
         }
         base.updatedAt = Date.now();
         // Avoid overwriting a ready profile with a failed one from a concurrent run
         const currentProfile = getProfiles()[avatar];
         if (base.state === 'failed' && currentProfile?.state === 'ready') {
-            console.warn(`[GroupWorld] Profile generation failed for ${char.name}, keeping existing ready profile`);
+            console.warn(`[GroupDirector] Profile generation failed for ${char.name}, keeping existing ready profile`);
         } else {
             await saveProfile(avatar, base);
         }
@@ -319,15 +319,15 @@ function buildCharacterProfilesText() {
     const failedProfiles = all.filter(p => p.state === 'failed');
 
     // Always log profile state summary so the user knows what's happening
-    console.log(`[GroupWorld] Profiles: ${all.length} total, ${readyProfiles.length} ready, ${pendingProfiles.length} pending, ${failedProfiles.length} failed`);
+    console.log(`[GroupDirector] Profiles: ${all.length} total, ${readyProfiles.length} ready, ${pendingProfiles.length} pending, ${failedProfiles.length} failed`);
 
     if (readyProfiles.length === 0) {
         if (all.length === 0) {
-            console.warn('[GroupWorld] No profiles exist. Click "Regenerate All" in the Profile Management panel to generate them.');
+            console.warn('[GroupDirector] No profiles exist. Click "Regenerate All" in the Profile Management panel to generate them.');
         } else if (failedProfiles.length === all.length) {
-            console.warn(`[GroupWorld] All ${all.length} profile(s) failed. Check the browser console for errors, then click "Regenerate All" to retry.`);
+            console.warn(`[GroupDirector] All ${all.length} profile(s) failed. Check the browser console for errors, then click "Regenerate All" to retry.`);
         } else if (pendingProfiles.length > 0) {
-            console.warn(`[GroupWorld] ${pendingProfiles.length} profile(s) still pending. Profiles will appear once generation completes.`);
+            console.warn(`[GroupDirector] ${pendingProfiles.length} profile(s) still pending. Profiles will appear once generation completes.`);
         }
         return '';
     }
@@ -391,7 +391,7 @@ async function syncProfiles(enabledMembers) {
     if (newChars.length > 0) {
         log(`Auto-generating profiles for ${newChars.length} new character(s): ${newChars.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ')}`);
         generateProfilesBatch(newChars).catch(e => {
-            console.error('[GroupWorld] Background profile generation failed:', e);
+            console.error('[GroupDirector] Background profile generation failed:', e);
         });
     }
 }

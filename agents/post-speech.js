@@ -132,6 +132,7 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                 // Resolve all {{...}} via renderPrompt. Capability lists are registered
                 // Providers ({{capabilityListMessage}}, {{capabilityListRound}}, {{capabilityList}}).
                 return await renderPrompt(template, {}, {
+                    signal: settings.call?.signal,
                     passthrough: ST_NATIVE_PLACEHOLDERS,
                 });
             },

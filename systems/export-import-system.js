@@ -31,9 +31,9 @@ export function createExportImportSystem({
         script.src = JSZIP_PATH;
         document.head.appendChild(script);
         await new Promise((resolve, reject) => {
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('JSZip script load failed'));
-            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            const tid = setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            script.onload = () => { clearTimeout(tid); resolve(); };
+            script.onerror = () => { clearTimeout(tid); reject(new Error('JSZip script load failed')); };
         });
         if (window.JSZip) { JSZip = window.JSZip; return; }
         throw new Error('JSZip not available');
@@ -102,7 +102,7 @@ export function createExportImportSystem({
             await ensureJSZip();
         } catch (e) {
             toastr().error(L('JSZip 加载失败', 'JSZip failed to load'));
-            console.error('[GroupWorld] JSZip load failed:', e);
+            console.error('[GroupDirector] JSZip load failed:', e);
             return;
         }
 
@@ -212,7 +212,7 @@ export function createExportImportSystem({
             await ensureJSZip();
         } catch (e) {
             toastr().error(L('JSZip 加载失败', 'JSZip failed to load'));
-            console.error('[GroupWorld] JSZip load failed:', e);
+            console.error('[GroupDirector] JSZip load failed:', e);
             return;
         }
 
@@ -229,7 +229,7 @@ export function createExportImportSystem({
             zip = await JSZip.loadAsync(data);
         } catch (e) {
             toastr().error(L('无法解析压缩包', 'Failed to parse zip file'));
-            console.error('[GroupWorld] Zip parse failed:', e);
+            console.error('[GroupDirector] Zip parse failed:', e);
             return;
         }
 

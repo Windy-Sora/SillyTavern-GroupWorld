@@ -4,7 +4,7 @@
 
 Group World 是一个 **群聊上下文管线**：收集数据 → Agent 决策 → 注入角色 prompt。
 
-默认搭载 9 组 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）、Custom Agent（用户自定义 —— 不注册为 Agent，直接通过 system 调用 LLM）。前 8 个 Agent 拥有独立的 API 配置，Custom Agent 共用 `custom-agent` API 配置。
+默认搭载 10 组可配置 LLM 调用：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）、Story Blueprint（故事蓝图）、Custom Agent（用户自定义 —— 不注册为 Agent，直接通过 system 调用 LLM）。注册到 Agent Runtime 的 Agent 走声明式 pipeline；Story Blueprint 和 Custom Agent 直接通过各自 system 调用 LLM，但同样拥有独立 API 配置。
 
 框架不绑定任何特定用例——可替换 prompt 模板实现地牢主宰、辩论裁判、战斗系统、社会模拟等场景。
 
@@ -185,6 +185,7 @@ settings.agentConfigs = {
   'npc':         { ... },
   'memory':      { ... },
   'post-speech': { ... },
+  'story-blueprint': { ... }, // 故事蓝图生成/续写
   'custom-agent': { ... },  // 所有自定义 Agent 实例共存
 };
 ```
@@ -208,7 +209,15 @@ registerProvider({
 });
 ```
 
-### 3.2 已注册 Provider（33 个内置 + N 个自定义 Agent 动态注册）
+### 3.2 渲染行为 (v0.6.1+)
+
+- **并行执行** — Phase 1 中所有 Provider 的 `render()` 通过 `Promise.allSettled` 同时运行，非顺序。单个 Provider 的超时/报错不影响其他 Provider。
+- **每 Provider 超时** — 默认 10s（`settings.providerTimeoutMs`，GUI 可调）。Provider 可在注册时声明 `timeoutMs` 覆盖（优先级：`provider.timeoutMs` > 调用 option > 全局默认）。设为 0 禁用超时。超时后在 Console 输出 `[GroupDirector] Provider "xxx" timed out`。
+- **信号中断** — `renderPrompt` 接受 `signal` option（Director/ForceSpeak/PostSpeech agent 已接入）。用户按 Stop 时中断正在渲染的 Provider 并传播 AbortError。
+- **错误隔离** — 超时或 `render()` 抛错的 Provider 降级为空内容 `{content:'', data:null}`，同批次其他 Provider 不受影响。
+- **世界书 Provider 并发安全** — `{{worldBooks}}` 和 `{{worldBookImportance}}` 共享 in-flight promise dedup，并行时不会重复调用 `loadWorldInfo`。
+
+### 3.3 已注册 Provider（44 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -224,6 +233,7 @@ registerProvider({
 | `directorHistory` | `{{directorHistory}}` | 全部导演历史 JSON |
 | `llmJsonSchema` | `{{llmJsonSchema}}` | 用户可编辑的 JSON 输出格式模板，含 `{{scriptField}}` |
 | `scriptField` | `{{scriptField}}` | 根据剧本开关展开 scripts 字段片段或清空 |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | 根据故事蓝图开关展开完成变量字段或清空 |
 | `worldBooks` | `{{worldBooks}}` | 激活世界书清单 |
 | `worldBookImportance` | `{{worldBookImportance}}` | 条目重要性排名 |
 | `characterLore` | `{{characterLore}}` | 角色世界书触发词 |
@@ -245,8 +255,71 @@ registerProvider({
 | `script` | `{{script}}` | 当前角色导演剧本（角色 Prompt 注入模版专用） |
 | `importedCritique` | `{{importedCritique}}` | 导入的批判（独立存储） |
 | `test` | `{{test}}` | 模板语法测试 |
+| `globalVars` | `{{globalVars}}` | 全局变量列表（可读文本） |
+| `charVars` | `{{charVars}}` | 角色变量列表（按角色分组） |
+| `vars` | `{{vars}}` | 完整变量快照 JSON |
+| `varsJson` | `{{varsJson}}` | 完整变量快照 JSON（同 vars） |
+| `variableMaintenance` | `{{variableMaintenance}}` | 变量维护说明（注入 Director Prompt，告知 LLM 如何返回 variable_update） |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | 当前故事蓝图推进块；完成提示仅 Director 消费一次 |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | 当前推进节点 JSON |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | 蓝图进度摘要 |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | 完成变量协议提示 |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | 完整蓝图 JSON |
 
-### 3.3 编码规则
+### 3.4 变量系统（v0.7）
+
+变量系统为 Group World 提供了结构化的长期状态追踪能力。与 `ledger_update`（自由格式 JSON）不同，变量系统提供类型化、带校验、自动更新的具名变量。
+
+**核心特性：**
+- **22 个内置变量模板** — story_phase、current_goal、party_funds、danger_level、trust_user、emotion、health 等，覆盖叙事/经济/关系/状态
+- **两种作用域** — `global`（全局）和 `character`（每个角色独立值）
+- **六种数据类型** — string、number、boolean、enum、object、array
+- **四种更新模式** — replace（替换）、delta（数值增减）、append（追加）、merge（对象合并）
+- **值校验与钳制** — number 有 min/max，enum 检查合法值，delta 自动计算
+- **变更日志** — 最近 100 条操作记录，含 messageId/hash 用于 stale 检测
+- **stale 检测** — 消息被删除或修改后，变量标记为"可能过期"
+- **回滚支持** — 可恢复到上一条非 ignored 记录
+- **锁定** — locked=true 的变量记录 LLM 更新但不写入值
+- **配置档集成** — 导出/导入配置档时同步携带变量数据
+
+**LLM 交互：** `{{variableMaintenance}}` 注入 Director system prompt → LLM 在 JSON 响应中返回 `variable_update` 字段 → `applyUpdates()` 解析并写入 `chat_metadata`。
+
+**存储：** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**UI：** 工具抽屉 → 变量卡片（列表+编辑器+模板+导入导出）；仪表盘 → 变量面板（点击"变量"按钮展开，实时查看/编辑/回滚/锁定）。
+
+### 3.5 Story Blueprint 系统
+
+Story Blueprint 是连续性层的故事结构系统。框架只维护结构化蓝图和进度，不在代码里判断剧情是否合理；是否完成当前块由 Director/ForceSpeak 通过布尔变量协议声明。
+
+**核心协议：**
+- 完成变量默认 `gd_story_chapter_done`，存为全局 boolean 变量。
+- Director JSON schema 通过 `{{storyBlueprintDoneField}}` 在 `variable_update.global` 中展开完成字段；关闭故事蓝图时该占位符为空。
+- LLM 把完成变量设为 `true` 时，系统推进一个步骤并立即把变量重置为 `false`。
+- 如果 ForceSpeak LLM 返回了完成变量，也会消费该信号，避免残留到下一轮 Director。
+
+**蓝图结构：** `nodes` 是动态树，可一层、章/节/小节或更深。推进模式支持 `leaf`、`all`、`level`。`content` 是 prompt 作者自由定义的对象。
+
+**生成与续写：**
+- 生成/续写 prompt 走普通 Provider 渲染，可使用角色、档案、世界书、账本、总结、变量等接口。
+- 默认生成 prompt 带 `{{storyBlueprintFullJson}}` 和 `{{storyBlueprintProgress}}`，让重新生成时也能保护已有连续性；用户可在 prompt 中删除这些接口来强制重启。
+- Story Blueprint 使用 `agentConfigs['story-blueprint']`，在工具抽屉的 Agent 配置中可单独设置 API。
+- 自动续写在后台运行，不阻塞当前 Director 决策；`continuePending` 用于 UI 显示“续写中”。
+- 续写追加节点时会按当前顶层长度重新生成缺失 id，并递归处理 id 冲突，保护 `doneSignals`。
+- 续写返回空节点会报错，不会显示成功但无变化。
+
+**人工编辑：**
+- UI 支持新建用户自建蓝图、追加根级章节、点击推进节点查看内容，以及用定位按钮单独设置当前步骤。
+- 蓝图标题、meta 字段和当前/查看节点的 content 字段支持行内编辑，保存时复用 `setBlueprint(..., { resetProgress:false })`，不重置进度。
+
+**状态与安全：**
+- 蓝图正文和进度保存在 `chat_metadata[EXT_KEY].storyBlueprint`，配置保存在 `extension_settings`。
+- `doneSignals` 记录已完成节点 id、步骤索引、聊天长度、时间和来源。
+- 完成提示只在 Director prompt 中消费一次；UI 预览和 ForceSpeak 不会抢占该提示。
+- 导入/高级 JSON 编辑会校验非空 `nodes`，非法结构不会被静默保存。
+- 配置档只同步故事蓝图配置和变量定义/数据，不同步当前聊天的蓝图正文与进度；蓝图正文走 Story Blueprint 自己的导入/导出。
+
+### 3.6 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
 - 可变值用 getter 传入
@@ -260,7 +333,7 @@ registerProvider({
 
 ```
 Phase 0   — {[{...}]} 直通槽位 → 哨兵替换
-Phase 1   — 执行所有 Provider，缓存到 cache[id] = { content, data }
+Phase 1   — 并行执行所有 Provider（Promise.allSettled + per-provider 超时 + signal 中断），缓存到 cache[id] = { content, data }
 Phase 1.5 — 块循环 {{#provider:path}}...{{/provider}}
 Phase 2   — 简单占位符 {{name}} → cache[id].content
 Phase 3   — 路径查询 {{?name:path|fallback}}
@@ -440,7 +513,7 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 ## 10. 目录结构
 
 ```
-SillyTavern-GroupWorld/
+SillyTavern-GroupDirector/
 ├── manifest.json
 ├── index.js                   # 入口：组装层、运行时状态、拦截器、事件监听
 ├── settings.js                # 常量 + 默认设置（单一真相源）
@@ -464,6 +537,7 @@ SillyTavern-GroupWorld/
 │   │   ├── director-critique.js
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
+│   │   ├── variables.js          # 变量系统 Provider（5 个占位符）
 │   │   └── ...
 │   └── capabilities/          # 3 个内置 Capability
 │       ├── manifest.js
@@ -498,6 +572,7 @@ SillyTavern-GroupWorld/
 │   ├── post-speech-system.js  # PostSpeech 决策持久化
 │   ├── config-profile-system.js # 配置档管理（含 JSZip fallback 加载）
 │   ├── custom-prompts-system.js # 自定义 Prompt 模板
+│   ├── variable-system.js      # 变量系统（定义/值/校验/日志/回滚/stale 检测）
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── critique-system.js     # AI 批判
@@ -525,6 +600,7 @@ SillyTavern-GroupWorld/
         ├── continuity.js      # 连贯性模式
         ├── worldinfo.js       # 世界书开关
         ├── worldBooks.js      # 世界书选择
+        ├── variables.js       # 变量设置 + 仪表盘面板
         ├── ledger.js          # 账本浏览器
         ├── forceSpeak.js      # 强制发言
         ├── chatSummary.js     # 上下文总结
@@ -828,7 +904,7 @@ Group World 为五种数据类型提供完整的导出/导入能力：
 
 ### 用户导入系统
 
-选 `.js` → FileReader → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。重启自动恢复。核心 API 通过 `register(deps)` 参数或 `window.GroupWorld` 全局注入。
+选 `.js` → FileReader → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。重启自动恢复。核心 API 通过 `register(deps)` 参数或 `window.GroupDirector` 全局注入。
 
 ---
 
@@ -852,6 +928,7 @@ Group World 为五种数据类型提供完整的导出/导入能力：
 | 加新协议 | `utils/custom-api.js` → 加 `makeXxxCaller()` |
 | 加 Prompt 占位符 | `assets/providers/xxx.js` + manifest.js + `index.js` import/register |
 | 加业务逻辑模块 | `systems/*.js`（新建）+ `index.js` import/组装 |
+| 加变量定义 | UI 变量卡片 → 新建/模板；或 `variableSystem.upsertDefinition()` |
 | 加设置项 | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | 加/改 UI 区域 | `settings.html` + `ui/sections/newname.js` + `ui/settings-init.js` import |
 | 加 UI 文字 | `ui/i18n.js`（zh+en 各一行） |
