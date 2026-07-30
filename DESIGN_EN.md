@@ -218,7 +218,7 @@ registerProvider({
 - **Error isolation** — Timed-out or throwing providers degrade to empty `{content:'', data:null}`. Sibling providers are unaffected.
 - **World-book scanner dedup** — `{{worldBooks}}` and `{{worldBookImportance}}` share an in-flight promise dedup so parallel Phase 1 does not duplicate `loadWorldInfo` calls.
 
-### 3.3 Registered Providers (44 built-in + N Custom Agent dynamic registrations)
+### 3.3 Registered Providers (47 built-in + N Custom Agent dynamic registrations)
 
 | Provider | Placeholder | Description |
 |----------|--------|------|
@@ -237,6 +237,9 @@ registerProvider({
 | `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Expands to the completion variable field when Story Blueprint is enabled, or empties when disabled |
 | `worldBooks` | `{{worldBooks}}` | Activated world book list |
 | `worldBookImportance` | `{{worldBookImportance}}` | Entry importance ranking |
+| `gdWorldBooksFull` | `{{gdWorldBooksFull}}` | Full text of all entries in currently active world books (macros substituted) |
+| `gdWorldBooksConstant` | `{{gdWorldBooksConstant}}` | Text of always-on entries in currently active world books |
+| `gdWorldBooksNames` | `{{gdWorldBooksNames}}` | List of currently active world book names |
 | `characterLore` | `{{characterLore}}` | Character world book trigger words |
 | `chatSummary` | `{{chatSummary}}` | Context summary |
 | `directorCritique` | `{{directorCritique}}` | Director critique (readable text) |
@@ -320,7 +323,23 @@ Story Blueprint is the story-structure system in the continuity layer. The frame
 - Import and advanced JSON editing validate a non-empty `nodes` array before saving.
 - Config profiles sync Story Blueprint configuration plus variable definitions/data, not the current chat's blueprint body or progress. Blueprint body uses the Story Blueprint card's own import/export.
 
-### 3.6 Coding Rules
+### 3.6 Reusable Library Systems (Profile / NPC / Story Blueprint Library)
+
+Three library systems (`profile-library-system` / `npc-library-system` / `story-blueprint-library-system`) share a unified architecture: a convenience layer that saves the current group's data as reusable library entries, applicable across group chats. Entries persist in `extension_settings` (not exported with chat) and reuse each system's existing export/import payload, only adding a `libraryMeta` wrapper (name, description, timestamps, counts).
+
+**Unified API**: `saveCurrentAsLibrary` / `getLibrary` / `deleteLibrary` / `applyLibrary` / `exportLibrary` / `importFileToLibrary`; `genId` uses a timestamp + counter.
+
+| Library | Storage field | What it stores | Highlights |
+|---|---|---|---|
+| Profile Library | `settings.profileLibraries` | All `ready` character profiles in the current group | Smart-match apply: hash -> avatar+name -> name only; can skip already-ready characters; **auto-load**; export includes generator prompt / schema / render template |
+| NPC Library | `settings.npcLibraries` | Current group NPCs | Preview distinguishes new / overwrite counts |
+| Story Blueprint Library | `settings.storyBlueprintLibraries` | Current story blueprint (optionally with progress) | Counts nodes; import accepts both bare and wrapped blueprint formats |
+
+**Profile library auto-load** (core capability): `settings.profileLibraryAutoLoad` configures `enabled` / `mode('best'|'fixed')` / `fixedId` / match rules / `overwriteExisting` / `importTemplate`. `findBestLibrary` scores by "usable matches×100 + total matches×10 + match rate" and picks the best library; triggered automatically on `CHAT_CHANGED` and `APP_READY` (when `profileEnabled`), with a toastr toast and UI refresh on success; `lastAutoLoadKey` dedupes to avoid repeated applies.
+
+**Relationship to config profiles**: library entries are "reusable content data", explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles.
+
+### 3.7 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters
@@ -363,6 +382,8 @@ Post      — Recursive stabilization → restore passthrough slots
 ---
 
 ## 5. World Book Pipeline
+
+`settings.worldBookSourceMode` decides which world books `worldBookScanner.getSelectedNames()` scans: `st` (default) follows SillyTavern's currently active world books (aggregated from chat metadata `world_info`, `selected_world_info`, `charLore`; see `getActivatedWorldBookNames()`); `gd` fully uses the user's manual `worldBookSelection` from the GD panel, decoupled from ST activation. The scanner also exposes `getRenderedBooks()` / `buildSnapshot()`, which run `substituteParams` macro substitution on entry content and produce `fullText` / `constantText` plus character-count stats, consumed by the `{{gdWorldBooksFull}}` / `{{gdWorldBooksConstant}}` / `{{gdWorldBooksNames}}` providers.
 
 ```
 User checks world books
@@ -514,7 +535,7 @@ Save/delete/import operations auto-refresh both dropdowns and the config profile
 ## 10. Directory Structure
 
 ```
-SillyTavern-GroupDirector/
+SillyTavern-GroupWorld/
 ├── manifest.json
 ├── index.js                   # Entry point: assembly layer, runtime state, interceptor, event listeners
 ├── settings.js                # Constants + default settings (single source of truth)
@@ -531,7 +552,7 @@ SillyTavern-GroupDirector/
 │   │   ├── manifest.js        # profilePresets[] + npcPresets[] + configPresets[]
 │   │   ├── fantasy-rpg.json
 │   │   ├── npc-fantasy-tavern.json
-│   │   └── group-director-default.json
+│   │   └── group-world-default.json
 │   ├── providers/             # 29 built-in Providers
 │   │   ├── manifest.js
 │   │   ├── chatSummary.js
@@ -539,6 +560,7 @@ SillyTavern-GroupDirector/
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
 │   │   ├── variables.js          # Variable system Provider (5 placeholders)
+│   │   ├── gd-world-books.js     # GD-managed world book Provider (3 placeholders)
 │   │   └── ...
 │   └── capabilities/          # 3 built-in Capabilities
 │       ├── manifest.js
@@ -566,8 +588,10 @@ SillyTavern-GroupDirector/
 │   ├── user-provider-loader.js # User Provider/Capability import
 │   ├── profile-system.js      # Character profile full workflow
 │   ├── profile-export-system.js
+│   ├── profile-library-system.js  # Profile reusable library (with auto-load)
 │   ├── npc-system.js          # NPC generation + character card import
 │   ├── npc-export-system.js
+│   ├── npc-library-system.js  # NPC reusable library
 │   ├── memory-system.js       # Character memory full workflow
 │   ├── memory-export-system.js
 │   ├── post-speech-system.js  # PostSpeech decision persistence
@@ -577,6 +601,8 @@ SillyTavern-GroupDirector/
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
 │   ├── critique-system.js     # AI critique
+│   ├── story-blueprint-system.js  # Story Blueprint system
+│   ├── story-blueprint-library-system.js # Story Blueprint reusable library
 │   ├── summary-export-system.js
 │   ├── export-import-system.js # Group chat export/import (JSZip fallback)
 │   └── script-executor-system.js # Script executor engine
@@ -605,13 +631,17 @@ SillyTavern-GroupDirector/
         ├── ledger.js          # Ledger browser
         ├── forceSpeak.js      # Force speak
         ├── chatSummary.js     # Context summary
+        ├── storyBlueprint.js   # Story Blueprint
+        ├── storyBlueprintLibrary.js # Story Blueprint reusable library UI
         ├── critique.js        # AI critique
         ├── summaryExport.js   # Summary export/import
         ├── templateTester.js  # Template tester
         ├── profile.js         # Character profiles
         ├── profileExport.js   # Profile export/import
+        ├── profileLibrary.js   # Profile reusable library UI
         ├── npc.js             # NPC generation
         ├── npcExport.js       # NPC export/import
+        ├── npcLibrary.js       # NPC reusable library UI
         ├── memory.js          # Character memory
         ├── memoryExport.js    # Memory export/import
         ├── configProfiles.js  # Config profile management
@@ -672,6 +702,11 @@ SillyTavern-GroupDirector/
 | `critiqueAutoInterval` | `5` | Trigger auto-critique every N messages |
 | `critiquePrompt` | `''` | Critique system prompt (custom) |
 | `critiqueSchema` | `''` | Critique output JSON Schema (custom) |
+| `worldBookSourceMode` | `'st'` | World book source mode: `st` (follow ST activation) / `gd` (GD manual selection) |
+| `profileLibraries` | `[]` | Profile library entries (stored in extension_settings) |
+| `profileLibraryAutoLoad` | `{ enabled:false, mode:'best', fixedId:'', matchHash:true, matchAvatarName:true, matchNameOnly:false, overwriteExisting:false, importTemplate:false }` | Profile library auto-load config |
+| `npcLibraries` | `[]` | NPC library entries |
+| `storyBlueprintLibraries` | `[]` | Story Blueprint library entries |
 
 ---
 
@@ -880,6 +915,18 @@ Group World provides full export/import capability for five data types:
 **UI location**:
 - Dashboard: Config profile dropdown (built-in + user, optgroup) + Apply button + Import button
 - Tools drawer → Config Profile card: Full management panel (save/export/delete/preset loading)
+
+### Reusable Libraries (Profile / NPC / Story Blueprint Library)
+
+Three libraries provide "reusable packages" that share the export/import lineage above but persist independently: save the current group's data as named library entries (stored in `extension_settings`, not exported with chat), applicable across group chats. Entries reuse each system's export payload, adding only `libraryMeta` (name/description/timestamps/counts).
+
+| Library | Entry card | Storage field | Auto-load |
+|---|---|---|---|
+| Profile Library | Characters drawer -> Character Profiles card | `profileLibraries` + `profileLibraryAutoLoad` | Yes (best/fixed, triggered on APP_READY and CHAT_CHANGED) |
+| NPC Library | Characters drawer -> NPC Generation card | `npcLibraries` | No |
+| Story Blueprint Library | Continuity drawer -> Story Blueprint card | `storyBlueprintLibraries` | No |
+
+Library entries are content data, explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles. See section 3.6 for details.
 
 ---
 

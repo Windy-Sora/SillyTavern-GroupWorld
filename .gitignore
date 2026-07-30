@@ -1,0 +1,25 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (not used, but in case)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+test-results/
+coverage/
+
+# Logs
+*.log
+
+# Local
+.env
+.env.local
+.claude/settings.local.json
+.claude/worktrees/
+.bug-hunter/

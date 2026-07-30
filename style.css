@@ -692,3 +692,92 @@
     margin: 0;
     padding-left: 18px;
 }
+
+@media (max-width: 600px) {
+    [data-card="storyBlueprint"] .gd-card-body {
+        padding: 6px;
+        overflow-x: hidden;
+    }
+
+    [data-card="storyBlueprint"] .gd-card-body *,
+    [data-card="storyBlueprint"] .gd-card-body *::before,
+    [data-card="storyBlueprint"] .gd-card-body *::after {
+        box-sizing: border-box;
+        min-width: 0;
+    }
+
+    [data-card="storyBlueprint"] .gd-card-body > div[style*="grid-template-columns"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 6px !important;
+    }
+
+    [data-card="storyBlueprint"] .gd-row-buttons {
+        gap: 3px;
+    }
+
+    [data-card="storyBlueprint"] .gd-row-buttons .menu_button,
+    [data-card="storyBlueprint"] #gd-story-blueprint-library-apply,
+    [data-card="storyBlueprint"] #gd-story-blueprint-library-save,
+    [data-card="storyBlueprint"] #gd-story-blueprint-library-import {
+        font-size: 0.76em !important;
+        padding: 3px 6px;
+        max-width: 100%;
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    [data-card="storyBlueprint"] #gd-story-blueprint-library-select {
+        width: 100% !important;
+        flex-basis: 100%;
+    }
+
+    [data-card="storyBlueprint"] textarea,
+    [data-card="storyBlueprint"] input.text_pole,
+    [data-card="storyBlueprint"] select.text_pole {
+        width: 100% !important;
+        max-width: 100%;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-tree {
+        max-height: 220px !important;
+        padding: 4px !important;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-step {
+        grid-template-columns: 18px minmax(0, 1fr);
+        align-items: start;
+        padding: 3px 0 !important;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-step-title {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-step-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        margin-top: 2px;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-current-card {
+        min-height: 160px;
+        max-height: 320px;
+        padding: 8px;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-overview,
+    [data-card="storyBlueprint"] .gd-story-node-head {
+        flex-wrap: wrap;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-subfield {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px;
+    }
+
+    [data-card="storyBlueprint"] .gd-story-field {
+        padding: 6px;
+    }
+}

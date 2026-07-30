@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { summarizeTrace } from './execution-trace-helpers.js';
 
 registerSection('executionTrace', function (ctx) {
     const { settings, $c, saveSettings, AgentTrace } = ctx;
@@ -30,11 +31,9 @@ registerSection('executionTrace', function (ctx) {
         // Show newest first
         for (let i = traces.length - 1; i >= 0; i--) {
             const t = traces[i];
-            const hasError = t.stages.some(s => s.error);
+            const { realStages, hasError, totalMs, stageSummary } = summarizeTrace(t);
             const icon = hasError ? '✗' : '✓';
             const color = hasError ? '#ff5555' : 'var(--green)';
-            const totalMs = t.stages.reduce((sum, s) => sum + (s.duration || 0), 0).toFixed(0);
-            const stageSummary = t.stages.filter(s => s.stage !== '_start' && s.stage !== '_done').map(s => s.stage).join(' → ');
 
             html += `
                 <div class="gd-trace-card" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-bottom:4px;">
@@ -45,12 +44,12 @@ registerSection('executionTrace', function (ctx) {
                             <span style="font-size:0.85em;color:var(--grey70a);margin-left:4px;">${esc(t.startTime?.substring(11, 19) || '')}</span>
                         </span>
                         <span style="font-size:0.85em;color:var(--grey70a);">
-                            ${t.stages.length - 2} ${L('阶段', 'stages')} | ${totalMs}ms | ${stageSummary}
+                            ${realStages.length} ${L('阶段', 'stages')} | ${totalMs.toFixed(0)}ms | ${stageSummary}
                             <i class="fa-solid fa-chevron-down gd-trace-arrow" data-idx="${i}"></i>
                         </span>
                     </div>
                     <div class="gd-trace-detail" data-idx="${i}" style="display:none;margin-top:6px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:4px;">
-                        ${t.stages.filter(s => s.stage !== '_start').map(s => renderStage(s)).join('')}
+                        ${realStages.map(s => renderStage(s)).join('')}
                     </div>
                 </div>`;
         }
@@ -67,7 +66,9 @@ registerSection('executionTrace', function (ctx) {
     }
 
     function renderStage(s) {
-        const dur = s.duration != null ? `${s.duration.toFixed(0)}ms` : '';
+        const name = s.stage || s.name || s.id || '';
+        const duration = s.duration ?? s.elapsed;
+        const dur = duration != null ? `${duration.toFixed(0)}ms` : '';
         let meta = '';
         if (s.retries > 0) meta += ` ${L('重试', 'retries')}: ${s.retries}`;
         if (s.promptLength) meta += ` ${L('prompt长度', 'prompt')}: ${s.promptLength}chars`;
@@ -80,7 +81,7 @@ registerSection('executionTrace', function (ctx) {
         }
 
         return `<div style="font-size:0.82em;padding:2px 0;display:flex;justify-content:space-between;">
-            <span><b>${esc(s.stage)}</b></span>
+            <span><b>${esc(name)}</b></span>
             <span style="color:var(--grey70a);">${dur}${meta}</span>
         </div>`;
     }

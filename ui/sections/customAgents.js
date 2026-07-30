@@ -244,9 +244,10 @@ registerSection('customAgents', function (ctx) {
             const list = getList();
             const inst = list.find(a => a.id === id);
             const name = inst?.name || id;
+            const popupName = escHtml(name);
 
             if (!await callGenericPopup(
-                L(`确定删除「${name}」？`, `Delete "${name}"?`),
+                L(`确定删除「${popupName}」？`, `Delete "${popupName}"?`),
                 POPUP_TYPE.CONFIRM,
             )) return;
 
@@ -323,8 +324,9 @@ registerSection('customAgents', function (ctx) {
                 if (!a.name || !a.providerName) continue;
                 const conflict = list.find(x => x.providerName === a.providerName);
                 if (conflict) {
+                    const providerName = escHtml(a.providerName);
                     if (!await callGenericPopup(
-                        L(`providerName "${a.providerName}" 已存在，是否覆盖？`, `Provider "${a.providerName}" exists. Overwrite?`),
+                        L(`providerName "${providerName}" 已存在，是否覆盖？`, `Provider "${providerName}" exists. Overwrite?`),
                         POPUP_TYPE.CONFIRM,
                     )) continue;
                     const old = list.find(x => x.id === conflict.id);

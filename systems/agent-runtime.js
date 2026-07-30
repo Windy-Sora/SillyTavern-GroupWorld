@@ -145,11 +145,21 @@ export async function managedCall(caller, prompt, callConfig = {}) {
         // Check abort before each attempt
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         try {
-            const text = await withTimeout(caller.generate(prompt), timeoutMs, signal);
+            const text = await withTimeout(
+                attemptSignal => caller.generate(prompt, { signal: attemptSignal }),
+                timeoutMs,
+                signal
+            );
             return { text, retries: attempt };
         } catch (e) {
             lastError = e;
             if (e.name === 'AbortError') throw e;
+            // A non-cancellable caller may still be running after the wrapper
+            // times out. Retrying it would recreate the overlap this guard is
+            // meant to prevent.
+            if (e.name === 'TimeoutError' && caller.supportsAbort !== true) {
+                throw e;
+            }
             if (attempt < retries && signal?.aborted) throw new DOMException('Aborted', 'AbortError');
             if (attempt < retries) {
                 attemptCount = attempt + 1;
@@ -164,15 +174,43 @@ export async function managedCall(caller, prompt, callConfig = {}) {
     throw lastError;
 }
 
-export async function withTimeout(promise, ms, signal) {
-    let timer, onAbort = null;
-    const contenders = [promise];
-    if (ms > 0) contenders.push(new Promise((_, reject) => { timer = setTimeout(() => { const e = new Error(`Request timed out after ${ms}ms`); e.name = 'TimeoutError'; reject(e); }, ms); }));
-    if (signal) contenders.push(new Promise((_, reject) => {
-        if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
-        onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
-        signal.addEventListener('abort', onAbort, { once: true });
-    }));
+export async function withTimeout(taskOrPromise, ms, signal) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    let timer;
+    let onAbort = null;
+    const taskController = typeof taskOrPromise === 'function'
+        ? new AbortController()
+        : null;
+    const task = taskController
+        ? Promise.resolve().then(() => taskOrPromise(taskController.signal))
+        : Promise.resolve(taskOrPromise);
+    const contenders = [task];
+
+    if (ms > 0) {
+        contenders.push(new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const error = new Error(`Request timed out after ${ms}ms`);
+                error.name = 'TimeoutError';
+                // Settle the timeout contender first so a transport's
+                // AbortError cannot mask the retryable TimeoutError.
+                reject(error);
+                taskController?.abort(error);
+            }, ms);
+        }));
+    }
+
+    if (signal) {
+        contenders.push(new Promise((_, reject) => {
+            onAbort = () => {
+                const error = new DOMException('Aborted', 'AbortError');
+                reject(error);
+                taskController?.abort(error);
+            };
+            signal.addEventListener('abort', onAbort, { once: true });
+        }));
+    }
+
     try {
         return await Promise.race(contenders);
     } finally {

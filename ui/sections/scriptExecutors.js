@@ -297,7 +297,8 @@ registerSection('scriptExecutors', function (ctx) {
                 const existing = sys.getList(); // fresh each iteration
                 const conflict = existing.find(x => x.name === e.name);
                 if (conflict) {
-                    if (!await callGenericPopup(L(`脚本「${e.name}」已存在，是否覆盖？`, `Script "${e.name}" already exists. Overwrite?`), POPUP_TYPE.CONFIRM)) continue;
+                    const scriptName = escHtml(e.name);
+                    if (!await callGenericPopup(L(`脚本「${scriptName}」已存在，是否覆盖？`, `Script "${scriptName}" already exists. Overwrite?`), POPUP_TYPE.CONFIRM)) continue;
                     sys.remove(conflict.id);
                 }
                 sys.add(e);

@@ -7,7 +7,7 @@
  *   loadWorldInfo    — async (name) => { entries: {...} }
  */
 
-export function createWorldBookScanner({ world_names, loadWorldInfo, getSelection, getMaxEntries, log }) {
+export function createWorldBookScanner({ world_names, loadWorldInfo, getSelection, getMaxEntries, getSourceMode, getStSelection, renderMacros, log }) {
 
     let cache = null;
     let cacheKey = '';
@@ -21,11 +21,20 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
      * Scan only the world books the user has manually selected
      * in the Group World settings panel.
      */
-    async function scanAll() {
+    function getSelectedNames() {
+        const allNames = world_names || [];
+        if ((getSourceMode?.() || 'st') === 'st') {
+            const stNames = (getStSelection?.() || []).filter(n => allNames.includes(n));
+            return [...new Set(stNames)];
+        }
         const selection = getSelection ? getSelection() : {};
-        const names = (world_names || []).filter(n => selection[n] === true);
+        return allNames.filter(n => selection[n] === true);
+    }
+
+    async function scanAll() {
+        const names = getSelectedNames();
         if (names.length === 0) return [];
-        const key = names.sort().join('|') + '|' + (getMaxEntries ? getMaxEntries() : 20);
+        const key = names.slice().sort().join('|') + '|' + (getMaxEntries ? getMaxEntries() : 20);
         if (cache && cacheKey === key) return cache;
         if (inFlight && inFlight.key === key) return inFlight.promise;
 
@@ -171,5 +180,89 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
         cache = null;
     }
 
-    return { scanAll, calculateImportance, clearCache };
+    function applyMacros(value) {
+        const text = String(value ?? '');
+        if (!text || typeof renderMacros !== 'function') return text;
+        try {
+            return renderMacros(text);
+        } catch (e) {
+            console.warn('[GroupDirector] World book macro substitution failed:', e.message);
+            return text;
+        }
+    }
+
+    function renderEntry(entry) {
+        const content = applyMacros(entry.content);
+        const key = Array.isArray(entry.key) ? entry.key.map(applyMacros) : [];
+        const keysecondary = Array.isArray(entry.keysecondary) ? entry.keysecondary.map(applyMacros) : [];
+        return {
+            ...entry,
+            comment: applyMacros(entry.comment),
+            content,
+            contentPreview: content.slice(0, 120).replace(/\n/g, ' '),
+            key,
+            keysecondary,
+            keyCount: key.length,
+            keySecondaryCount: keysecondary.length,
+            group: applyMacros(entry.group),
+        };
+    }
+
+    function renderBooks(scanResult) {
+        return (scanResult || []).map(book => ({
+            ...book,
+            entries: (book.entries || []).map(renderEntry),
+        }));
+    }
+
+    async function getRenderedBooks() {
+        return renderBooks(await scanAll());
+    }
+
+    function flattenEntries(scanResult, predicate = () => true) {
+        const rows = [];
+        for (const book of scanResult || []) {
+            for (const entry of book.entries || []) {
+                if (entry.disable) continue;
+                if (!predicate(entry, book)) continue;
+                rows.push({ ...entry, book: book.name });
+            }
+        }
+        return rows;
+    }
+
+    function formatEntries(entries) {
+        return (entries || []).map((entry) => {
+            const title = entry.comment || `uid:${entry.uid ?? '?'}`;
+            const keys = entry.key?.length ? ` | keys: ${entry.key.join(', ')}` : '';
+            const flags = entry.constant ? ' | always-on' : '';
+            return `## [${entry.book}] ${title}${flags}${keys}\n${entry.content || ''}`.trim();
+        }).filter(Boolean).join('\n\n');
+    }
+
+    async function buildSnapshot() {
+        const books = await getRenderedBooks();
+        const fullEntries = flattenEntries(books);
+        const constantEntries = flattenEntries(books, (entry) => !!entry.constant);
+        const names = books.map(b => b.name);
+        const fullText = formatEntries(fullEntries);
+        const constantText = formatEntries(constantEntries);
+        return {
+            books,
+            names,
+            fullEntries,
+            constantEntries,
+            fullText,
+            constantText,
+            stats: {
+                bookCount: books.length,
+                entryCount: fullEntries.length,
+                constantCount: constantEntries.length,
+                fullChars: fullText.length,
+                constantChars: constantText.length,
+            },
+        };
+    }
+
+    return { scanAll, getRenderedBooks, calculateImportance, clearCache, getSelectedNames, buildSnapshot };
 }

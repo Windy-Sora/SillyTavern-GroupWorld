@@ -1,6 +1,7 @@
 import { registerSection } from './registry.js';
 import { eventSource, event_types } from '../../../../../events.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
+import { bindLedgerMessageDeleted, createLedgerTitle } from './ledger-helpers.js';
 
 registerSection('ledger', function (ctx) {
     const { settings, getDirectorHistory, updateEntry, clearEntry, isRoundActive, saveChatConditional, toastr, onLatestEntryEdited } = ctx;
@@ -42,8 +43,6 @@ registerSection('ledger', function (ctx) {
             const realIndex = entries.length - 1 - i;
             const entry = entries[i];
             const isEmpty = !entry.speakers && !entry.reason;
-            const speakers = Array.isArray(entry.speakers) ? entry.speakers.join(', ') : '';
-            const reason = (entry.reason || '').slice(0, 60);
 
             const card = $(`<div class="gd-ledger-card" data-index="${realIndex}"></div>`);
 
@@ -52,7 +51,7 @@ registerSection('ledger', function (ctx) {
             if (isEmpty) {
                 header.append(`<span class="gd-ledger-card-title" style="color:var(--grey70a);font-style:italic">${settings.lang === 'zh' ? '(已清空)' : '(cleared)'}</span>`);
             } else {
-                header.append(`<span class="gd-ledger-card-title">#${realIndex + 1} ${speakers} — ${reason}${entry.reason && entry.reason.length > 60 ? '...' : ''}</span>`);
+                header.append(createLedgerTitle($, entry, realIndex));
             }
             header.append(`<span style="flex:1"></span>`);
 
@@ -229,7 +228,7 @@ registerSection('ledger', function (ctx) {
     $('#gd-ledger-raw-toggle').on('click', () => { rawMode = !rawMode; expandedIndex = -1; rebuild(); });
 
     // Auto-refresh when messages are deleted (ledger may have been pruned)
-    eventSource.on(event_types.MESSAGE_DELETED, () => {
+    bindLedgerMessageDeleted(eventSource, event_types.MESSAGE_DELETED, () => {
         if ($('#gd-ledger-list').is(':visible')) {
             expandedIndex = -1;
             rebuild();

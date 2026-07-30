@@ -20,6 +20,7 @@ Group World's template system supports six placeholder syntax types, usable in *
 {{recentMessages}}  {{characters}}  {{previousPlan}}  {{directorLedger}}
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
+{{gdWorldBooksFull}}  {{gdWorldBooksConstant}}  {{gdWorldBooksNames}}
 {{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
 {{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
 {{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
@@ -203,6 +204,9 @@ return {
 | `directorHistory` | `{{directorHistory}}` | Full history JSON | Full history raw array | `providers/director-ledger.js` |
 | `worldBooks` | `{{worldBooks}}` | World book list | `{ books, allEntries }` | `providers/world-books.js` |
 | `worldBookImportance` | `{{worldBookImportance}}` | Importance ranking | Sorted array | `providers/world-book-importance.js` |
+| `gdWorldBooksFull` | `{{gdWorldBooksFull}}` | Full text of all entries in currently active world books (macros substituted) | `{ books, entries, names, stats }` | `providers/gd-world-books.js` |
+| `gdWorldBooksConstant` | `{{gdWorldBooksConstant}}` | Text of always-on entries in currently active world books | `{ entries, names, stats }` | `providers/gd-world-books.js` |
+| `gdWorldBooksNames` | `{{gdWorldBooksNames}}` | Comma-separated list of currently active world book names | Names array | `providers/gd-world-books.js` |
 | `characterLore` | `{{characterLore}}` | Character trigger words | — | `providers/character-lore.js` |
 | `chatSummary` | `{{chatSummary}}` | Context summary | — | `providers/chat-summary.js` |
 | `newRecentMessages` | `{{newRecentMessages}}` | Smart context (summary + new messages) | — | `providers/new-recent-messages.js` |

@@ -217,7 +217,7 @@ registerProvider({
 - **错误隔离** — 超时或 `render()` 抛错的 Provider 降级为空内容 `{content:'', data:null}`，同批次其他 Provider 不受影响。
 - **世界书 Provider 并发安全** — `{{worldBooks}}` 和 `{{worldBookImportance}}` 共享 in-flight promise dedup，并行时不会重复调用 `loadWorldInfo`。
 
-### 3.3 已注册 Provider（44 个内置 + N 个自定义 Agent 动态注册）
+### 3.3 已注册 Provider（47 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -236,6 +236,9 @@ registerProvider({
 | `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | 根据故事蓝图开关展开完成变量字段或清空 |
 | `worldBooks` | `{{worldBooks}}` | 激活世界书清单 |
 | `worldBookImportance` | `{{worldBookImportance}}` | 条目重要性排名 |
+| `gdWorldBooksFull` | `{{gdWorldBooksFull}}` | 当前激活世界书全部条目文本（含宏替换） |
+| `gdWorldBooksConstant` | `{{gdWorldBooksConstant}}` | 当前激活世界书无条件（always-on）条目文本 |
+| `gdWorldBooksNames` | `{{gdWorldBooksNames}}` | 当前激活世界书名称列表 |
 | `characterLore` | `{{characterLore}}` | 角色世界书触发词 |
 | `chatSummary` | `{{chatSummary}}` | 上下文总结 |
 | `directorCritique` | `{{directorCritique}}` | 导演批判（可读文本） |
@@ -319,7 +322,23 @@ Story Blueprint 是连续性层的故事结构系统。框架只维护结构化�
 - 导入/高级 JSON 编辑会校验非空 `nodes`，非法结构不会被静默保存。
 - 配置档只同步故事蓝图配置和变量定义/数据，不同步当前聊天的蓝图正文与进度；蓝图正文走 Story Blueprint 自己的导入/导出。
 
-### 3.6 编码规则
+### 3.6 可复用库系统（Profile / NPC / Story Blueprint Library）
+
+三类库系统（`profile-library-system` / `npc-library-system` / `story-blueprint-library-system`）采用统一架构，提供"把当前群组数据存成可复用、跨群聊应用的库条目"的便捷层。库条目持久化在 `extension_settings`（不随聊天导出），复用各自既有的 export/import payload，仅额外包裹 `libraryMeta`（名称、描述、时间戳、计数）。
+
+**统一 API**：`saveCurrentAsLibrary` / `getLibrary` / `deleteLibrary` / `applyLibrary` / `exportLibrary` / `importFileToLibrary`，`genId` 用时间戳+计数器。
+
+| 库 | 存储字段 | 存什么 | 特色 |
+|---|---|---|---|
+| Profile Library | `settings.profileLibraries` | 当前群组所有 `ready` 角色画像 | 智能匹配应用：hash -> avatar+name -> 仅 name 三级匹配；可选跳过已 ready 角色；**自动加载**；导出附带 generator prompt / schema / render template |
+| NPC Library | `settings.npcLibraries` | 当前群组 NPC | 预览区分 new / overwrite 数量 |
+| Story Blueprint Library | `settings.storyBlueprintLibraries` | 当前故事蓝图（可选含进度） | 统计节点数；导入兼容裸蓝图与已包装格式 |
+
+**Profile 库自动加载**（核心能力）：`settings.profileLibraryAutoLoad` 配置 `enabled` / `mode('best'|'fixed')` / `fixedId` / 匹配规则 / `overwriteExisting` / `importTemplate`。`findBestLibrary` 按"可用匹配数×100 + 总匹配数×10 + 匹配率"打分选最优库；在 `CHAT_CHANGED` 和 `APP_READY` 事件中（且 `profileEnabled` 时）自动触发 `autoLoadForCurrentGroup`，成功后弹 toastr 并刷新 UI；用 `lastAutoLoadKey` 去重避免重复应用。
+
+**与配置档案的关系**：库条目是"可复用内容数据"，在 `config-profile-system` 中被 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。
+
+### 3.7 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
 - 可变值用 getter 传入
@@ -362,6 +381,8 @@ Post      — 递归稳化 → 恢复直通槽位
 ---
 
 ## 5. 世界书管线
+
+`settings.worldBookSourceMode` 决定 `worldBookScanner.getSelectedNames()` 扫描哪些世界书：`st`（默认）跟随 SillyTavern 当前激活的世界书（汇总 chat metadata `world_info`、`selected_world_info`、`charLore`，见 `getActivatedWorldBookNames()`）；`gd` 则完全使用用户在 GD 面板手动勾选的 `worldBookSelection`，脱离 ST 激活状态。扫描器另提供 `getRenderedBooks()` / `buildSnapshot()`，对条目内容做 `substituteParams` 宏替换后产出 `fullText` / `constantText` 与字符数统计，供 `{{gdWorldBooksFull}}` / `{{gdWorldBooksConstant}}` / `{{gdWorldBooksNames}}` 三个 Provider 使用。
 
 ```
 用户勾选世界书
@@ -513,7 +534,7 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 ## 10. 目录结构
 
 ```
-SillyTavern-GroupDirector/
+SillyTavern-GroupWorld/
 ├── manifest.json
 ├── index.js                   # 入口：组装层、运行时状态、拦截器、事件监听
 ├── settings.js                # 常量 + 默认设置（单一真相源）
@@ -530,7 +551,7 @@ SillyTavern-GroupDirector/
 │   │   ├── manifest.js        # profilePresets[] + npcPresets[] + configPresets[]
 │   │   ├── fantasy-rpg.json
 │   │   ├── npc-fantasy-tavern.json
-│   │   └── group-director-default.json
+│   │   └── group-world-default.json
 │   ├── providers/             # 29 个内置 Provider
 │   │   ├── manifest.js
 │   │   ├── chatSummary.js
@@ -538,6 +559,7 @@ SillyTavern-GroupDirector/
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
 │   │   ├── variables.js          # 变量系统 Provider（5 个占位符）
+│   │   ├── gd-world-books.js     # GD 自管世界书 Provider（3 个占位符）
 │   │   └── ...
 │   └── capabilities/          # 3 个内置 Capability
 │       ├── manifest.js
@@ -565,8 +587,10 @@ SillyTavern-GroupDirector/
 │   ├── user-provider-loader.js # 用户 Provider/Capability 导入
 │   ├── profile-system.js      # 角色档案全流程
 │   ├── profile-export-system.js
+│   ├── profile-library-system.js  # 档案可复用库（含自动加载）
 │   ├── npc-system.js          # NPC 生成 + 导入角色卡
 │   ├── npc-export-system.js
+│   ├── npc-library-system.js  # NPC 可复用库
 │   ├── memory-system.js       # 角色记忆全流程
 │   ├── memory-export-system.js
 │   ├── post-speech-system.js  # PostSpeech 决策持久化
@@ -576,6 +600,8 @@ SillyTavern-GroupDirector/
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── critique-system.js     # AI 批判
+│   ├── story-blueprint-system.js  # 故事蓝图系统
+│   ├── story-blueprint-library-system.js # 故事蓝图可复用库
 │   ├── summary-export-system.js
 │   ├── export-import-system.js # 群聊导出/导入（JSZip fallback）
 │   └── script-executor-system.js # 脚本执行器引擎
@@ -604,13 +630,17 @@ SillyTavern-GroupDirector/
         ├── ledger.js          # 账本浏览器
         ├── forceSpeak.js      # 强制发言
         ├── chatSummary.js     # 上下文总结
+        ├── storyBlueprint.js   # 故事蓝图
+        ├── storyBlueprintLibrary.js # 故事蓝图可复用库 UI
         ├── critique.js        # AI 批判
         ├── summaryExport.js   # 摘要导出/导入
         ├── templateTester.js  # 模板测试器
         ├── profile.js         # 角色档案
         ├── profileExport.js   # 角色档案导出/导入
+        ├── profileLibrary.js   # 档案可复用库 UI
         ├── npc.js             # NPC 生成
         ├── npcExport.js       # NPC 导出/导入
+        ├── npcLibrary.js       # NPC 可复用库 UI
         ├── memory.js          # 角色记忆
         ├── memoryExport.js    # 记忆导出/导入
         ├── configProfiles.js  # 配置档管理
@@ -671,6 +701,11 @@ SillyTavern-GroupDirector/
 | `critiqueAutoInterval` | `5` | 每 N 条消息触发自动批判 |
 | `critiquePrompt` | `''` | 批判系统提示词（自定义） |
 | `critiqueSchema` | `''` | 批判输出 JSON Schema（自定义） |
+| `worldBookSourceMode` | `'st'` | 世界书来源模式：`st`（跟随 ST 激活）/ `gd`（GD 手动勾选） |
+| `profileLibraries` | `[]` | 档案可复用库条目（存 extension_settings） |
+| `profileLibraryAutoLoad` | `{ enabled:false, mode:'best', fixedId:'', matchHash:true, matchAvatarName:true, matchNameOnly:false, overwriteExisting:false, importTemplate:false }` | 档案库自动加载配置 |
+| `npcLibraries` | `[]` | NPC 可复用库条目 |
+| `storyBlueprintLibraries` | `[]` | 故事蓝图可复用库条目 |
 
 ---
 
@@ -881,6 +916,18 @@ Group World 为五种数据类型提供完整的导出/导入能力：
 **UI 位置**：
 - 仪表盘：配置档下拉框（内置 + 用户，optgroup 分组）+ 应用按钮 + 导入按钮
 - 工具抽屉 → 配置档卡片：完整的管理面板（保存/导出/删除/预设加载）
+
+### 可复用库（Profile / NPC / Story Blueprint Library）
+
+三类库提供与上述导出/导入同源但独立持久化的"可复用包"：把当前群组数据存为命名的库条目（存 `extension_settings`，不随聊天导出），可跨群聊应用。库条目复用各自的 export payload，仅加 `libraryMeta`（名称/描述/时间戳/计数）。
+
+| 库 | 入口卡片 | 存储字段 | 自动加载 |
+|---|---|---|---|
+| Profile Library | 角色抽屉 → 角色档案卡片 | `profileLibraries` + `profileLibraryAutoLoad` | 支持（best/fixed，APP_READY 与 CHAT_CHANGED 触发） |
+| NPC Library | 角色抽屉 → NPC 生成卡片 | `npcLibraries` | 无 |
+| Story Blueprint Library | 连续性抽屉 → 故事蓝图卡片 | `storyBlueprintLibraries` | 无 |
+
+库条目是内容数据，被 `config-profile-system` 的 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。详见 3.6 节。
 
 ---
 

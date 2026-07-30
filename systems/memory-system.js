@@ -60,7 +60,11 @@ export function createMemorySystem({
         const existing = getMemories(avatar);
         const agentConfig = settings.agentConfigs?.['memory'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
         const group = getCurrentGroup();
 
         const pool = buildContextPool({
@@ -76,7 +80,9 @@ export function createMemorySystem({
         });
 
         if (!result || !Array.isArray(result) || result.length === 0) {
-            throw new Error(L('未提取到新记忆', 'No new memories extracted'));
+            const error = new Error(L('未提取到新记忆', 'No new memories extracted'));
+            error.code = 'NO_NEW_MEMORIES';
+            throw error;
         }
 
         // Re-read current memories to avoid overwriting concurrent changes
@@ -209,7 +215,11 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         try {
             const agentConfig = settings.agentConfigs?.['memory'] || {};
             const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-            const compressCaller = createCaller(agentConfig, stGenerateRaw);
+            const compressCaller = createCaller(
+                agentConfig,
+                stGenerateRaw,
+                () => getContext().stopGeneration()
+            );
             const response = await compressCaller.generate(filled);
             summary = (typeof response === 'string' ? response : String(response ?? '')).trim();
             if (!summary) throw new Error('Empty response');

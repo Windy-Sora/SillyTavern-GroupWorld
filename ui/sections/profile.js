@@ -17,8 +17,10 @@ registerSection('profile', function (ctx) {
     $c('profile-enabled').on('input', () => {
         settings.profileEnabled = !!$c('profile-enabled').prop('checked');
         $('#gd-profile-section').toggle(settings.profileEnabled);
+        $c('qs-profile-enabled').prop('checked', settings.profileEnabled);
         if (settings.profileEnabled) { refreshProfileManagementUI(); checkProfileStartupStatus(); }
         saveSettings();
+        window.__gdRefreshDashboard?.();
     });
 
     $c('profile-token-budget').on('input', () => { settings.profileTokenBudget = Math.max(1, parseInt($c('profile-token-budget').val()) || 2000); saveSettings(); });
@@ -56,7 +58,7 @@ registerSection('profile', function (ctx) {
             const profiles = getProfiles();
             const ready = Object.values(profiles).filter(p => p.state === 'ready').length;
             const failed = Object.values(profiles).filter(p => p.state === 'failed').length;
-            btn.prop('disabled', false); refreshProfileManagementUI();
+            btn.prop('disabled', false); refreshProfileManagementUI(); window.__gdRefreshDashboard?.(); window.__gdRefreshProfileLibrary?.();
             if (failed > 0) toastr.warning(lang === 'zh' ? `${ready} 个就绪, ${failed} 个失败 — 查看控制台了解详情` : `${ready} ready, ${failed} failed — check console for details`);
             else toastr.success(lang === 'zh' ? `${ready} 个角色档案已更新` : `${ready} character profiles updated`);
         }).catch(e => { btn.prop('disabled', false); toastr.error(lang === 'zh' ? '生成失败，请查看控制台' : 'Generation failed, check console'); console.error('[GroupDirector] Batch profile generation failed:', e); });

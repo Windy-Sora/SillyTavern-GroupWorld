@@ -50,8 +50,27 @@ registerSection('storyBlueprint', function (ctx) {
     const { settings, $c, saveSettings, storyBlueprintSystem, toastr, isRoundActive } = ctx;
     if (!storyBlueprintSystem) return;
     let viewedStepIndex = null;
+    let generationBusy = null;
 
     function langZh() { return (settings.lang || 'zh') === 'zh'; }
+
+    function setGenerationBusy(mode) {
+        generationBusy = mode;
+        const busy = !!mode;
+        const generateLabel = busy && mode === 'new'
+            ? (langZh() ? '生成中...' : 'Generating...')
+            : (langZh() ? '生成蓝图' : 'Generate Blueprint');
+        const continueLabel = busy && mode === 'continue'
+            ? (langZh() ? '续写中...' : 'Continuing...')
+            : (langZh() ? '续写蓝图' : 'Continue Blueprint');
+
+        $c('story-blueprint-generate').toggleClass('disabled', busy).attr('aria-disabled', busy ? 'true' : 'false')
+            .css({ pointerEvents: busy ? 'none' : '', opacity: busy ? 0.65 : '' });
+        $c('story-blueprint-continue').toggleClass('disabled', busy).attr('aria-disabled', busy ? 'true' : 'false')
+            .css({ pointerEvents: busy ? 'none' : '', opacity: busy ? 0.65 : '' });
+        $c('story-blueprint-generate').find('[data-i18n="storyBlueprintGenerate"]').text(generateLabel);
+        $c('story-blueprint-continue').find('[data-i18n="storyBlueprintContinue"]').text(continueLabel);
+    }
 
     function syncControls() {
         $c('story-blueprint-enabled').prop('checked', !!settings.storyBlueprintEnabled);
@@ -324,24 +343,35 @@ registerSection('storyBlueprint', function (ctx) {
         const progressLabel = progress.total
             ? `${progress.doneCount}/${progress.total} | ${progress.complete ? (langZh() ? '已完成' : 'complete') : (data.current?.path || '')}`
             : (langZh() ? '当前推进模式无匹配节点' : 'No matching progression steps');
-        const pendingLabel = state.continuePending ? ` | ${langZh() ? '续写中' : 'continuing'}` : '';
+        const pendingLabel = generationBusy
+            ? ` | ${generationBusy === 'continue' ? (langZh() ? '续写中' : 'continuing') : (langZh() ? '生成中' : 'generating')}`
+            : (state.continuePending ? ` | ${langZh() ? '续写中' : 'continuing'}` : '');
         $c('story-blueprint-status').text(blueprint
             ? `${blueprint.title || 'Story Blueprint'} | ${progressLabel}${pendingLabel} | ${varName}=${doneValue}`
-            : (langZh() ? '未加载故事蓝图' : 'No Story Blueprint loaded'));
+            : (generationBusy
+                ? (generationBusy === 'continue'
+                    ? (langZh() ? '正在续写故事蓝图...' : 'Continuing Story Blueprint...')
+                    : (langZh() ? '正在生成故事蓝图...' : 'Generating Story Blueprint...'))
+                : (langZh() ? '未加载故事蓝图' : 'No Story Blueprint loaded')));
 
         $c('story-blueprint-json').val(blueprint ? JSON.stringify(blueprint, null, 2) : '');
         renderCurrentCard(data, progress);
         $c('story-blueprint-provider-preview').val(storyBlueprintSystem.renderCurrent());
         $c('story-blueprint-signals').val(JSON.stringify(state.doneSignals || [], null, 2));
         $c('story-blueprint-last-error').text(state.lastError || '');
-        $c('story-blueprint-card-status').text(blueprint ? `${progress.doneCount}/${progress.total}` : 'empty');
+        $c('story-blueprint-card-status').text(generationBusy
+            ? (generationBusy === 'continue' ? (langZh() ? '续写中' : 'continuing') : (langZh() ? '生成中' : 'generating'))
+            : (blueprint ? `${progress.doneCount}/${progress.total}` : 'empty'));
         renderTree();
         window.__gdRefreshDashboard?.();
     }
 
     syncControls();
     refresh();
-    window.__gdRefreshStoryBlueprint = refresh;
+    window.__gdRefreshStoryBlueprint = () => {
+        syncControls();
+        refresh();
+    };
 
     $c('story-blueprint-refresh').on('click', () => {
         refresh();
@@ -350,8 +380,12 @@ registerSection('storyBlueprint', function (ctx) {
 
     $('[data-card="storyBlueprint"] > .gd-card-header').on('click', () => {
         setTimeout(() => {
-            if ($('[data-card="storyBlueprint"]').hasClass('is-expanded')) refresh();
+            if ($('[data-card="storyBlueprint"]').hasClass('is-expanded')) window.__gdRefreshStoryBlueprint?.();
         }, 220);
+    });
+
+    $('[data-card="storyBlueprint"]').closest('.inline-drawer').children('.inline-drawer-toggle').on('click', () => {
+        setTimeout(() => window.__gdRefreshStoryBlueprint?.(), 220);
     });
 
     $c('story-blueprint-enabled').on('change', () => {
@@ -431,8 +465,12 @@ registerSection('storyBlueprint', function (ctx) {
 
     async function runGenerate(mode) {
         if (isRoundActive?.()) return;
-        const id = mode === 'continue' ? 'story-blueprint-continue' : 'story-blueprint-generate';
-        $c(id).prop('disabled', true);
+        if (generationBusy) return;
+        setGenerationBusy(mode);
+        refresh();
+        toastr.info(mode === 'continue'
+            ? (langZh() ? '正在续写故事蓝图，请稍候...' : 'Continuing Story Blueprint, please wait...')
+            : (langZh() ? '正在生成故事蓝图，请稍候...' : 'Generating Story Blueprint, please wait...'));
         try {
             await storyBlueprintSystem.generateBlueprint(mode);
             toastr.success(mode === 'continue'
@@ -443,7 +481,8 @@ registerSection('storyBlueprint', function (ctx) {
             toastr.error(e.message || (langZh() ? '故事蓝图生成失败' : 'Story Blueprint generation failed'));
             refresh();
         } finally {
-            $c(id).prop('disabled', false);
+            setGenerationBusy(null);
+            refresh();
         }
     }
 

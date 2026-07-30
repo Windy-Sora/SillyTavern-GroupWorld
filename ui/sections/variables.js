@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { hasVariableIdCollision } from './variable-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 function esc(value) {
@@ -245,7 +246,7 @@ registerSection('variables', function (ctx) {
             });
             $row.find('.gd-var-delete').on('click', async (e) => {
                 e.stopPropagation();
-                if (!await callGenericPopup(t('deleteConfirm', def.id), POPUP_TYPE.CONFIRM)) return;
+                if (!await callGenericPopup(t('deleteConfirm', esc(def.id)), POPUP_TYPE.CONFIRM)) return;
                 variableSystem.deleteDefinition(def.id);
                 if (selectedId === def.id) selectedId = null;
                 refresh();
@@ -356,6 +357,12 @@ registerSection('variables', function (ctx) {
                     toastr?.error?.(failed.error);
                     return;
                 }
+            }
+            if (hasVariableIdCollision(variableSystem, oldId, newDef.id)) {
+                toastr?.error?.((settings?.lang || 'zh') === 'zh'
+                    ? `变量 ID "${newDef.id}" 已存在`
+                    : `Variable ID "${newDef.id}" already exists`);
+                return;
             }
             if (newDef.id !== oldId) variableSystem.deleteDefinition(oldId);
             const saved = variableSystem.upsertDefinition(newDef);

@@ -98,6 +98,8 @@ Story Blueprint generation and continuation prompts are rendered through the nor
 
 The default generation prompt also includes `{{storyBlueprintFullJson}}` and `{{storyBlueprintProgress}}`. This gives the LLM the existing blueprint and current progress when a user regenerates instead of starting from an empty plan. Users can remove those placeholders from the prompt if they want a hard restart.
 
+The default generation and continuation prompts inject always-on world book entries via `{{gdWorldBooksConstant}}` (replacing the older `{{worldBooks}}` reference), so the LLM sees constant world-setting context while generating or continuing the blueprint. See [TEMPLATE-SYNTAX.md](TEMPLATE-SYNTAX.md) for the full set of `gdWorldBooks*` placeholders.
+
 Generation uses `settings.agentConfigs["story-blueprint"]`, so it can have an independent API endpoint, key, model, retry policy, and timeout in the Tools drawer's Agent Configuration card.
 
 Continuation rules:
@@ -130,6 +132,19 @@ The Continuity drawer contains the Story Blueprint card:
 - import/export for blueprint JSON
 
 The dashboard has a Story Blueprint stat panel with status, enable switch, generate button, preview, and background continuation state.
+
+## Library
+
+The Story Blueprint Library is a reusable, persistent storage layer over the blueprint export format. It lives in `extension_settings` (not per-chat), so saved blueprints can be applied across different group chats.
+
+Each library entry wraps a blueprint export payload with a `libraryMeta` block (name, description, timestamps, node count). The library card (inside the Story Blueprint card in the Continuity drawer) exposes:
+
+- **Save Current** - snapshot the current chat's blueprint into a named library entry, optionally including progress
+- **Apply** - load a library entry back into the current chat, optionally restoring progress
+- **Import / Export** - import a blueprint JSON file as a library entry, or export an entry as JSON
+- **Delete** - remove a library entry (with confirmation)
+
+Library entries are content data, not configuration: they are intentionally excluded from config profiles. Use the card's own import/export for sharing blueprint content across chats.
 
 ## State
 

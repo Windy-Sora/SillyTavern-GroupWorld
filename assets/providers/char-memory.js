@@ -32,9 +32,9 @@ export function register({ getMemoriesForAll, getMemoriesForChar, log }) {
     registerProvider({
         id: 'charMemoryCurrent',
         placeholder: '{{charMemoryCurrent}}',
-        render: (ctx) => {
+        render: async (ctx) => {
             const charName = typeof ctx === 'object' ? (ctx.$character || ctx.character || '') : (typeof ctx === 'string' ? ctx : '');
-            const mems = getMemoriesForChar(charName);
+            const mems = await getMemoriesForChar(charName);
             log(`[charMemoryCurrent] charName="${charName}", mems=${mems.length}, mems[0]=${mems[0]?.event?.substring(0, 30) || 'none'}`);
             if (!mems.length) return { content: '', data: { all: [] } };
 

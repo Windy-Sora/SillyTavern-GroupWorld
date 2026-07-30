@@ -12,8 +12,6 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
-import { callGenericPopup, POPUP_TYPE } from '../../../../popup.js';
-
 const DANGEROUS_PATTERNS = [
     { pattern: /\bfetch\s*\(/g,               label: 'fetch() — network exfiltration' },
     { pattern: /\bXMLHttpRequest\b/g,         label: 'XMLHttpRequest — network exfiltration' },
@@ -37,7 +35,7 @@ function scanSource(source) {
     return found;
 }
 
-export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider, CapabilityRegistry }) {
+export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider, CapabilityRegistry, confirmImport }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
     function getStore(type) {
@@ -100,29 +98,30 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             return { ok: false, name, error: `"${name}" already exists. Delete it first to re-import.` };
         }
 
+        let blobUrl = '';
         try {
             const source = await readFileAsText(file);
 
             const findings = scanSource(source);
             if (findings.length > 0) {
                 const lines = findings.map(f => `  - ${f.label} (${f.count}x)`).join('\n');
-                const userConfirmed = await callGenericPopup(
+                const warningHtml =
                     `<b>Security warning</b><br>Dangerous APIs detected:<br><br>${lines.replace(/\n/g, '<br>')}<br><br>` +
                     `This code could: steal chat logs, exfiltrate API keys, or hijack the page.<br>` +
-                    `Only import from trusted sources.`,
-                    POPUP_TYPE.CONFIRM
-                );
+                    `Only import from trusted sources.`;
+                const userConfirmed = typeof confirmImport === 'function'
+                    ? await confirmImport(warningHtml)
+                    : false;
                 if (!userConfirmed) {
                     return { ok: false, name, error: 'Import cancelled by user (security warning)' };
                 }
                 log(`User ${type} "${name}": user confirmed import despite security warning: ${findings.map(f => f.label).join(', ')}`);
             }
 
-            const blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+            blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
             const mod = await import(blobUrl);
 
             if (typeof mod.register !== 'function') {
-                URL.revokeObjectURL(blobUrl);
                 return { ok: false, name, error: 'Module must export function register(deps)' };
             }
 
@@ -145,9 +144,6 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 : [];
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
-            // Revoke Blob URL — module is cached by import(), URL resource can be freed
-            URL.revokeObjectURL(blobUrl);
-
             // Persist with enabled state
             store.push({ name, source, importedAt: Date.now(), ids: addedIds, enabled: true });
             await saveStore();
@@ -157,6 +153,8 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         } catch (e) {
             log(`User ${type} "${name}" import failed:`, e.message);
             return { ok: false, name, error: e.message };
+        } finally {
+            if (blobUrl) URL.revokeObjectURL(blobUrl);
         }
     }
 
@@ -171,6 +169,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         if (type === 'provider' && unregisterProvider) {
             for (const id of (entry.ids || [])) {
                 unregisterProvider(id);
+            }
+        } else if (type === 'capability' && CapabilityRegistry) {
+            for (const id of (entry.ids || [])) {
+                CapabilityRegistry.unregister(id);
             }
         }
         store.splice(idx, 1);
@@ -191,12 +193,13 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const loaded = [], failed = [];
 
         for (const p of store) {
+            let blobUrl = '';
             try {
                 const findings = scanSource(p.source);
                 if (findings.length > 0) {
                     log(`Security: persisted ${type} "${p.name}" contains: ${findings.map(f => f.label).join(', ')}`);
                 }
-                const blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
+                blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
                 const mod = await import(blobUrl);
                 if (typeof mod.register === 'function') {
                     mod.register(deps);
@@ -204,9 +207,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 } else {
                     failed.push({ name: p.name, error: 'no register() export' });
                 }
-                URL.revokeObjectURL(blobUrl);
             } catch (e) {
                 failed.push({ name: p.name, error: e.message });
+            } finally {
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
             }
         }
 

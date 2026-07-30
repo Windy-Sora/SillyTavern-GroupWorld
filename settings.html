@@ -51,7 +51,7 @@
             </div>
             <div class="gd-stat gd-stat-clickable" id="gd-stat-story-blueprint">
                 <span class="gd-stat-value">-</span>
-                <span class="gd-stat-label">蓝图</span>
+                <span class="gd-stat-label" data-i18n="statStoryBlueprint">蓝图</span>
             </div>
             <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择" data-i18n-title="worldBookExpandHint">
                 <span class="gd-stat-value">-</span>
@@ -121,7 +121,7 @@
         <div id="gd-dash-panel-vars-list" class="gd-dash-panel-body"></div>
     </div>
     <div class="gd-dash-panel gd-dash-panel-story-blueprint" id="gd-dash-panel-story-blueprint" style="display:none;">
-        <div class="gd-dash-panel-header"><span>故事蓝图</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="storyBlueprint" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
+        <div class="gd-dash-panel-header"><span data-i18n="dashStoryBlueprintTitle">故事蓝图</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="storyBlueprint" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-story-blueprint-list" class="gd-dash-panel-body"></div>
     </div>
 
@@ -441,6 +441,34 @@
                         <span class="menu_button menu_button_icon" id="gd-profile-regenerate-all">
                             <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
                         </span>
+                        <hr>
+                        <div id="gd-profile-library-section" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px;margin-top:8px;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong>档案库</strong>
+                                <select id="gd-profile-library-select" class="text_pole" style="width:auto;font-size:0.85em;">
+                                    <option value="">档案包...</option>
+                                </select>
+                                <span class="menu_button menu_button_icon" id="gd-profile-library-apply"><i class="fa-solid fa-folder-open"></i> 应用</span>
+                                <span class="menu_button menu_button_icon" id="gd-profile-library-save"><i class="fa-solid fa-floppy-disk"></i> 保存当前</span>
+                                <span class="menu_button menu_button_icon" id="gd-profile-library-import"><i class="fa-solid fa-file-import"></i> 导入到库</span>
+                                <input type="file" id="gd-profile-library-import-file" accept=".json" style="display:none;">
+                            </div>
+                            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;font-size:0.85em;">
+                                <label class="checkbox_label" for="gd-profile-library-auto-enabled">
+                                    <input type="checkbox" id="gd-profile-library-auto-enabled"> 自动补缺
+                                </label>
+                                <label class="checkbox_label" for="gd-profile-library-overwrite">
+                                    <input type="checkbox" id="gd-profile-library-overwrite"> 覆盖已有
+                                </label>
+                                <label class="checkbox_label" for="gd-profile-library-name-only">
+                                    <input type="checkbox" id="gd-profile-library-name-only"> 允许仅按名称匹配
+                                </label>
+                                <label class="checkbox_label" for="gd-profile-library-import-template">
+                                    <input type="checkbox" id="gd-profile-library-import-template"> 应用模板
+                                </label>
+                            </div>
+                            <div id="gd-profile-library-list" style="margin-top:6px;"></div>
+                        </div>
                         <div id="gd-profile-management-list" style="margin-top:8px;"></div>
                     </div>
                 </div>
@@ -546,6 +574,22 @@
                             <span class="menu_button menu_button_icon" id="gd-npc-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="generateBtn">生成</span></span>
                             <span class="menu_button menu_button_icon" id="gd-npc-scan"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanBtn">扫描</span></span>
                         </div>
+                        <div style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:7px;margin-top:8px;">
+                            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                <select id="gd-npc-library-select" class="text_pole" style="width:auto;font-size:0.85em;">
+                                    <option value="">NPC 包...</option>
+                                </select>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-apply" style="font-size:0.82em;"><i class="fa-solid fa-folder-open"></i> 应用</span>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-save" style="font-size:0.82em;"><i class="fa-solid fa-floppy-disk"></i> 保存当前</span>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-import" style="font-size:0.82em;"><i class="fa-solid fa-file-import"></i> 导入为包</span>
+                                <input type="file" id="gd-npc-library-import-file" accept=".json" style="display:none;">
+                                <label class="checkbox_label" for="gd-npc-library-import-template" style="margin:0;font-size:0.82em;display:inline-flex;align-items:center;gap:4px;">
+                                    <input type="checkbox" id="gd-npc-library-import-template">
+                                    <span>含 Prompt</span>
+                                </label>
+                            </div>
+                            <div id="gd-npc-library-list" style="margin-top:5px;"></div>
+                        </div>
                         <div id="gd-npc-list" style="margin-top:8px;"></div>
                     </div>
                 </div>
@@ -631,43 +675,63 @@
             <div class="gd-card gd-card-collapsible" data-card="storyBlueprint">
                 <div class="gd-card-header">
                     <span class="gd-card-caret">▸</span>
-                    <span>故事蓝图</span>
+                    <span data-i18n="storyBlueprintCard">故事蓝图</span>
                     <span class="gd-card-status" id="gd-story-blueprint-card-status"></span>
                 </div>
                 <div class="gd-card-body">
                     <label class="checkbox_label" for="gd-story-blueprint-enabled">
                         <input type="checkbox" id="gd-story-blueprint-enabled">
-                        <span>启用 Story Blueprint Provider</span>
+                        <span data-i18n="storyBlueprintEnabled">启用 Story Blueprint Provider</span>
                     </label>
                     <label class="checkbox_label" for="gd-story-blueprint-auto-continue">
                         <input type="checkbox" id="gd-story-blueprint-auto-continue">
-                        <span>蓝图完成时自动续写</span>
+                        <span data-i18n="storyBlueprintAutoContinue">蓝图完成时自动续写</span>
                     </label>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <label>推进模式
+                        <label><span data-i18n="storyBlueprintMode">推进模式</span>
                             <select id="gd-story-blueprint-mode" class="text_pole" style="width:100%;">
-                                <option value="leaf">leaf - 只推进最底层</option>
-                                <option value="all">all - 深度优先推进所有节点</option>
-                                <option value="level">level - 推进指定层级</option>
+                                <option value="leaf" data-i18n="storyBlueprintModeLeaf">leaf - 只推进最底层</option>
+                                <option value="all" data-i18n="storyBlueprintModeAll">all - 深度优先推进所有节点</option>
+                                <option value="level" data-i18n="storyBlueprintModeLevel">level - 推进指定层级</option>
                             </select>
                         </label>
-                        <label id="gd-story-blueprint-level-row">推进层级
+                        <label id="gd-story-blueprint-level-row"><span data-i18n="storyBlueprintLevel">推进层级</span>
                             <input type="number" id="gd-story-blueprint-level" class="text_pole" min="0" step="1" style="width:100%;">
                         </label>
-                        <label>完成变量
+                        <label><span data-i18n="storyBlueprintCompletionVariable">完成变量</span>
                             <input type="text" id="gd-story-blueprint-var" class="text_pole" style="width:100%;">
                         </label>
-                        <label>生成节点数
+                        <label><span data-i18n="storyBlueprintMaxNodes">生成节点数</span>
                             <input type="number" id="gd-story-blueprint-max-nodes" class="text_pole" min="1" max="50" step="1" style="width:100%;">
                         </label>
                     </div>
                     <div class="gd-row-buttons" style="margin-top:8px;">
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> 生成蓝图</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-continue"><i class="fa-solid fa-forward"></i> 续写蓝图</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-rollback"><i class="fa-solid fa-undo"></i> 回滚一步</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-reset-progress"><i class="fa-solid fa-rotate-left"></i> 重置进度</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-health"><i class="fa-solid fa-stethoscope"></i> 检查蓝图</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="storyBlueprintGenerate">生成蓝图</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-continue"><i class="fa-solid fa-forward"></i> <span data-i18n="storyBlueprintContinue">续写蓝图</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-rollback"><i class="fa-solid fa-undo"></i> <span data-i18n="storyBlueprintRollback">回滚一步</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-reset-progress"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintResetProgress">重置进度</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-health"><i class="fa-solid fa-stethoscope"></i> <span data-i18n="storyBlueprintHealth">检查蓝图</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
+                    </div>
+                    <div style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:7px;margin-top:8px;">
+                        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                            <select id="gd-story-blueprint-library-select" class="text_pole" style="width:auto;font-size:0.85em;">
+                                <option value="" data-i18n="storyBlueprintLibraryPlaceholder">蓝图包...</option>
+                            </select>
+                            <span class="menu_button menu_button_icon" id="gd-story-blueprint-library-apply" style="font-size:0.82em;"><i class="fa-solid fa-folder-open"></i> <span data-i18n="storyBlueprintLibraryApply">应用</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-story-blueprint-library-save" style="font-size:0.82em;"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="storyBlueprintLibrarySave">保存当前</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-story-blueprint-library-import" style="font-size:0.82em;"><i class="fa-solid fa-file-import"></i> <span data-i18n="storyBlueprintLibraryImport">导入为包</span></span>
+                            <input type="file" id="gd-story-blueprint-library-import-file" accept=".json" style="display:none;">
+                            <label class="checkbox_label" for="gd-story-blueprint-library-include-progress" style="margin:0;font-size:0.82em;display:inline-flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="gd-story-blueprint-library-include-progress" checked>
+                                <span data-i18n="storyBlueprintLibraryIncludeProgress">保存进度</span>
+                            </label>
+                            <label class="checkbox_label" for="gd-story-blueprint-library-apply-progress" style="margin:0;font-size:0.82em;display:inline-flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="gd-story-blueprint-library-apply-progress" checked>
+                                <span data-i18n="storyBlueprintLibraryApplyProgress">应用进度</span>
+                            </label>
+                        </div>
+                        <div id="gd-story-blueprint-library-list" style="margin-top:5px;"></div>
                     </div>
                     <span id="gd-story-blueprint-status" style="font-size:0.9em;color:var(--grey70a);display:block;margin:6px 0;"></span>
                     <span id="gd-story-blueprint-health-result" style="font-size:0.85em;color:var(--grey70a);display:block;"></span>
@@ -675,46 +739,46 @@
                     <div style="display:grid;grid-template-columns:minmax(160px,0.9fr) minmax(220px,1.1fr);gap:8px;margin-top:8px;">
                         <div>
                             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
-                                <b style="font-size:0.9em;">推进节点</b>
+                                <b style="font-size:0.9em;" data-i18n="storyBlueprintSteps">推进节点</b>
                                 <span style="display:inline-flex;gap:4px;align-items:center;">
-                                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-new" style="font-size:0.75em;"><i class="fa-solid fa-file-circle-plus"></i> 新建</span>
-                                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-add-chapter" style="font-size:0.75em;"><i class="fa-solid fa-plus"></i> 添加章节</span>
+                                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-new" style="font-size:0.75em;"><i class="fa-solid fa-file-circle-plus"></i> <span data-i18n="storyBlueprintNew">新建</span></span>
+                                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-add-chapter" style="font-size:0.75em;"><i class="fa-solid fa-plus"></i> <span data-i18n="storyBlueprintAddChapter">添加章节</span></span>
                                 </span>
                             </div>
                             <div id="gd-story-blueprint-tree" class="gd-story-tree" style="max-height:260px;overflow:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;"></div>
                         </div>
                         <div>
-                            <b style="font-size:0.9em;">当前节点</b>
+                            <b style="font-size:0.9em;" data-i18n="storyBlueprintCurrentNode">当前节点</b>
                             <div id="gd-story-blueprint-current-card" class="gd-story-current-card"></div>
                         </div>
                     </div>
                     <div class="gd-row-buttons">
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-raw-toggle"><i class="fa-solid fa-code"></i> 高级 JSON 编辑</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-export"><i class="fa-solid fa-file-export"></i> 导出</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-import"><i class="fa-solid fa-file-import"></i> 导入</span>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-clear"><i class="fa-solid fa-trash"></i> 清空</span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-raw-toggle"><i class="fa-solid fa-code"></i> <span data-i18n="storyBlueprintRawToggle">高级 JSON 编辑</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-export"><i class="fa-solid fa-file-export"></i> <span data-i18n="exportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-import"><i class="fa-solid fa-file-import"></i> <span data-i18n="importBtn">导入</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-clear"><i class="fa-solid fa-trash"></i> <span data-i18n="storyBlueprintClear">清空</span></span>
                         <input type="file" id="gd-story-blueprint-import-file" accept=".json" style="display:none;">
                     </div>
                     <div id="gd-story-blueprint-raw-panel" style="display:none;">
-                        <label for="gd-story-blueprint-json">蓝图 JSON</label>
+                        <label for="gd-story-blueprint-json" data-i18n="storyBlueprintJson">蓝图 JSON</label>
                         <textarea id="gd-story-blueprint-json" class="text_pole textarea_compact" rows="10" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
-                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-save-json"><i class="fa-solid fa-floppy-disk"></i> 保存编辑</span>
+                        <span class="menu_button menu_button_icon" id="gd-story-blueprint-save-json"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="storyBlueprintSaveJson">保存编辑</span></span>
                     </div>
-                    <label for="gd-story-blueprint-prompt">生成 Prompt</label>
+                    <label for="gd-story-blueprint-prompt" data-i18n="storyBlueprintPrompt">生成 Prompt</label>
                     <textarea id="gd-story-blueprint-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认生成 Prompt</span>
-                    <label for="gd-story-blueprint-continue-prompt">续写 Prompt</label>
+                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintPromptReset">默认生成 Prompt</span></span>
+                    <label for="gd-story-blueprint-continue-prompt" data-i18n="storyBlueprintContinuePrompt">续写 Prompt</label>
                     <textarea id="gd-story-blueprint-continue-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-continue-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认续写 Prompt</span>
-                    <label for="gd-story-blueprint-schema">蓝图 JSON Schema / 输出格式</label>
+                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-continue-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintContinuePromptReset">默认续写 Prompt</span></span>
+                    <label for="gd-story-blueprint-schema" data-i18n="storyBlueprintSchema">蓝图 JSON Schema / 输出格式</label>
                     <textarea id="gd-story-blueprint-schema" class="text_pole textarea_compact" rows="7" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认 Schema</span>
-                    <label for="gd-story-blueprint-template">Provider 注入模板</label>
+                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintSchemaReset">默认 Schema</span></span>
+                    <label for="gd-story-blueprint-template" data-i18n="storyBlueprintTemplate">Provider 注入模板</label>
                     <textarea id="gd-story-blueprint-template" class="text_pole textarea_compact" rows="8" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-template-reset"><i class="fa-solid fa-rotate-left"></i> 默认模板</span>
-                    <label for="gd-story-blueprint-provider-preview">Provider 预览：{{storyBlueprintCurrent}}</label>
+                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-template-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintTemplateReset">默认模板</span></span>
+                    <label for="gd-story-blueprint-provider-preview" data-i18n="storyBlueprintProviderPreview">Provider 预览：{{storyBlueprintCurrent}}</label>
                     <textarea id="gd-story-blueprint-provider-preview" class="text_pole textarea_compact" rows="7" style="width:100%;font-family:monospace;font-size:0.82em;" readonly></textarea>
-                    <label for="gd-story-blueprint-signals">完成信号记录</label>
+                    <label for="gd-story-blueprint-signals" data-i18n="storyBlueprintSignals">完成信号记录</label>
                     <textarea id="gd-story-blueprint-signals" class="text_pole textarea_compact" rows="4" style="width:100%;font-family:monospace;font-size:0.82em;" readonly></textarea>
                 </div>
             </div>
@@ -825,10 +889,31 @@
                     <span data-i18n="worldBooksCard">世界书</span>
                 </div>
                 <div class="gd-card-body">
+                    <label for="gd-world-book-source-mode" data-i18n="worldBookSourceMode">来源模式</label>
+                    <select id="gd-world-book-source-mode" class="text_pole" style="width:100%;">
+                        <option value="st" data-i18n="worldBookSourceSt">跟随 ST 当前激活世界书</option>
+                        <option value="manual" data-i18n="worldBookSourceManual">使用下方手动勾选</option>
+                    </select>
                     <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目</label>
                     <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
                     <span class="menu_button menu_button_icon" id="gd-world-book-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshListBtn">刷新列表</span></span>
                     <div id="gd-world-book-list" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;"></div>
+                    <div style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:7px;margin-top:8px;">
+                        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                            <strong data-i18n="gdWorldBooksProviderTitle">GD 世界书 Provider</strong>
+                            <select id="gd-world-book-provider-preview-mode" class="text_pole" style="width:auto;font-size:0.85em;">
+                                <option value="constant" data-i18n="gdWorldBooksPreviewConstant">无条件</option>
+                                <option value="full" data-i18n="gdWorldBooksPreviewFull">全量</option>
+                                <option value="names" data-i18n="gdWorldBooksPreviewNames">名称</option>
+                            </select>
+                            <span class="menu_button menu_button_icon" id="gd-world-book-provider-refresh" style="font-size:0.82em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
+                            <span class="menu_button menu_button_icon" id="gd-world-book-copy-constant" style="font-size:0.82em;"><i class="fa-solid fa-copy"></i> {{gdWorldBooksConstant}}</span>
+                            <span class="menu_button menu_button_icon" id="gd-world-book-copy-full" style="font-size:0.82em;"><i class="fa-solid fa-copy"></i> {{gdWorldBooksFull}}</span>
+                            <span class="menu_button menu_button_icon" id="gd-world-book-copy-names" style="font-size:0.82em;"><i class="fa-solid fa-copy"></i> {{gdWorldBooksNames}}</span>
+                        </div>
+                        <small id="gd-world-book-provider-stats" style="display:block;color:var(--grey70a);margin-top:5px;"></small>
+                        <textarea id="gd-world-book-provider-preview" class="text_pole textarea_compact" rows="7" style="width:100%;font-family:monospace;font-size:0.82em;margin-top:5px;" readonly></textarea>
+                    </div>
                 </div>
             </div>
 
@@ -1122,9 +1207,19 @@
                         <span data-i18n="customPromptsEnabledShort">启用</span>
                     </label>
                     <div id="gd-custom-prompt-list" style="margin:6px 0;"></div>
-                    <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;" placeholder="name">
-                    <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;" placeholder="name">
+                        <select id="gd-cp-new-scope" class="text_pole" style="width:auto;font-size:0.85em;">
+                            <option value="global" data-i18n="customPromptScopeGlobal">通用</option>
+                            <option value="character" data-i18n="customPromptScopeCharacter">当前角色</option>
+                            <option value="mixed" data-i18n="customPromptScopeMixed">高级 JSON</option>
+                        </select>
+                        <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+                    </div>
                     <textarea id="gd-cp-new-content" class="text_pole textarea_compact" rows="2" style="width:100%;margin-top:2px;" placeholder="content"></textarea>
+                    <textarea id="gd-cp-new-data" class="text_pole textarea_compact" rows="3" style="width:100%;margin-top:2px;" placeholder='可选 JSON 数据，例如 {"Alice":"10岁","Bob":"30岁"}' data-i18n-placeholder="customPromptDataPlaceholder"></textarea>
+                    <small style="color:var(--grey70a);" data-i18n="customPromptDataHint">JSON 会作为 data 暴露，可用 {{?name:field}} 精确读取；角色映射可用 {{?age:$character}}。</small>
+                    <div id="gd-cp-new-data-builder" class="gd-cp-data-builder" style="margin-top:4px;"></div>
                     <span class="menu_button menu_button_icon" id="gd-cp-add-btn" style="margin-top:4px;">
                         <i class="fa-solid fa-plus"></i> <span data-i18n="providerRefAdd">添加</span>
                     </span>

@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
+import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
@@ -22,6 +22,7 @@ import { register as registerDirectorLedger } from './assets/providers/director-
 import { register as registerTestProvider } from './assets/providers/test-provider.js';
 import { register as registerWorldBooks } from './assets/providers/world-books.js';
 import { register as registerWorldBookImportance } from './assets/providers/world-book-importance.js';
+import { register as registerGdWorldBooks } from './assets/providers/gd-world-books.js';
 import { register as registerCharacterLore } from './assets/providers/character-lore.js';
 import { register as registerSystemTime } from './assets/providers/system-time.js';
 import { register as registerRandomDice } from './assets/providers/random-dice.js';
@@ -48,7 +49,9 @@ import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
+import { createProfileLibrarySystem } from './systems/profile-library-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
+import { createNpcLibrarySystem } from './systems/npc-library-system.js';
 import { createSummaryExportSystem } from './systems/summary-export-system.js';
 import { createCritiqueExportSystem } from './systems/critique-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
@@ -57,6 +60,7 @@ import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
 import { createVariableSystem } from './systems/variable-system.js';
 import { createStoryBlueprintSystem } from './systems/story-blueprint-system.js';
+import { createStoryBlueprintLibrarySystem } from './systems/story-blueprint-library-system.js';
 import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -80,6 +84,7 @@ import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
 import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
+import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -129,13 +134,59 @@ let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, rea
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
-let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
+let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
 let postSpeechMessageAbortController = null;    // AbortController for PostSpeech per-message LLM call
 let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
+
+function isPostSpeechIntentQueued(messageIndex, capabilityId) {
+    return postSpeechRoundQueue.some(job =>
+        job.contexts.some(context =>
+            context.messageIndex === messageIndex &&
+            context.intent?.type === capabilityId
+        )
+    );
+}
+
+function enqueuePostSpeechRoundJob(contexts, deferred = []) {
+    if (!contexts.length) return;
+    postSpeechRoundQueue.push({
+        contexts: [...contexts],
+        deferred: [...deferred],
+    });
+}
+
+function countQueuedPostSpeechIntents() {
+    return postSpeechRoundQueue.reduce((total, job) => total + job.contexts.length, 0);
+}
+
+async function drainPostSpeechRoundQueue() {
+    const pendingJobs = postSpeechRoundQueue.splice(0);
+    const pendingCount = pendingJobs.reduce(
+        (total, job) => total + job.contexts.length,
+        0
+    );
+    log(`PostSpeech: executing ${pendingCount} deferred per-message intents`);
+
+    for (const job of pendingJobs) {
+        let execResult;
+        if (job.deferred.length) {
+            execResult = await postSpeechExecutor.executeDeferred(job.deferred);
+        } else {
+            execResult = await postSpeechExecutor.run(
+                { intents: job.contexts.map(context => context.intent) },
+                CapabilityRegistry.listExecutableForMode('message')
+            );
+            if (execResult.deferred.length) {
+                execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+            }
+        }
+        await postSpeechSystem.trackExecution(execResult, job.contexts);
+    }
+}
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -225,6 +276,17 @@ const storyBlueprintSystem = createStoryBlueprintSystem({
 });
 storyBlueprintSystem.ensureCompletionVariable();
 
+const storyBlueprintLibrarySystem = createStoryBlueprintLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    saveChatConditional,
+    getCurrentGroup,
+    storyBlueprintSystem,
+    log,
+});
+
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
 
@@ -252,10 +314,32 @@ const customAgentSystem = createCustomAgentSystem({
     log,
 });
 
+function getActivatedWorldBookNames() {
+    const books = new Set();
+    const chatMeta = getChatMetadata();
+    if (chatMeta?.world_info && world_names.includes(chatMeta.world_info)) {
+        books.add(chatMeta.world_info);
+    }
+    if (Array.isArray(selected_world_info)) {
+        for (const name of selected_world_info) {
+            if (world_names.includes(name)) books.add(name);
+        }
+    }
+    if (world_info && Array.isArray(world_info.charLore)) {
+        for (const entry of world_info.charLore) {
+            if (entry.name && world_names.includes(entry.name)) books.add(entry.name);
+        }
+    }
+    return [...books];
+}
+
 const worldBookScanner = createWorldBookScanner({
     world_names, loadWorldInfo, log,
     getSelection: () => settings.worldBookSelection,
     getMaxEntries: () => settings.worldBookMaxEntries,
+    getSourceMode: () => settings.worldBookSourceMode || 'st',
+    getStSelection: getActivatedWorldBookNames,
+    renderMacros: (text) => substituteParams(text, { replaceCharacterCard: false }),
 });
 
 const profileSystem = createProfileSystem({
@@ -298,6 +382,25 @@ const { exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames
         getCurrentGroup, getCharacters, saveChatConditional,
         refreshProfileManagementUI, log,
     });
+
+const profileLibrarySystem = createProfileLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    saveChatConditional,
+    getProfiles,
+    getCurrentGroup,
+    getCharacters,
+    getDefaultProfileGeneratorPrompt,
+    getDefaultProfileSchema,
+    getDefaultProfileRenderTemplate,
+    parseImportFile,
+    applyImport,
+    refreshProfileManagementUI,
+    hashChar,
+    log,
+});
 
 // ─── NPC Export System ──────────────────────────────────────────────
 const { exportNpcs, parseImportFile: parseNpcImportFile, applyImport: applyNpcImport,
@@ -468,6 +571,19 @@ const npcSystem = createNpcSystem({
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
 
+const npcLibrarySystem = createNpcLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    getCurrentGroup,
+    npcSystem,
+    parseNpcImportFile,
+    applyNpcImport,
+    getDefaultNpcPrompt: () => DEFAULT_NPC_PROMPT,
+    log,
+});
+
 // ─── Memory Agent + System ───────────────────────────────────────────
 AgentRegistry.register(createMemoryAgent({ renderPrompt, extractJsonObject, log }));
 
@@ -485,6 +601,7 @@ const postSpeechSystem = createPostSpeechSystem({
 const postSpeechExecutor = createExecutor({
     blocking: settings.postSpeechBlocking !== false,
     log,
+    resolveCapability: capabilityId => CapabilityRegistry.get(capabilityId),
     onExecuted: (capId, result) => {
         if (!result.success) log(`[Executor] ${capId} execution failed: ${result.error}`);
     },
@@ -496,6 +613,8 @@ const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
     unregisterProvider: (id) => unregisterProvider(id),
+    CapabilityRegistry,
+    confirmImport: html => callGenericPopup(html, POPUP_TYPE.CONFIRM),
 });
 
 // ─── Expose core modules globally for user-imported .js files ───────
@@ -1069,6 +1188,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         await runManualOrderedGeneration();
     }
     takeoverPending = false;
+    let postSpeechRoundWasAborted = false;
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
@@ -1099,7 +1219,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             if (agent) {
                 const agentConfig = settings.agentConfigs?.['post-speech'] || {};
                 const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-                const caller = createCaller(agentConfig, stGenerateRaw);
+                const caller = createCaller(
+                    agentConfig,
+                    stGenerateRaw,
+                    () => getContext().stopGeneration()
+                );
                 const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechRoundPrompt || undefined };
 
                 const pool = buildContextPool({
@@ -1116,45 +1240,45 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
                 };
 
-                if (postSpeechAbortController.signal.aborted) return;
-
-                const response = await execute(agent, {
-                    pool,
-                    caller,
-                    config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
-                }).catch(e => {
-                    if (e.name === 'AbortError' || postSpeechAbortController.signal.aborted) {
-                        log('PostSpeech round aborted');
-                        return null;
-                    }
-                    throw e;
-                });
-
-                if (!response) return;
+                let response = null;
+                if (postSpeechAbortController.signal.aborted) {
+                    postSpeechRoundWasAborted = true;
+                } else {
+                    response = await execute(agent, {
+                        pool,
+                        caller,
+                        config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
+                    }).catch(e => {
+                        if (e.name === 'AbortError' || postSpeechAbortController.signal.aborted) {
+                            postSpeechRoundWasAborted = true;
+                            log('PostSpeech round aborted');
+                            return null;
+                        }
+                        throw e;
+                    });
+                }
 
                 if (response) {
                     const policy = agent.parseResponse(response);
                     if (policy?.intents?.length) {
                         log('PostSpeech round policy:', policy);
-                        await postSpeechExecutor.run(policy, CapabilityRegistry.listForMode('round'));
-                        for (const intent of policy.intents) {
-                            await postSpeechSystem.record(chat.length - 1, '_round_', intent.type, intent.params, policy);
+                        const contexts = policy.intents.map(intent => ({
+                            messageIndex: chat.length - 1,
+                            messageName: '_round_',
+                            intent,
+                            policy,
+                        }));
+                        let execResult = await postSpeechExecutor.run(
+                            policy,
+                            CapabilityRegistry.listExecutableForMode('round')
+                        );
+                        if (execResult.deferred.length) {
+                            execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
                         }
+                        await postSpeechSystem.trackExecution(execResult, contexts);
                     }
                 }
 
-                // Drain deferred per-message intents (round/both timing)
-                if (postSpeechRoundQueue.length > 0) {
-                    const pendingIntents = postSpeechRoundQueue.splice(0);
-                    log(`PostSpeech: executing ${pendingIntents.length} deferred per-message intents`);
-                    await postSpeechExecutor.run(
-                        { intents: pendingIntents },
-                        CapabilityRegistry.listForMode('message')
-                    );
-                    for (const intent of pendingIntents) {
-                        await postSpeechSystem.record(chat.length - 1, '_round_deferred', intent.type, intent.params, {});
-                    }
-                }
             }
         } catch (e) {
             log('PostSpeech round skipped:', e.message);
@@ -1175,6 +1299,20 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     );
                 }
             }
+        }
+    }
+
+    // Deferred message actions belong to the caller and must drain at the real
+    // round boundary even when the optional round-analysis agent is disabled
+    // or fails.
+    if (!postSpeechRoundWasAborted &&
+        takeoverGenCount === 0 &&
+        !manualGenInProgress &&
+        postSpeechRoundQueue.length > 0) {
+        try {
+            await drainPostSpeechRoundQueue();
+        } catch (e) {
+            log('PostSpeech deferred execution failed:', e.message);
         }
     }
 
@@ -1232,6 +1370,39 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             await saveChatConditional();
         }
 
+        const memoryCoverage = (
+            chat_metadata[EXT_KEY]._autoMemCharLen
+            && typeof chat_metadata[EXT_KEY]._autoMemCharLen === 'object'
+            && !Array.isArray(chat_metadata[EXT_KEY]._autoMemCharLen)
+        ) ? chat_metadata[EXT_KEY]._autoMemCharLen : {};
+        chat_metadata[EXT_KEY]._autoMemCharLen = memoryCoverage;
+
+        async function saveMemoryTargetLen(target, val) {
+            const hadPrevious = Object.prototype.hasOwnProperty.call(memoryCoverage, target);
+            const previous = memoryCoverage[target];
+            memoryCoverage[target] = val;
+            try {
+                await saveChatConditional();
+            } catch (error) {
+                if (hadPrevious) memoryCoverage[target] = previous;
+                else delete memoryCoverage[target];
+                throw error;
+            }
+        }
+
+        async function runAutoMemoryBatch(targets, interval) {
+            return await runAutoMemoryTargets({
+                targets,
+                currentLen,
+                interval,
+                defaultCovered: memLen,
+                coveredByTarget: memoryCoverage,
+                generateForTarget: avatar => memorySystem.generateForCharacter(avatar),
+                onCovered: saveMemoryTargetLen,
+                log,
+            });
+        }
+
         function resolveMemoryTargets(members, interval) {
             if (!settings.autoMemorySpeakers) return members;
             const history = getDirectorHistory();
@@ -1260,14 +1431,16 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                 const interval = settings.autoSummaryInterval || 10;
                 if (sumLen === 0 && chat_metadata[EXT_KEY]._autoSumLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-sum] path: first-enable currentLen=', currentLen);
-                    await saveSumLen(currentLen);
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-summary: first enable, ${currentLen} existing msgs`);
                             toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `Auto-summary (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
                             await chatSummarySystem.generateSummary();
+                            await saveSumLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-summary failed:', e.message); }
+                    } else {
+                        await saveSumLen(currentLen);
                     }
                 } else if (currentLen < sumLen) {
                     console.log('[GD-auto-sum] path: deletion');
@@ -1277,11 +1450,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const newMsgs = currentLen - sumLen;
                     console.log('[GD-auto-sum] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        await saveSumLen(currentLen);
                         try {
                             log(`Auto-summary triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                             await chatSummarySystem.generateSummary();
+                            await saveSumLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-summary failed:', e.message); }
                     }
@@ -1293,7 +1466,6 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                 const interval = settings.autoMemoryInterval || 10;
                 if (memLen === 0 && chat_metadata[EXT_KEY]._autoMemLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-mem] path: first-enable currentLen=', currentLen);
-                    await saveMemLen(currentLen);
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-memory: first enable, ${currentLen} existing msgs`);
@@ -1304,21 +1476,25 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
-                            for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
-                            }
+                            const memoryRun = await runAutoMemoryBatch(targets, interval);
+                            if (!memoryRun.complete) throw new Error('Auto-memory incomplete');
+                            await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
+                    } else {
+                        await saveMemLen(currentLen);
                     }
                 } else if (currentLen < memLen) {
                     console.log('[GD-auto-mem] path: deletion');
+                    for (const target of Object.keys(memoryCoverage)) {
+                        memoryCoverage[target] = Math.min(Number(memoryCoverage[target]) || 0, currentLen);
+                    }
                     await saveMemLen(currentLen);
                     toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动记忆计数器已重置。' : 'Messages deleted. Auto-memory counter reset.', '', { timeOut: 8000 });
                 } else {
                     const newMsgs = currentLen - memLen;
                     console.log('[GD-auto-mem] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        await saveMemLen(currentLen);
                         try {
                             log(`Auto-memory triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
@@ -1328,9 +1504,9 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
-                            for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
-                            }
+                            const memoryRun = await runAutoMemoryBatch(targets, interval);
+                            if (!memoryRun.complete) throw new Error('Auto-memory incomplete');
+                            await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
                     }
@@ -1345,15 +1521,18 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
                 if (criLen === 0 && chat_metadata[EXT_KEY]._autoCritiqueLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-cri] path: first-enable currentLen=', currentLen);
-                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                    await saveChatConditional();
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-critique: first enable, ${currentLen} existing msgs`);
                             toastr?.info?.(lang === 'zh' ? `自动批判触发（检测到 ${currentLen} 条现有消息）...` : `Auto-critique (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
                             await critiqueSystem.generateCritique();
+                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                            await saveChatConditional();
                             toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-critique failed:', e.message); }
+                    } else {
+                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                        await saveChatConditional();
                     }
                 } else if (currentLen < criLen) {
                     console.log('[GD-auto-cri] path: deletion');
@@ -1364,12 +1543,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const newMsgs = currentLen - criLen;
                     console.log('[GD-auto-cri] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                        await saveChatConditional();
                         try {
                             log(`Auto-critique triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动批判触发（${newMsgs} 条新消息）...` : `Auto-critique (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                             await critiqueSystem.generateCritique();
+                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                            await saveChatConditional();
                             toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-critique failed:', e.message); }
                     }
@@ -1391,15 +1570,19 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const interval = inst.autoInterval || 10;
 
                     if (caLen === 0 && chat_metadata[EXT_KEY][caKey] === undefined && legacyLen === undefined) {
-                        chat_metadata[EXT_KEY][caKey] = currentLen;
-                        await saveChatConditional();
                         if (currentLen >= interval) {
                             try {
                                 log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
-                                await customAgentSystem.execute(inst);
+                                const result = await customAgentSystem.execute(inst);
+                                if (!result) throw new Error('Custom agent returned no result');
+                                chat_metadata[EXT_KEY][caKey] = currentLen;
+                                await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                             } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        } else {
+                            chat_metadata[EXT_KEY][caKey] = currentLen;
+                            await saveChatConditional();
                         }
                     } else if (currentLen < caLen) {
                         chat_metadata[EXT_KEY][caKey] = currentLen;
@@ -1408,12 +1591,13 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     } else {
                         const newMsgs = currentLen - caLen;
                         if (newMsgs >= interval) {
-                            chat_metadata[EXT_KEY][caKey] = currentLen;
-                            await saveChatConditional();
                             try {
                                 log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                                await customAgentSystem.execute(inst);
+                                const result = await customAgentSystem.execute(inst);
+                                if (!result) throw new Error('Custom agent returned no result');
+                                chat_metadata[EXT_KEY][caKey] = currentLen;
+                                await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                             } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
                         }
@@ -1504,7 +1688,11 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         // Inject mode-specific prompt via config — agent prompt() reads from config.postSpeechPrompt
         const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechMessagePrompt || undefined };
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({
             group,
@@ -1533,7 +1721,9 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         if (!isReroll) {
             const enabledCaps = CapabilityRegistry.listForMode('message').map(c => c.id);
             const allAlreadyExecuted = enabledCaps.every(cid =>
-                postSpeechSystem.wasExecuted(msgIndex, cid));
+                postSpeechSystem.wasExecuted(msgIndex, cid) ||
+                postSpeechSystem.isPending(msgIndex, cid) ||
+                isPostSpeechIntentQueued(msgIndex, cid));
             if (allAlreadyExecuted) {
                 log('PostSpeech: all capabilities already executed for message', msgIndex);
                 return;
@@ -1549,30 +1739,41 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         // Only execute intents that haven't been done yet
         const freshIntents = policy.intents.filter(i =>
-            !postSpeechSystem.wasExecuted(msgIndex, i.type)
+            !postSpeechSystem.wasExecuted(msgIndex, i.type) &&
+            !postSpeechSystem.isPending(msgIndex, i.type) &&
+            !isPostSpeechIntentQueued(msgIndex, i.type)
         );
         if (!freshIntents.length) { log('PostSpeech: all intents already executed'); return; }
 
         // Run executor with filtered intents
         const timing = settings.postSpeechTiming || 'message';
+        const intentContexts = freshIntents.map(intent => ({
+            messageIndex: msgIndex,
+            messageName: msg.name || '?',
+            intent,
+            policy,
+        }));
 
+        let queuedByPolicy = false;
         if (timing === 'message' || timing === 'both') {
             const execResult = await postSpeechExecutor.run(
                 { ...policy, intents: freshIntents },
-                CapabilityRegistry.listForMode('message')
+                CapabilityRegistry.listExecutableForMode('message')
             );
+            if (execResult.deferred.length) {
+                enqueuePostSpeechRoundJob(intentContexts, execResult.deferred);
+                queuedByPolicy = true;
+                log(`PostSpeech: policy deferred ${intentContexts.length} intents to round end`);
+            } else {
+                await postSpeechSystem.trackExecution(execResult, intentContexts);
+            }
             log('PostSpeech execution (message):', execResult);
         }
 
         // Queue for round-end execution (round | both modes)
-        if (timing === 'round' || timing === 'both') {
-            postSpeechRoundQueue.push(...freshIntents);
-            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${postSpeechRoundQueue.length})`);
-        }
-
-        // Record each executed intent
-        for (const intent of freshIntents) {
-            await postSpeechSystem.record(msgIndex, msg.name || '?', intent.type, intent.params, policy);
+        if ((timing === 'round' || timing === 'both') && !queuedByPolicy) {
+            enqueuePostSpeechRoundJob(intentContexts);
+            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
         }
 
         // Done notification
@@ -1624,6 +1825,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    profileLibrarySystem.resetAutoLoadDedup?.();
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
@@ -1635,6 +1837,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
         delete chat_metadata[EXT_KEY]._autoCheckLength;
         delete chat_metadata[EXT_KEY]._autoSumLen;
         delete chat_metadata[EXT_KEY]._autoMemLen;
+        delete chat_metadata[EXT_KEY]._autoMemCharLen;
         delete chat_metadata[EXT_KEY]._autoCritiqueLen;
         // Clean up custom agent auto counters
         for (const key of Object.keys(chat_metadata[EXT_KEY])) {
@@ -1643,6 +1846,17 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
+    if (settings.profileEnabled) {
+        profileLibrarySystem.autoLoadForCurrentGroup('chat-changed')
+            .then((result) => {
+                if (result?.applied > 0) {
+                    toastr.info(`Auto-loaded ${result.applied} profile(s)`);
+                    window.__gdRefreshProfileLibrary?.();
+                    window.__gdRefreshDashboard?.();
+                }
+            })
+            .catch(e => console.warn('[GroupDirector] Profile library auto-load failed:', e.message || e));
+    }
     window.__gdRefreshVariables?.();
     window.__gdRefreshDashboard?.();
 });
@@ -1832,7 +2046,11 @@ async function initForceSpeakLLM(char, avatar) {
 
         const agentConfig = settings.agentConfigs?.['force-speak'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({
             group,
@@ -1945,7 +2163,11 @@ async function initRoundWithLLM() {
 
         const agentConfig = settings.agentConfigs?.['director'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({ group, enabledMembers });
 
@@ -2249,6 +2471,7 @@ registerStoryBlueprint({ settings, storyBlueprintSystem });
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
+registerGdWorldBooks(worldBookScanner);
 registerCharacterLore(getDirectorHistory);
 registerSystemTime(settings);
 registerRandomDice();
@@ -2324,7 +2547,7 @@ eventSource.on(event_types.APP_READY, async () => {
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
-        toastr, world_names, loadWorldInfo, renderPrompt,
+        toastr, world_names, loadWorldInfo, renderPrompt, worldBookScanner,
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
@@ -2345,7 +2568,9 @@ eventSource.on(event_types.APP_READY, async () => {
         userProviderLoader,
         memorySystem,
         exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames,
+        profileLibrarySystem,
         exportNpcs, parseNpcImportFile, applyNpcImport, loadNpcPreset, getNpcPresetNames,
+        npcLibrarySystem,
         summaryExportSystem,
         critiqueExportSystem,
         memoryExportSystem,
@@ -2355,10 +2580,23 @@ eventSource.on(event_types.APP_READY, async () => {
         scriptExecutorSystem,
         variableSystem,
         storyBlueprintSystem,
+        storyBlueprintLibrarySystem,
     };
     await loadSettingsUI(deps);
+    if (settings.profileEnabled) {
+        profileLibrarySystem.autoLoadForCurrentGroup('app-ready')
+            .then((result) => {
+                if (result?.applied > 0) {
+                    toastr.info(`Auto-loaded ${result.applied} profile(s)`);
+                    window.__gdRefreshProfileLibrary?.();
+                    window.__gdRefreshDashboard?.();
+                }
+            })
+            .catch(e => console.warn('[GroupDirector] Profile library auto-load failed:', e.message || e));
+    }
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
+    CapabilityRegistry._scopeOverrides = settings._capabilityScopes || {};
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
@@ -2381,6 +2619,23 @@ eventSource.on(event_types.APP_READY, async () => {
     const builtinCaps = settings._builtinCapEnabled || {};
     for (const [id, enabled] of Object.entries(builtinCaps)) {
         try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) { }
+    }
+    // Persist capability scopes for built-in and user-imported capabilities.
+    if (!CapabilityRegistry._gdOrigSetScope) {
+        CapabilityRegistry._gdOrigSetScope = CapabilityRegistry.setScope.bind(CapabilityRegistry);
+    }
+    CapabilityRegistry.setScope = function (id, scope) {
+        CapabilityRegistry._gdOrigSetScope(id, scope);
+        try {
+            if (!settings._capabilityScopes) settings._capabilityScopes = {};
+            settings._capabilityScopes[id] = scope;
+            CapabilityRegistry._scopeOverrides[id] = scope;
+            saveSettingsDebounced();
+        } catch (_) { }
+    };
+    const capabilityScopes = settings._capabilityScopes || {};
+    for (const [id, scope] of Object.entries(capabilityScopes)) {
+        try { CapabilityRegistry.setScope(id, scope); } catch (_) { }
     }
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer

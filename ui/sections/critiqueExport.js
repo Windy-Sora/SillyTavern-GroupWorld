@@ -55,7 +55,8 @@ registerSection('critiqueExport', function (ctx) {
         $container.find('.gd-critique-delete').off('click').on('click', async function () {
             const id = $(this).data('id');
             const entry = list.find(s => s.id === id);
-            if (await callGenericPopup(isZh() ? `确定删除批判「${entry?.name || ''}」？` : `Delete critique "${entry?.name || ''}"?`, POPUP_TYPE.CONFIRM)) {
+            const entryName = escHtml(entry?.name || '');
+            if (await callGenericPopup(isZh() ? `确定删除批判「${entryName}」？` : `Delete critique "${entryName}"?`, POPUP_TYPE.CONFIRM)) {
                 await sys.deleteImportedCritique(id);
                 renderPanel();
             }

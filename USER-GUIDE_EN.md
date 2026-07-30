@@ -25,7 +25,7 @@
 
 ### Installation
 
-Place the `SillyTavern-GroupDirector` folder into ST's `public/scripts/extensions/third-party/` directory, restart ST. Enable it in the extension management panel.
+Place the `SillyTavern-GroupWorld` folder into ST's `public/scripts/extensions/third-party/` directory, restart ST. Enable it in the extension management panel.
 
 ### Three Steps to Start
 
@@ -47,7 +47,7 @@ Muyu isn't a code generator—she's GD's chief architect. She won't pile on feat
 
 ### An Even Faster Way: Presets
 
-Select `group-director-default` from the preset dropdown at the bottom of the dashboard → click "Apply" — all recommended configurations take effect immediately.
+Select `group-world-default` from the preset dropdown at the bottom of the dashboard → click "Apply" — all recommended configurations take effect immediately.
 
 ### Interface Layer Guide
 
@@ -132,7 +132,7 @@ Dropdown options are organized in groups:
 
 | Group | Content | When "Apply" is Clicked |
 |------|------|---------------|
-| **Built-in Profiles** | Factory presets such as `group-director-default` | Load into list first, then apply settings |
+| **Built-in Profiles** | Factory presets such as `group-world-default` | Load into list first, then apply settings |
 | **My Profiles** | User-saved or imported config profiles | Apply settings directly |
 
 Right-side buttons:
@@ -263,6 +263,20 @@ Generate structured character profiles (traits, motivations, relationships), inj
 | Regenerate all | One-click profile generation for all characters |
 | Profile management cards | Each character expandable, supports edit/regenerate/delete |
 
+**Profile Library** (inside the Character Profiles card)
+
+Save all ready character profiles in the current group as a named "profile library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Prompt for a name, save all ready profiles in the current group as a new library |
+| Apply / Import to Library / Export / Delete | Operations on the selected or a specific library |
+| Auto-fill | When enabled, automatically match and apply the best library when switching chats or on startup |
+| Set as Auto | Set a library as the fixed auto-load target (fixed mode) |
+| Overwrite existing / Allow name-only match / Apply template | Matching and apply options |
+
+Apply matches current group members by hash -> avatar+name -> name only, in three tiers; already-ready characters are skipped by default (unless "Overwrite existing" is checked). Each library card shows a match preview (importable / skipped counts).
+
 #### Character Memory (Card)
 
 Extracts key experiences and emotional changes from conversation history. Status label shows total entry count.
@@ -281,6 +295,18 @@ Extracts key experiences and emotional changes from conversation history. Status
 #### NPC Generation (Card)
 
 Batch-generate NPCs based on conversation context, can be imported as character cards. Status label shows NPC count.
+
+**NPC Library** (inside the NPC Generation card)
+
+Save the current group's NPCs as a named "NPC library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Prompt for a name, save current NPCs as a new library |
+| Apply / Import as Library / Export / Delete | Operations on NPC libraries |
+| Apply template | Also import the NPC generation prompt template on apply |
+
+Each NPC library card previews how many NPCs would be newly created vs overwritten.
 
 #### Identity Anchor (Card)
 
@@ -335,6 +361,15 @@ The default generation prompt includes `{{storyBlueprintFullJson}}` and `{{story
 
 Blueprint body and progress are stored in the current chat. Config profiles sync blueprint configuration only, not the concrete story blueprint. Story Blueprint uses the `story-blueprint` independent API settings in the Tools drawer's Agent Configuration card.
 
+**Story Blueprint Library** (inside the Story Blueprint card)
+
+Save the current story blueprint as a named "blueprint library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Save the current blueprint as a new library (optionally with progress) |
+| Apply / Import as Library / Export / Delete | Operations on blueprint libraries; applying can optionally restore progress |
+
 #### AI Critique (Card)
 
 Has the AI review recent conversations, critiquing Director decision quality and character performance. When enabled, `{{directorCritique}}`, `{{characterCritique}}`, `{{charCritique}}` have content.
@@ -358,6 +393,15 @@ Browse, edit, and clear Director history decisions. Status label shows round cou
 #### World Books (Card)
 
 Check which ST world book entries to inject into the Director Prompt. Refresh button syncs changes. Max injection entry limit (recommended: 15-30).
+
+**Source mode** (`worldBookSourceMode`):
+
+- **ST** (default): follow SillyTavern's currently active world books (chat-bound world book + global selection + character world books). The selection list below is read-only
+- **GD**: fully use the manual selection list below (`worldBookSelection`), decoupled from ST activation
+
+**Selection list**: Select All / Deselect All + per-item checkboxes (editable in GD mode).
+
+**Provider preview**: scans currently active world books in real time and previews the rendered text and character-count stats of `{{gdWorldBooksConstant}}` / `{{gdWorldBooksFull}}` / `{{gdWorldBooksNames}}`, with one-click copy buttons for each placeholder.
 
 ---
 
@@ -510,6 +554,9 @@ One extra LLM call per round. The Director analyzes context and returns JSON:
 | `{{worldInfo}}` | Currently activated and checked world book entry text |
 | `{{worldBooks}}` | Activated world book list |
 | `{{worldBookImportance}}` | Entries sorted by importance |
+| `{{gdWorldBooksFull}}` | Full text of all entries in currently active world books |
+| `{{gdWorldBooksConstant}}` | Always-on (constant) entries in currently active world books |
+| `{{gdWorldBooksNames}}` | List of currently active world book names |
 | `{{characterLore}}` | World book trigger content relevant to current character |
 
 ### Director State
@@ -643,6 +690,12 @@ Example:
 
 Auto-match characters on import (avatar exact → name exact → fuzzy match), confirmation popup for same-name conflicts.
 
+### Reusable Libraries (Cross-Chat)
+
+Character Profiles / NPC / Story Blueprint each have a "library" card (inside the Character Profiles and NPC Generation cards in the Characters drawer, and the Story Blueprint card in the Continuity drawer). They save the current group's data as named reusable packages, applicable across group chats. Library entries live in global settings, not exported with chat; each library supports Save Current, Apply, Import file, Export JSON, and Delete. The Profile library additionally supports auto-matching and loading when switching chats.
+
+See each card's section for details.
+
 ### Config-Level Export (Global)
 
 | Type | Location | Format |
@@ -656,7 +709,7 @@ Built-in presets (`assets/profiles/`):
 
 | Preset | Type | Content |
 |------|------|------|
-| `group-director-default` | Config Profile | Recommended config: LLM mode + scripts + profiles + memories |
+| `group-world-default` | Config Profile | Recommended config: LLM mode + scripts + profiles + memories |
 | `fantasy-rpg` | Character Profiles | 3 fantasy character examples |
 | `npc-fantasy-tavern` | NPCs | 3 tavern NPC examples |
 
@@ -841,7 +894,7 @@ A: Agent API keys are automatically cleared when exporting config profiles. You'
 A: Names limited to `a-z 0-9 _`. Cannot conflict with built-in Providers (like `recentMessages`) or ST macros (like `user` `char` `time` — 72 total).
 
 **Q: How to completely reset configuration?**
-A: Select `group-director-default` from the dashboard preset dropdown → click Apply.
+A: Select `group-world-default` from the dashboard preset dropdown → click Apply.
 
 **Q: What's the relationship between memory compression and memory export?**
 A: Compression uses LLM to merge old memories into summaries. Compressed memories are marked and can be skipped during export.

@@ -16,7 +16,9 @@ export function register(scanner, getMaxEntries) {
         id: 'worldBookImportance',
         placeholder: '{{worldBookImportance}}',
         render: async () => {
-            const books = await scanner.scanAll();
+            const books = scanner.getRenderedBooks
+                ? await scanner.getRenderedBooks()
+                : await scanner.scanAll();
             if (!books.length) return { content: '', data: [] };
 
             const max = getMaxEntries ? getMaxEntries() : 20;

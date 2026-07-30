@@ -52,8 +52,8 @@ export const DEFAULT_STORY_BLUEPRINT_PROMPT_ZH = `请基于当前群聊上下文
 [世界信息]
 {{worldInfo}}
 
-[世界书条目]
-{{worldBooks}}
+[世界书无条件设定]
+{{gdWorldBooksConstant}}
 
 [导演账本]
 {{directorLedger}}
@@ -96,8 +96,8 @@ export const DEFAULT_STORY_BLUEPRINT_PROMPT_EN = `Generate a structured Story Bl
 [World info]
 {{worldInfo}}
 
-[World book entries]
-{{worldBooks}}
+[Always-on world book entries]
+{{gdWorldBooksConstant}}
 
 [Director ledger]
 {{directorLedger}}
@@ -145,8 +145,8 @@ export const DEFAULT_STORY_BLUEPRINT_CONTINUE_PROMPT_ZH = `请基于现有故事
 [世界信息]
 {{worldInfo}}
 
-[世界书条目]
-{{worldBooks}}
+[世界书无条件设定]
+{{gdWorldBooksConstant}}
 
 [导演账本]
 {{directorLedger}}
@@ -187,8 +187,8 @@ export const DEFAULT_STORY_BLUEPRINT_CONTINUE_PROMPT_EN = `Continue the existing
 [World info]
 {{worldInfo}}
 
-[World book entries]
-{{worldBooks}}
+[Always-on world book entries]
+{{gdWorldBooksConstant}}
 
 [Director ledger]
 {{directorLedger}}

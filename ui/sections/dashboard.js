@@ -6,7 +6,8 @@ registerSection('dashboard', function (ctx) {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
         isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
-        configProfileSystem, onLatestEntryEdited, storyBlueprintSystem,
+        configProfileSystem, onLatestEntryEdited, storyBlueprintSystem, profileLibrarySystem,
+        storyBlueprintLibrarySystem, npcLibrarySystem,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -237,6 +238,7 @@ registerSection('dashboard', function (ctx) {
     };
 
     function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function escPopup(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
     function openSettingsLabel() {
         return (settings.lang || 'zh') === 'zh' ? '打开设置' : 'Open settings';
@@ -269,6 +271,89 @@ registerSection('dashboard', function (ctx) {
             <span class="menu_button menu_button_icon gd-dash-open-settings"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
         </div>`);
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard(cardName));
+        $list.append($bar);
+    }
+
+    function appendProfileLibraryToolbar($list) {
+        if (!profileLibrarySystem) {
+            appendOpenSettingsButton($list, 'profile');
+            return;
+        }
+        const libraries = profileLibrarySystem.getLibraries?.() || [];
+        const auto = profileLibrarySystem.getAutoLoadSettings?.() || {};
+        const $bar = $(`<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+            <select id="gd-dash-panel-profile-library" class="text_pole" style="width:auto;font-size:0.82em;">
+                <option value="">${lang === 'zh' ? '档案包...' : 'Profile library...'}</option>
+            </select>
+            <span class="menu_button menu_button_icon gd-dash-panel-profile-library-apply" style="font-size:0.78em;"><i class="fa-solid fa-folder-open"></i> ${lang === 'zh' ? '应用' : 'Apply'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-profile-library-save" style="font-size:0.78em;"><i class="fa-solid fa-floppy-disk"></i> ${lang === 'zh' ? '保存当前' : 'Save current'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-profile-library-delete" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+            <label class="checkbox_label" style="margin:0;font-size:0.82em;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+                <input type="checkbox" id="gd-dash-panel-profile-library-auto" ${auto.enabled ? 'checked' : ''}> ${lang === 'zh' ? '自动补缺' : 'Auto-fill'}
+            </label>
+            <span class="menu_button menu_button_icon gd-dash-open-settings" style="margin-left:auto;font-size:0.78em;"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
+        </div>`);
+        const $sel = $bar.find('#gd-dash-panel-profile-library');
+        const dashboardVal = $('#gd-profile-library-select').val();
+        for (const lib of libraries) {
+            $sel.append(`<option value="${esc(lib.id)}">${esc(lib.name)} (${lib.profileCount || 0})</option>`);
+        }
+        if (dashboardVal && libraries.some(lib => lib.id === dashboardVal)) $sel.val(dashboardVal);
+
+        $sel.on('change', function () {
+            $('#gd-profile-library-select').val($(this).val());
+        });
+        $bar.find('.gd-dash-panel-profile-library-apply').on('click', async () => {
+            const id = $sel.val();
+            if (!id) {
+                toastr?.warning?.(lang === 'zh' ? '请先选择档案包' : 'Select a profile library first');
+                return;
+            }
+            try {
+                const result = await profileLibrarySystem.applyLibrary(id, { ...profileLibrarySystem.getAutoLoadSettings() });
+                toastr?.success?.(lang === 'zh' ? `已应用 ${result.applied || 0} 个档案` : `Applied ${result.applied || 0} profile(s)`);
+                window.__gdRefreshProfileLibrary?.();
+                refreshAll();
+                renderPanelProfiles();
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+            }
+        });
+        $bar.find('.gd-dash-panel-profile-library-save').on('click', () => {
+            $('#gd-profile-library-save').trigger('click');
+        });
+        $bar.find('.gd-dash-panel-profile-library-delete').on('click', async () => {
+            const id = $sel.val();
+            if (!id) {
+                toastr?.warning?.(lang === 'zh' ? '请先选择档案包' : 'Select a profile library first');
+                return;
+            }
+            const lib = profileLibrarySystem.getLibrary?.(id);
+            if (!lib) return;
+            const libName = escPopup(lib.name);
+            const ok = await callGenericPopup(
+                lang === 'zh' ? `删除档案包“${libName}”？` : `Delete profile library "${libName}"?`,
+                POPUP_TYPE.CONFIRM,
+            );
+            if (!ok) return;
+            profileLibrarySystem.deleteLibrary(id);
+            $('#gd-profile-library-select').val('');
+            toastr?.success?.(lang === 'zh' ? '档案包已删除' : 'Profile library deleted');
+            window.__gdRefreshProfileLibrary?.();
+            refreshAll();
+            renderPanelProfiles();
+        });
+        $bar.find('#gd-dash-panel-profile-library-auto').on('change', function () {
+            const enabled = !!$(this).prop('checked');
+            const next = profileLibrarySystem.getAutoLoadSettings();
+            next.enabled = enabled;
+            if (!next.mode) next.mode = 'best';
+            profileLibrarySystem.saveAll();
+            $('#gd-profile-library-auto-enabled').prop('checked', enabled);
+            window.__gdRefreshProfileLibrary?.();
+            refreshDashboardAndOpenPanel('profiles');
+        });
+        $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('profile'));
         $list.append($bar);
     }
 
@@ -345,12 +430,14 @@ registerSection('dashboard', function (ctx) {
             settings.summaryEnabled = !!$(this).prop('checked');
             $('#gd-summary-enabled').prop('checked', settings.summaryEnabled);
             saveSettings();
+            refreshDashboardAndOpenPanel('summary');
         });
         $('#gd-dash-panel-auto-summary').on('change', function () {
             settings.autoSummaryEnabled = !!$(this).prop('checked');
             $('#gd-auto-summary-enabled').prop('checked', settings.autoSummaryEnabled);
             $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
             saveSettings();
+            refreshDashboardAndOpenPanel('summary');
         });
         $('#gd-dash-panel-auto-summary-int').on('input', function () {
             settings.autoSummaryInterval = Math.max(1, parseInt($(this).val()) || 10);
@@ -363,7 +450,7 @@ registerSection('dashboard', function (ctx) {
         const profiles = getProfiles?.() || {};
         const chars = ctx.getCharacters?.() || [];
         const $list = $('#gd-dash-panel-profiles-list').empty();
-        appendOpenSettingsButton($list, 'profile');
+        appendProfileLibraryToolbar($list);
         const entries = Object.entries(profiles).filter(([, p]) => p);
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色档案' : 'No profiles'}</small>`); return; }
         for (const [av, p] of entries) {
@@ -414,14 +501,24 @@ registerSection('dashboard', function (ctx) {
         const amOn = !!settings.autoMemoryEnabled;
         const amInt = settings.autoMemoryInterval ?? 10;
         $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;"><label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-auto-memory" ${amOn ? 'checked' : ''}>${lang === 'zh' ? '自动提取' : 'Auto-extract'}</label><span>${lang === 'zh' ? '每' : 'Every'}</span><input type="number" value="${amInt}" id="gd-dash-panel-auto-memory-int" class="text_pole" min="1" max="200" style="width:50px;margin:0;"><span>${lang === 'zh' ? '条触发' : 'msgs'}</span></div>`);
-        $('#gd-dash-panel-auto-memory').on('change', function () { settings.autoMemoryEnabled = !!$(this).prop('checked'); saveSettings(); });
-        $('#gd-dash-panel-auto-memory-int').on('input', function () { settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10); saveSettings(); });
+        $('#gd-dash-panel-auto-memory').on('change', function () {
+            settings.autoMemoryEnabled = !!$(this).prop('checked');
+            $('#gd-auto-memory-enabled').prop('checked', settings.autoMemoryEnabled);
+            $('#gd-auto-memory-row').toggle(settings.autoMemoryEnabled);
+            saveSettings();
+            refreshDashboardAndOpenPanel('memories');
+        });
+        $('#gd-dash-panel-auto-memory-int').on('input', function () {
+            settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10);
+            $('#gd-auto-memory-interval').val(settings.autoMemoryInterval);
+            saveSettings();
+        });
     }
 
     function renderPanelNpcs() {
         const npcs = npcSystem.getNpcs?.() || [];
         const $list = $('#gd-dash-panel-npcs-list').empty();
-        appendOpenSettingsButton($list, 'npc');
+        appendNpcLibraryToolbar($list);
         if (!npcs.length) { $list.append(`<small>${lang === 'zh' ? '暂无 NPC' : 'No NPCs'}</small>`); return; }
         npcs.forEach((n, ni) => {
             const shortDesc = (n.description || '').slice(0, 40);
@@ -446,6 +543,63 @@ registerSection('dashboard', function (ctx) {
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         });
+    }
+
+    function appendNpcLibraryToolbar($list) {
+        if (!npcLibrarySystem) {
+            appendOpenSettingsButton($list, 'npc');
+            return;
+        }
+        const libraries = npcLibrarySystem.getLibraries?.() || [];
+        const $bar = $(`<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+            <select id="gd-dash-panel-npc-library" class="text_pole" style="width:auto;font-size:0.82em;">
+                <option value="">${lang === 'zh' ? 'NPC 包...' : 'NPC library...'}</option>
+            </select>
+            <span class="menu_button menu_button_icon gd-dash-panel-npc-library-apply" style="font-size:0.78em;"><i class="fa-solid fa-folder-open"></i> ${lang === 'zh' ? '应用' : 'Apply'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-npc-library-save" style="font-size:0.78em;"><i class="fa-solid fa-floppy-disk"></i> ${lang === 'zh' ? '保存当前' : 'Save current'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-npc-library-delete" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+            <span class="menu_button menu_button_icon gd-dash-open-settings" style="margin-left:auto;font-size:0.78em;"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
+        </div>`);
+        const $sel = $bar.find('#gd-dash-panel-npc-library');
+        const current = $('#gd-npc-library-select').val();
+        for (const lib of libraries) {
+            $sel.append(`<option value="${esc(lib.id)}">${esc(lib.name)} (${lib.npcCount || 0})</option>`);
+        }
+        if (current && libraries.some(lib => lib.id === current)) $sel.val(current);
+        $sel.on('change', function () { $('#gd-npc-library-select').val($(this).val()); });
+        $bar.find('.gd-dash-panel-npc-library-apply').on('click', async () => {
+            const id = $sel.val();
+            if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择 NPC 包' : 'Select an NPC library first'); return; }
+            try {
+                const result = await npcLibrarySystem.applyLibrary(id, { importTemplate: $('#gd-npc-library-import-template').prop('checked') === true });
+                toastr?.success?.(lang === 'zh' ? `已应用 ${result.applied || 0} 个 NPC` : `Applied ${result.applied || 0} NPC(s)`);
+                ctx.renderNpcList?.();
+                window.__gdRefreshNpcLibrary?.();
+                refreshDashboardAndOpenPanel('npcs');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+            }
+        });
+        $bar.find('.gd-dash-panel-npc-library-save').on('click', () => $('#gd-npc-library-save').trigger('click'));
+        $bar.find('.gd-dash-panel-npc-library-delete').on('click', async () => {
+            const id = $sel.val();
+            if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择 NPC 包' : 'Select an NPC library first'); return; }
+            const lib = npcLibrarySystem.getLibrary?.(id);
+            if (!lib) return;
+            const libName = escPopup(lib.name);
+            const ok = await callGenericPopup(
+                lang === 'zh' ? `删除 NPC 包“${libName}”？` : `Delete NPC library "${libName}"?`,
+                POPUP_TYPE.CONFIRM,
+            );
+            if (!ok) return;
+            npcLibrarySystem.deleteLibrary(id);
+            $('#gd-npc-library-select').val('');
+            toastr?.success?.(lang === 'zh' ? 'NPC 包已删除' : 'NPC library deleted');
+            window.__gdRefreshNpcLibrary?.();
+            refreshDashboardAndOpenPanel('npcs');
+        });
+        $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('npc'));
+        $list.append($bar);
     }
 
     function renderPanelLedger() {
@@ -503,7 +657,7 @@ registerSection('dashboard', function (ctx) {
 
     function renderPanelStoryBlueprint() {
         const $list = $('#gd-dash-panel-story-blueprint-list').empty();
-        appendOpenSettingsButton($list, 'storyBlueprint');
+        appendStoryBlueprintLibraryToolbar($list);
         const state = storyBlueprintSystem?.getState?.();
         const p = storyBlueprintSystem?.getProgress?.();
         const data = storyBlueprintSystem?.getProviderData?.();
@@ -531,7 +685,8 @@ registerSection('dashboard', function (ctx) {
             if (settings.storyBlueprintEnabled) storyBlueprintSystem?.ensureCompletionVariable?.();
             storyBlueprintSystem?.clearCompletionSignal?.(settings.storyBlueprintEnabled ? 'enabled-reset' : 'disabled-reset');
             saveSettings();
-            refreshAll();
+            window.__gdRefreshStoryBlueprint?.();
+            refreshDashboardAndOpenPanel('storyBlueprint');
         });
         $('#gd-dash-panel-story-generate').on('click', function () {
             if (!settings.storyBlueprintEnabled) {
@@ -539,6 +694,8 @@ registerSection('dashboard', function (ctx) {
                 $('#gd-story-blueprint-enabled').prop('checked', true);
                 storyBlueprintSystem?.ensureCompletionVariable?.();
                 saveSettings();
+                window.__gdRefreshStoryBlueprint?.();
+                refreshDashboardAndOpenPanel('storyBlueprint');
             }
             $('#gd-story-blueprint-generate').trigger('click');
         });
@@ -548,9 +705,73 @@ registerSection('dashboard', function (ctx) {
         });
     }
 
+    function appendStoryBlueprintLibraryToolbar($list) {
+        if (!storyBlueprintLibrarySystem) {
+            appendOpenSettingsButton($list, 'storyBlueprint');
+            return;
+        }
+        const libraries = storyBlueprintLibrarySystem.getLibraries?.() || [];
+        const $bar = $(`<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+            <select id="gd-dash-panel-story-blueprint-library" class="text_pole" style="width:auto;font-size:0.82em;">
+                <option value="">${lang === 'zh' ? '蓝图包...' : 'Blueprint library...'}</option>
+            </select>
+            <span class="menu_button menu_button_icon gd-dash-panel-story-blueprint-library-apply" style="font-size:0.78em;"><i class="fa-solid fa-folder-open"></i> ${lang === 'zh' ? '应用' : 'Apply'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-story-blueprint-library-save" style="font-size:0.78em;"><i class="fa-solid fa-floppy-disk"></i> ${lang === 'zh' ? '保存当前' : 'Save current'}</span>
+            <span class="menu_button menu_button_icon gd-dash-panel-story-blueprint-library-delete" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+            <span class="menu_button menu_button_icon gd-dash-open-settings" style="margin-left:auto;font-size:0.78em;"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
+        </div>`);
+        const $sel = $bar.find('#gd-dash-panel-story-blueprint-library');
+        const current = $('#gd-story-blueprint-library-select').val();
+        for (const lib of libraries) {
+            $sel.append(`<option value="${esc(lib.id)}">${esc(lib.name)} (${lib.nodeCount || 0})</option>`);
+        }
+        if (current && libraries.some(lib => lib.id === current)) $sel.val(current);
+        $sel.on('change', function () { $('#gd-story-blueprint-library-select').val($(this).val()); });
+        $bar.find('.gd-dash-panel-story-blueprint-library-apply').on('click', async () => {
+            const id = $sel.val();
+            if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择蓝图包' : 'Select a blueprint library first'); return; }
+            try {
+                await storyBlueprintLibrarySystem.applyLibrary(id, { includeProgress: $('#gd-story-blueprint-library-apply-progress').prop('checked') !== false });
+                toastr?.success?.(lang === 'zh' ? '蓝图包已应用' : 'Story Blueprint applied');
+                window.__gdRefreshStoryBlueprint?.();
+                window.__gdRefreshStoryBlueprintLibrary?.();
+                refreshDashboardAndOpenPanel('storyBlueprint');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+            }
+        });
+        $bar.find('.gd-dash-panel-story-blueprint-library-save').on('click', () => $('#gd-story-blueprint-library-save').trigger('click'));
+        $bar.find('.gd-dash-panel-story-blueprint-library-delete').on('click', async () => {
+            const id = $sel.val();
+            if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择蓝图包' : 'Select a blueprint library first'); return; }
+            const lib = storyBlueprintLibrarySystem.getLibrary?.(id);
+            if (!lib) return;
+            const libName = escPopup(lib.name);
+            const ok = await callGenericPopup(
+                lang === 'zh' ? `删除蓝图包“${libName}”？` : `Delete Story Blueprint "${libName}"?`,
+                POPUP_TYPE.CONFIRM,
+            );
+            if (!ok) return;
+            storyBlueprintLibrarySystem.deleteLibrary(id);
+            $('#gd-story-blueprint-library-select').val('');
+            toastr?.success?.(lang === 'zh' ? '蓝图包已删除' : 'Story Blueprint library deleted');
+            window.__gdRefreshStoryBlueprintLibrary?.();
+            refreshDashboardAndOpenPanel('storyBlueprint');
+        });
+        $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('storyBlueprint'));
+        $list.append($bar);
+    }
+
     const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger, storyBlueprint: renderPanelStoryBlueprint };
 
     let openPanel = null;
+    function refreshDashboardAndOpenPanel(panelName = openPanel) {
+        refreshAll();
+        if (panelName && openPanel === panelName) {
+            panelRenderers[panelName]?.();
+        }
+    }
+
     function togglePanel(name) {
         const cfg = statPanels[name];
         if (!cfg) return;
@@ -598,7 +819,10 @@ registerSection('dashboard', function (ctx) {
     function refreshWorldBookStat() {
         const sel = settings.worldBookSelection || {};
         const names = ctx.world_names || [];
-        const checked = names.filter(n => sel[n] === true).length;
+        const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);
+        const checked = (settings.worldBookSourceMode || 'st') === 'st'
+            ? names.filter(n => active.has(n)).length
+            : names.filter(n => sel[n] === true).length;
         $('#gd-stat-worldbooks .gd-stat-value').text(names.length ? `${checked}/${names.length}` : '-');
     }
 
@@ -606,8 +830,30 @@ registerSection('dashboard', function (ctx) {
         if (!settings.worldBookSelection) settings.worldBookSelection = {};
         const names = ctx.world_names || [];
         const sel = settings.worldBookSelection;
+        const sourceMode = settings.worldBookSourceMode || 'st';
+        const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);
         $wbList.empty();
-        appendOpenSettingsButton($wbList, 'worldbooks');
+        const $modeRow = $('<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;flex-wrap:wrap;"></div>');
+        const $modeLeft = $('<div style="display:flex;align-items:center;gap:5px;min-width:0;"></div>');
+        const $modeLabel = $(`<small style="color:var(--grey70a);">${lang === 'zh' ? '来源' : 'Source'}</small>`);
+        const $mode = $(`<select class="text_pole" style="font-size:0.82em;max-width:180px;">
+            <option value="st">${lang === 'zh' ? '跟随 ST' : 'Follow ST'}</option>
+            <option value="manual">${lang === 'zh' ? '手动勾选' : 'Manual'}</option>
+        </select>`);
+        const $settings = $(`<span class="menu_button menu_button_icon gd-dash-open-settings" style="font-size:0.78em;"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>`);
+        $mode.val(sourceMode);
+        $mode.on('change', async function () {
+            settings.worldBookSourceMode = $(this).val() || 'st';
+            ctx.worldBookScanner?.clearCache?.();
+            saveSettings();
+            renderDashWorldBookList();
+            refreshWorldBookStat();
+            await window.__gdRefreshWorldBookList?.();
+        });
+        $settings.on('click', () => openSettingsCard('worldbooks'));
+        $modeLeft.append($modeLabel, $mode);
+        $modeRow.append($modeLeft, $settings);
+        $wbList.append($modeRow);
         if (!names.length) {
             $wbList.append(`<small>${lang === 'zh' ? '未找到任何世界书' : 'No world books found'}</small>`);
             return;
@@ -615,18 +861,24 @@ registerSection('dashboard', function (ctx) {
         const $toolbar = $('<div style="margin-bottom:4px;display:flex;gap:4px;"></div>');
         const $all = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-check-double"></i> ${lang === 'zh' ? '全选' : 'All'}</span>`);
         const $none = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-xmark"></i> ${lang === 'zh' ? '取消' : 'None'}</span>`);
-        $all.on('click', () => { for (const n of names) sel[n] = true; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
-        $none.on('click', () => { for (const n of names) sel[n] = false; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
+        $all.on('click', async () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = true; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
+        $none.on('click', async () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = false; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
+        if (sourceMode === 'st') {
+            $all.css({ opacity: 0.55, pointerEvents: 'none' });
+            $none.css({ opacity: 0.55, pointerEvents: 'none' });
+        }
         $toolbar.append($all, $none);
         $wbList.append($toolbar);
+        $wbList.append(`<small style="display:block;color:var(--grey70a);margin-bottom:4px;">${sourceMode === 'st' ? (lang === 'zh' ? '跟随 ST 当前激活世界书' : 'Following ST active world books') : (lang === 'zh' ? '手动选择世界书' : 'Manual world book selection')}</small>`);
         let totalChecked = 0;
         for (const name of names) {
-            const checked = sel[name] === true;
+            const checked = sourceMode === 'st' ? active.has(name) : sel[name] === true;
             if (checked) totalChecked++;
             const $label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:4px;"></label>`);
             const $input = $(`<input type="checkbox">`);
             $input.prop('checked', checked);
-            $input.on('change', function () { sel[name] = !!$(this).prop('checked'); saveSettings(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
+            $input.prop('disabled', sourceMode === 'st');
+            $input.on('change', async function () { sel[name] = !!$(this).prop('checked'); ctx.worldBookScanner?.clearCache?.(); saveSettings(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
             $label.append($input, name);
             $wbList.append($label);
         }
@@ -667,8 +919,9 @@ registerSection('dashboard', function (ctx) {
         const id = rawValue.slice(PROF_PREFIX.length);
         const profile = (configProfileSystem.getProfiles() || []).find(p => p.id === id);
         const name = profile?.name || id;
+        const popupName = escPopup(name);
         const ok = await callGenericPopup(
-            (lang === 'zh' ? `确定删除配置档「${name}」？此操作不可撤销。` : `Delete config profile "${name}"? This cannot be undone.`),
+            (lang === 'zh' ? `确定删除配置档「${popupName}」？此操作不可撤销。` : `Delete config profile "${popupName}"? This cannot be undone.`),
             POPUP_TYPE.CONFIRM,
         );
         if (!ok) return;
@@ -695,6 +948,9 @@ registerSection('dashboard', function (ctx) {
                 const id = rawValue.slice(PROF_PREFIX.length);
                 ctx.configProfileSystem?.applyProfile(id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
+                window.__gdRefreshProfileLibrary?.();
+                window.__gdRefreshStoryBlueprint?.();
+                window.__gdRefreshSummaryStatus?.();
                 const p = ctx.configProfileSystem?.getProfiles?.().find(p => p.id === id);
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${p?.name || id}」`
@@ -704,11 +960,15 @@ registerSection('dashboard', function (ctx) {
                 const profile = await loadConfigPreset(rawValue);
                 ctx.configProfileSystem?.applyProfile(profile.id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
+                window.__gdRefreshProfileLibrary?.();
+                window.__gdRefreshStoryBlueprint?.();
+                window.__gdRefreshSummaryStatus?.();
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${profile.name}」`
                     : `"${profile.name}" applied.`);
             }
             syncConfigList();
+            refreshAll();
         } catch (e) {
             toastr?.error?.(lang === 'zh' ? `应用失败: ${e.message}` : `Failed: ${e.message}`);
         } finally { btn.prop('disabled', false); }
@@ -954,5 +1214,8 @@ registerSection('dashboard', function (ctx) {
     // Expose refresh for other sections
     window.__gdRefreshDashboard = refreshAll;
     window.__gdRenderPanelSummary = renderPanelSummary;
+    window.__gdRenderPanelProfiles = renderPanelProfiles;
+    window.__gdRenderPanelNpcs = renderPanelNpcs;
+    window.__gdRenderPanelStoryBlueprint = renderPanelStoryBlueprint;
     window.__gdRefreshSummaryStat = refreshSummaryStat;
 });

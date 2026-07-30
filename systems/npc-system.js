@@ -60,7 +60,11 @@ export function createNpcSystem({
 
         const agentConfig = settings.agentConfigs?.['npc'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({
             group,

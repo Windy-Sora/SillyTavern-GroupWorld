@@ -29,6 +29,7 @@ registerSection('npc', function (ctx) {
         $section.toggle(settings.npcEnabled);
         if (settings.npcEnabled) renderNpcList();
         saveSettings();
+        window.__gdRefreshDashboard?.();
     });
 
     $c('npc-max-count').on('input', function () {
@@ -66,6 +67,7 @@ registerSection('npc', function (ctx) {
             if (result && result.length > 0) {
                 toastr.success(L(`成功生成 ${result.length} 个 NPC`, `Generated ${result.length} NPCs`));
                 renderNpcList();
+                window.__gdRefreshDashboard?.();
             }
         } catch (e) {
             toastr.error(L('NPC 生成失败: ' + e.message, 'NPC generation failed: ' + e.message));
@@ -83,6 +85,7 @@ registerSection('npc', function (ctx) {
             toastr.success(L(`扫描到 ${npcs.length} 个 NPC`, `Found ${npcs.length} NPCs`));
         }
         renderNpcList();
+        window.__gdRefreshDashboard?.();
     });
 
     // ── Helpers ──
@@ -156,9 +159,11 @@ registerSection('npc', function (ctx) {
         // Delete
         $list.find('.gd-npc-delete').on('click', async function () {
             const idx = parseInt($(this).data('idx'));
-            if (await callGenericPopup(L(`确定删除 NPC「${npcs[idx].name}」？`, `Delete NPC "${npcs[idx].name}"?`), POPUP_TYPE.CONFIRM)) {
+            const npcName = esc(npcs[idx]?.name);
+            if (await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) {
                 npcSystem.deleteNpc(idx);
                 renderNpcList();
+                window.__gdRefreshDashboard?.();
             }
         });
 
@@ -171,6 +176,7 @@ registerSection('npc', function (ctx) {
                 const avatarName = await npcSystem.importNpcAsCharacter(idx);
                 toastr.success(L(`NPC「${npcs[idx].name}」已导入为角色卡: ${avatarName}`, `NPC "${npcs[idx].name}" imported as: ${avatarName}`));
                 renderNpcList();
+                window.__gdRefreshDashboard?.();
             } catch (e) {
                 toastr.error(L('导入失败: ' + e.message, 'Import failed: ' + e.message));
                 btn.prop('disabled', false);
@@ -234,6 +240,7 @@ registerSection('npc', function (ctx) {
             npcSystem.updateNpc(idx, updates);
             toastr.success(L('已保存', 'Saved'));
             renderNpcList();
+            window.__gdRefreshDashboard?.();
         });
     }
 

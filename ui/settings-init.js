@@ -3,6 +3,20 @@ import { doNavbarIconClick } from '../../../../../script.js';
 import { applyI18n } from './i18n.js';
 import { initAllSections } from './sections/registry.js';
 
+const TEMPLATE_FOLDERS = ['SillyTavern-GroupWorld', 'SillyTavern-GroupDirector'];
+async function renderSettingsTemplate() {
+    for (const folder of TEMPLATE_FOLDERS) {
+        const path = `scripts/extensions/third-party/${folder}/settings.html`;
+        try {
+            const probe = await fetch(path);
+            if (!probe.ok) continue;
+            const html = await renderExtensionTemplateAsync(`third-party/${folder}`, 'settings');
+            if (typeof html === 'string') return html;
+        } catch (_) { /* try the compatible extension directory */ }
+    }
+    return undefined;
+}
+
 // Side-effect imports: each section module self-registers on load
 import './sections/dashboard.js';
 import './sections/modes.js';
@@ -16,17 +30,20 @@ import './sections/ledger.js';
 import './sections/forceSpeak.js';
 import './sections/chatSummary.js';
 import './sections/storyBlueprint.js';
+import './sections/storyBlueprintLibrary.js';
 import './sections/critique.js';
 import './sections/summaryExport.js';
 import './sections/critiqueExport.js';
 import './sections/providerReference.js';
 import './sections/templateTester.js';
 import './sections/profile.js';
+import './sections/profileLibrary.js';
 import './sections/profileExport.js';
 import './sections/quickStart.js';
 import './sections/exportImport.js';
 import './sections/identity.js';
 import './sections/npc.js';
+import './sections/npcLibrary.js';
 import './sections/npcExport.js';
 import './sections/memory.js';
 import './sections/memoryExport.js';
@@ -62,9 +79,9 @@ export async function loadSettingsUI(deps) {
         return;
     }
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    const html = await renderSettingsTemplate();
     if (typeof html !== 'string') {
-        console.error('[GroupWorld] Settings template could not be loaded; UI initialization skipped');
+        console.error('[GroupDirector] Settings template could not be loaded; UI initialization skipped');
         return;
     }
 
@@ -128,9 +145,9 @@ export async function reloadSettingsUI(deps) {
         // 主路径未走（fallback 模式下不存在 panel）。不委托 loadSettingsUI，否则会重复 append。
         return;
     }
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    const html = await renderSettingsTemplate();
     if (typeof html !== 'string') {
-        console.error('[GroupWorld] Settings template could not be reloaded; UI initialization skipped');
+        console.error('[GroupDirector] Settings template could not be reloaded; UI initialization skipped');
         return;
     }
     $panel.empty().append(html);

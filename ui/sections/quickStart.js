@@ -3,11 +3,12 @@
  * Profile, Memory, World Books, one-click config + summary.
  */
 import { registerSection } from './registry.js';
+import { getWorldBookSourceLabel } from './quick-start-helpers.js';
 
 registerSection('quickStart', function (ctx) {
     const { settings, $c, saveSettings, generateProfilesBatch, getProfiles,
         getCurrentGroup, toastr, world_names,
-        memorySystem, summarySystem, loadConfigPreset, configProfileSystem, getCharacters } = ctx;
+        memorySystem, summarySystem, loadConfigPreset, configProfileSystem, getCharacters, worldBookScanner } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
     const $container = $('#gd-quick-start');
@@ -93,7 +94,10 @@ registerSection('quickStart', function (ctx) {
             memCount = Object.values(stats).reduce((s, st) => s + st.count, 0);
         }
         const wbCount = (world_names || []).length;
-        const wbChecked = Object.values(settings.worldBookSelection || {}).filter(Boolean).length;
+        const wbSourceMode = settings.worldBookSourceMode || 'st';
+        const wbChecked = wbSourceMode === 'st'
+            ? (worldBookScanner?.getSelectedNames?.() || []).length
+            : Object.values(settings.worldBookSelection || {}).filter(Boolean).length;
 
         const light = (label, ok, detail) =>
             `<span style="margin-right:10px;"><span style="color:${ok ? '#4caf50' : '#ff9800'};">${ok ? '🟢' : '🟡'}</span> ${label}${detail ? ` (${detail})` : ''}</span>`;
@@ -114,6 +118,7 @@ registerSection('quickStart', function (ctx) {
         $('#gd-profile-section').toggle(settings.profileEnabled);
         saveSettings();
         if (settings.profileEnabled) { refreshQuickProfileList(); renderReadiness(); }
+        window.__gdRefreshDashboard?.();
     });
 
     $c('qs-profile-regenerate-all').on('click', async function () {
@@ -128,6 +133,8 @@ registerSection('quickStart', function (ctx) {
             const ready = Object.values(profiles).filter(p => p.state === 'ready').length;
             refreshQuickProfileList(); renderReadiness();
             if (ctx.renderProfileManagementList) ctx.renderProfileManagementList();
+            window.__gdRefreshDashboard?.();
+            window.__gdRefreshProfileLibrary?.();
             toastr.success(isZh() ? `${ready} 个档案已就绪` : `${ready} profiles ready`);
         } catch (e) { toastr.error(e.message); }
         finally { btn.prop('disabled', false); }
@@ -192,8 +199,10 @@ registerSection('quickStart', function (ctx) {
     $c('qs-memory-enabled').on('change', function () {
         settings.memoryEnabled = !!$(this).prop('checked');
         $c('memory-enabled').prop('checked', settings.memoryEnabled);
+        $('#gd-memory-section').toggle(settings.memoryEnabled);
         saveSettings();
         if (settings.memoryEnabled) refreshQuickMemoryList();
+        window.__gdRefreshDashboard?.();
     });
 
     $c('qs-memory-extract').on('click', async function () {
@@ -202,6 +211,8 @@ registerSection('quickStart', function (ctx) {
         try {
             await memorySystem.generateForAll();
             refreshQuickMemoryList();
+            ctx.renderMemoryList?.();
+            window.__gdRefreshDashboard?.();
             toastr.success(isZh() ? '记忆提取完成' : 'Memory extraction done');
         } catch (e) { toastr.error(e.message); }
         finally { btn.prop('disabled', false); }
@@ -218,16 +229,22 @@ registerSection('quickStart', function (ctx) {
             renderReadiness();
             return;
         }
+        const sourceMode = settings.worldBookSourceMode || 'st';
         const selection = settings.worldBookSelection || {};
-        let html = '';
+        const stActive = new Set(sourceMode === 'st' ? (worldBookScanner?.getSelectedNames?.() || []) : []);
+        let html = sourceMode === 'st'
+            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${getWorldBookSourceLabel(settings.lang || 'zh')}</small>`
+            : '';
         for (const name of names) {
-            const checked = !!selection[name];
+            const checked = sourceMode === 'st' ? stActive.has(name) : !!selection[name];
             html += `<label class="checkbox_label" style="display:block;font-size:0.8em;${checked ? '' : 'color:var(--grey70a);'}">
-                <input type="checkbox" class="gd-qs-wb-check" data-book="${escHtml(name)}" ${checked ? 'checked' : ''}> ${escHtml(name)}
+                <input type="checkbox" class="gd-qs-wb-check" data-book="${escHtml(name)}" ${checked ? 'checked' : ''} ${sourceMode === 'st' ? 'disabled' : ''}> ${escHtml(name)}
             </label>`;
         }
         $list.html(html);
         $list.find('.gd-qs-wb-check').off('change').on('change', function () {
+            if (sourceMode === 'st') return;
+            if (!settings.worldBookSelection) settings.worldBookSelection = {};
             settings.worldBookSelection[$(this).attr('data-book')] = !!$(this).prop('checked');
             saveSettings();
             if (ctx.renderWorldBookList) ctx.renderWorldBookList();

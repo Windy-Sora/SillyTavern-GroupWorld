@@ -20,6 +20,8 @@ export function createPostSpeechSystem({
     log,
 }) {
     const DEDUP_PREFIX = 'ps:';
+    const pending = new Set();
+    let pendingEpoch = 0;
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -47,6 +49,11 @@ export function createPostSpeechSystem({
         );
     }
 
+    /** Check whether this decision is currently executing but not yet settled. */
+    function isPending(messageIndex, capabilityId) {
+        return pending.has(makeKey(messageIndex, capabilityId));
+    }
+
     /** Record a decision after execution. */
     async function record(messageIndex, messageName, capabilityId, params, policy) {
         const store = getStore();
@@ -63,6 +70,84 @@ export function createPostSpeechSystem({
         await saveStore();
     }
 
+    /**
+     * Persist only intents whose resolved actions actually completed successfully.
+     * Non-blocking executions remain transiently pending until their completion
+     * receipt settles; unresolved or failed intents stay retryable.
+     */
+    async function trackExecution(execution, contexts = []) {
+        const tracked = contexts.map((context, intentIndex) => ({
+            ...context,
+            intentIndex,
+            key: makeKey(context.messageIndex, context.intent?.type),
+        }));
+        const epoch = pendingEpoch;
+
+        for (const context of tracked) pending.add(context.key);
+
+        const settle = async (results = []) => {
+            try {
+                if (epoch !== pendingEpoch) return;
+
+                for (const context of tracked) {
+                    const intentResults = results.filter(
+                        result => result.intentIndex === context.intentIndex
+                    );
+
+                    if (!intentResults.length) {
+                        log(`PostSpeech: intent "${context.intent?.type}" was not resolved; left retryable`);
+                        continue;
+                    }
+
+                    if (!intentResults.every(result => result.success === true)) {
+                        const errors = intentResults
+                            .filter(result => result.success !== true)
+                            .map(result => result.error || 'execution failed')
+                            .join('; ');
+                        log(`PostSpeech: intent "${context.intent?.type}" failed; left retryable (${errors})`);
+                        continue;
+                    }
+
+                    const capabilityId = context.intent.type;
+                    if (!wasExecuted(context.messageIndex, capabilityId)) {
+                        await record(
+                            context.messageIndex,
+                            context.messageName,
+                            capabilityId,
+                            context.intent.params,
+                            context.policy
+                        );
+                    }
+                }
+            } finally {
+                if (epoch === pendingEpoch) {
+                    for (const context of tracked) pending.delete(context.key);
+                }
+            }
+        };
+
+        if (execution?.blocking !== false) {
+            await settle(execution?.results || []);
+            return { pending: false };
+        }
+
+        const completion = execution?.completion;
+        if (!completion || typeof completion.then !== 'function') {
+            await settle([]);
+            return { pending: false };
+        }
+
+        completion
+            .then(settle)
+            .catch(error => {
+                if (epoch === pendingEpoch) {
+                    for (const context of tracked) pending.delete(context.key);
+                }
+                log(`PostSpeech: completion tracking failed (${error.message})`);
+            });
+        return { pending: true };
+    }
+
     /** List all decisions (oldest first) for visualization — matches execution order. */
     function list(limit = 50) {
         const store = getStore();
@@ -71,6 +156,8 @@ export function createPostSpeechSystem({
 
     /** Prune decisions after a given message index (on MESSAGE_DELETED). */
     async function pruneAfter(messageIndex) {
+        pendingEpoch++;
+        pending.clear();
         const store = getStore();
         const before = store.length;
         const filtered = store.filter(r => r.messageIndex <= messageIndex);
@@ -83,6 +170,8 @@ export function createPostSpeechSystem({
 
     /** Clear all decisions (on CHAT_CHANGED). */
     async function clearAll() {
+        pendingEpoch++;
+        pending.clear();
         const cm = getChatMetadata();
         if (cm[EXT_KEY]) {
             cm[EXT_KEY].postSpeechDecisions = [];
@@ -95,5 +184,5 @@ export function createPostSpeechSystem({
         return getStore().length;
     }
 
-    return { wasExecuted, record, list, pruneAfter, clearAll, count };
+    return { wasExecuted, isPending, record, trackExecution, list, pruneAfter, clearAll, count };
 }

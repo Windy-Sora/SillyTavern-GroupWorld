@@ -13,6 +13,7 @@
  */
 
 const capabilities = new Map();
+let capabilityRevision = 0;
 
 export const CapabilityRegistry = {
     register(cap) {
@@ -22,6 +23,10 @@ export const CapabilityRegistry = {
         }
         capabilities.set(cap.id, {
             id: cap.id,
+            // Monotonic identity for deferred plans. Re-registering or changing
+            // runtime availability invalidates work queued against an older
+            // capability definition.
+            revision: ++capabilityRevision,
             displayName: cap.displayName || cap.id,
             description: cap.description || '',
             // Guidance for the LLM: when to trigger this capability and how to decide params
@@ -33,8 +38,14 @@ export const CapabilityRegistry = {
             // Constraints: { maxPerMessage, requires, cooldown }
             constraints: Object.assign({ maxPerMessage: 1, cooldown: 0 }, cap.constraints),
             enabled: cap.enabled !== false,
-            scope: cap.scope || 'both',  // 'message' | 'round' | 'both' | 'off'
+            scope: Object.prototype.hasOwnProperty.call(CapabilityRegistry._scopeOverrides, cap.id)
+                ? CapabilityRegistry._scopeOverrides[cap.id]
+                : (cap.scope || 'both'),  // 'message' | 'round' | 'both' | 'off'
         });
+    },
+
+    unregister(id) {
+        return capabilities.delete(id);
     },
 
     get(id) {
@@ -55,6 +66,15 @@ export const CapabilityRegistry = {
             .map(c => ({ id: c.id, displayName: c.displayName, description: c.description, promptHint: c.promptHint, schema: c.schema }));
     },
 
+    /**
+     * List full capability records for execution.
+     * Keep executors out of listForMode() so prompt providers receive data only.
+     */
+    listExecutableForMode(mode) {
+        return [...capabilities.values()]
+            .filter(c => c.enabled && (c.scope === 'both' || c.scope === mode));
+    },
+
     /** Deprecated — use listForMode() instead. */
     listEnabled() {
         return this.listForMode('message');
@@ -63,14 +83,23 @@ export const CapabilityRegistry = {
     /** Set scope for a capability. */
     setScope(id, scope) {
         const c = capabilities.get(id);
-        if (c) c.scope = scope;
+        if (c && c.scope !== scope) {
+            c.scope = scope;
+            c.revision = ++capabilityRevision;
+        }
     },
 
     /** Enable/disable a capability at runtime. */
     setEnabled(id, enabled) {
         const c = capabilities.get(id);
-        if (c) c.enabled = !!enabled;
+        const next = !!enabled;
+        if (c && c.enabled !== next) {
+            c.enabled = next;
+            c.revision = ++capabilityRevision;
+        }
     },
+
+    _scopeOverrides: {},
 
     /** Last-used timestamps for cooldown tracking. */
     _cooldowns: {},
@@ -147,4 +176,3 @@ export function registerCapabilityProviders({ registerProvider }) {
         },
     });
 }
-

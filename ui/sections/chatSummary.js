@@ -37,6 +37,8 @@ registerSection('chatSummary', function (ctx) {
         settings.summaryEnabled = !!$c('summary-enabled').prop('checked');
         checkEnabled();
         saveSettings();
+        window.__gdRefreshDashboard?.();
+        window.__gdRenderPanelSummary?.();
     });
 
     // Auto summary
@@ -46,10 +48,13 @@ registerSection('chatSummary', function (ctx) {
         settings.autoSummaryEnabled = !!$c('auto-summary-enabled').prop('checked');
         $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
         saveSettings();
+        window.__gdRefreshDashboard?.();
+        window.__gdRenderPanelSummary?.();
     });
     $c('auto-summary-interval').on('input', () => {
         settings.autoSummaryInterval = Math.max(1, parseInt($c('auto-summary-interval').val()) || 10);
         saveSettings();
+        window.__gdRenderPanelSummary?.();
     });
     $('#gd-auto-summary-row').toggle(!!settings.autoSummaryEnabled);
 

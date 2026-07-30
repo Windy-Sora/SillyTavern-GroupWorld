@@ -31,6 +31,7 @@ registerSection('memory', function (ctx) {
         settings.autoMemoryEnabled = !!$(this).prop('checked');
         $('#gd-auto-memory-row').toggle(settings.autoMemoryEnabled);
         saveSettings();
+        window.__gdRefreshDashboard?.();
     });
     $c('auto-memory-speakers').on('change', function () { settings.autoMemorySpeakers = !!$(this).prop('checked'); saveSettings(); });
     $c('auto-memory-interval').on('input', function () {
@@ -43,8 +44,10 @@ registerSection('memory', function (ctx) {
     $c('memory-enabled').on('change', function () {
         settings.memoryEnabled = !!$(this).prop('checked');
         $section.toggle(settings.memoryEnabled);
+        $c('qs-memory-enabled').prop('checked', settings.memoryEnabled);
         if (settings.memoryEnabled) renderMemoryList();
         saveSettings();
+        window.__gdRefreshDashboard?.();
     });
     $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val(), 10) || 2000); saveSettings(); });
     $c('memory-prompt').on('input', function () { settings.memoryPrompt = $(this).val(); saveSettings(); });
@@ -70,6 +73,7 @@ registerSection('memory', function (ctx) {
         if (!await callGenericPopup(L('重置所有角色的全部记忆？', 'Reset ALL memories?'), POPUP_TYPE.CONFIRM)) return;
         await memorySystem.resetAll();
         renderMemoryList();
+        window.__gdRefreshDashboard?.();
     });
 
     // ── Render ──
@@ -145,6 +149,7 @@ registerSection('memory', function (ctx) {
                 const result = await memorySystem.generateForCharacter(avatar);
                 toastr.success(L(`提取了 ${result.length} 条记忆`, `Extracted ${result.length} entries`));
                 renderMemoryList();
+                window.__gdRefreshDashboard?.();
             } catch (e) { toastr.error(e.message); }
             finally { btn.prop('disabled', false); }
         });
@@ -161,6 +166,7 @@ registerSection('memory', function (ctx) {
                     toastr.success(L(`已压缩: ${result.removed} → ${result.compressed} 摘要 + ${result.kept} 保留`, `Compressed`));
                 } else { toastr.info(L('无需压缩', 'Nothing to compress')); }
                 renderMemoryList();
+                window.__gdRefreshDashboard?.();
             } catch (e) { toastr.error(e.message); }
             finally { btn.prop('disabled', false); }
         });
@@ -173,6 +179,7 @@ registerSection('memory', function (ctx) {
             try {
                 await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
                 renderMemoryList();
+                window.__gdRefreshDashboard?.();
             } catch (e) { toastr.error(e.message); }
         });
 
@@ -199,6 +206,7 @@ registerSection('memory', function (ctx) {
             if (!await callGenericPopup(L('删除这条记忆？', 'Delete this memory?'), POPUP_TYPE.CONFIRM)) return;
             await memorySystem.deleteEntry(avatar, idx);
             renderMemoryList();
+            window.__gdRefreshDashboard?.();
         });
     }
 
@@ -212,6 +220,7 @@ registerSection('memory', function (ctx) {
             await memorySystem.updateEntry(avatar, idx, { event, mood: $c('mem-edit-mood').val() });
             $('#gd-mem-edit-panel').hide();
             renderMemoryList();
+            window.__gdRefreshDashboard?.();
         } catch (e) { toastr.error(e.message); }
     });
     $c('mem-edit-cancel').on('click', () => { $('#gd-mem-edit-panel').hide(); });

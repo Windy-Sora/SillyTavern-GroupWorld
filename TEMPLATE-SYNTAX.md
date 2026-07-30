@@ -20,6 +20,7 @@ Group World 的模板系统支持六种占位符语法，可在**任何模板**�
 {{recentMessages}}  {{characters}}  {{previousPlan}}  {{directorLedger}}
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
+{{gdWorldBooksFull}}  {{gdWorldBooksConstant}}  {{gdWorldBooksNames}}
 {{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
 {{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
 {{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
@@ -203,6 +204,9 @@ return {
 | `directorHistory` | `{{directorHistory}}` | 全部历史 JSON | 全部历史原始数组 | `providers/director-ledger.js` |
 | `worldBooks` | `{{worldBooks}}` | 世界书清单 | `{ books, allEntries }` | `providers/world-books.js` |
 | `worldBookImportance` | `{{worldBookImportance}}` | 重要性排名 | 排序数组 | `providers/world-book-importance.js` |
+| `gdWorldBooksFull` | `{{gdWorldBooksFull}}` | 当前激活世界书的全部条目文本（含宏替换） | `{ books, entries, names, stats }` | `providers/gd-world-books.js` |
+| `gdWorldBooksConstant` | `{{gdWorldBooksConstant}}` | 当前激活世界书的无条件（always-on）条目文本 | `{ entries, names, stats }` | `providers/gd-world-books.js` |
+| `gdWorldBooksNames` | `{{gdWorldBooksNames}}` | 当前激活世界书名称列表（逗号分隔） | 名称数组 | `providers/gd-world-books.js` |
 | `characterLore` | `{{characterLore}}` | 角色触发词 | — | `providers/character-lore.js` |
 | `chatSummary` | `{{chatSummary}}` | 上下文总结 | — | `providers/chat-summary.js` |
 | `newRecentMessages` | `{{newRecentMessages}}` | 智能上下文（总结+新消息） | — | `providers/new-recent-messages.js` |

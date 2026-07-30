@@ -93,6 +93,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     storyBlueprintContinuePrompt: '',
     storyBlueprintJsonSchema: '',
     storyBlueprintProviderTemplate: '',
+    storyBlueprintLibraries: [],
     // Chat Critique
     critiqueEnabled: false,
     critiqueReusePrevious: true,
@@ -101,6 +102,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     autoCritiqueEnabled: false,
     autoCritiqueInterval: 10,
     // World Book
+    worldBookSourceMode: 'st',
     worldBookSelection: {},
     worldBookMaxEntries: 20,
     identityPrompt: '', // '' = use DEFAULT_IDENTITY_PROMPT
@@ -114,12 +116,24 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     profileJsonSchema: '',
     profileRenderTemplate: '',
     profileSchemaVersion: 1,
+    profileLibraries: [],
+    profileLibraryAutoLoad: {
+        enabled: false,
+        mode: 'best',
+        fixedId: '',
+        matchHash: true,
+        matchAvatarName: true,
+        matchNameOnly: false,
+        overwriteExisting: false,
+        importTemplate: false,
+    },
     // NPC Generation System
     npcEnabled: false,
     npcMaxCount: 10,
     npcBatchSize: 3,
     npcGenerateFirstMes: false,
     npcPrompt: '',
+    npcLibraries: [],
     // Character Memory System
     memoryEnabled: false,
     memoryTokenBudget: 2000,
@@ -142,7 +156,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     postSpeechDecisionLimit: 20,
     // Agent Runtime — per-agent API config (stored in extension_settings, not chat_metadata)
     agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }
-    customPrompts: [], // [{ id, name, content, enabled }]
+    customPrompts: [], // [{ id, name, content, dataJson, scope, enabled }]
     customPromptsEnabled: true,
     scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
     providerReferenceList: [], // user-editable provider reference list

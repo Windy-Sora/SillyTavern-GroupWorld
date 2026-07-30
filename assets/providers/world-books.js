@@ -15,7 +15,9 @@ export function register(scanner) {
         id: 'worldBooks',
         placeholder: '{{worldBooks}}',
         render: async () => {
-            const books = await scanner.scanAll();
+            const books = scanner.getRenderedBooks
+                ? await scanner.getRenderedBooks()
+                : await scanner.scanAll();
 
             const content = books.map(book => {
                 const alwaysOn = book.entries.filter(e => e.constant && !e.disable).length;

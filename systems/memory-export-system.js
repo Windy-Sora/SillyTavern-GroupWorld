@@ -144,8 +144,10 @@ async function applyImport(importData, decisions, options, deps) {
         const existing = store()[targetAvatar] || [];
 
         let merged;
+        let appliedHere = 0;
         if (decision.mode === 'replace') {
             merged = entries;
+            appliedHere = entries.length;
         } else {
             // Append with event-text dedup
             const existingEvents = new Set(
@@ -155,6 +157,7 @@ async function applyImport(importData, decisions, options, deps) {
                 !existingEvents.has((e.event || '').toLowerCase().trim())
             );
             merged = [...existing, ...newEntries];
+            appliedHere = newEntries.length;
         }
 
         // Trim to max
@@ -163,7 +166,7 @@ async function applyImport(importData, decisions, options, deps) {
         }
 
         store()[targetAvatar] = merged;
-        totalApplied += entries.length;
+        totalApplied += appliedHere;
     }
 
     await saveChatConditional();

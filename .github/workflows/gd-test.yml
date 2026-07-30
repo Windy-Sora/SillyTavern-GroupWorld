@@ -1,0 +1,43 @@
+name: GD Test Lab
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Run full test platform
+        run: >-
+          node tools/gd-test/cli.mjs full
+          --seed 20260726
+          --report test-results/${{ runner.os }}-node-${{ matrix.node }}.json
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gd-test-${{ runner.os }}-node-${{ matrix.node }}
+          path: test-results/*.json
+          if-no-files-found: warn

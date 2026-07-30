@@ -55,7 +55,8 @@ registerSection('summaryExport', function (ctx) {
         $container.find('.gd-summary-delete').off('click').on('click', async function () {
             const id = $(this).data('id');
             const entry = list.find(s => s.id === id);
-            if (await callGenericPopup(isZh() ? `确定删除摘要「${entry?.name || ''}」？` : `Delete summary "${entry?.name || ''}"?`, POPUP_TYPE.CONFIRM)) {
+            const entryName = escHtml(entry?.name || '');
+            if (await callGenericPopup(isZh() ? `确定删除摘要「${entryName}」？` : `Delete summary "${entryName}"?`, POPUP_TYPE.CONFIRM)) {
                 await sys.deleteImportedSummary(id);
                 renderPanel();
             }

@@ -37,11 +37,42 @@ export function parsePath(path) {
         if (path[i] === '[') {
             i++;
             let inner = '';
-            while (i < path.length && path[i] !== ']') {
-                inner += path[i];
+            let innerQuote = null;
+            let escaped = false;
+            while (i < path.length) {
+                const ch = path[i];
+                if (!innerQuote && ch === ']') break;
+                inner += ch;
+                if (escaped) {
+                    escaped = false;
+                } else if (ch === '\\' && innerQuote) {
+                    escaped = true;
+                } else if (innerQuote && ch === innerQuote) {
+                    innerQuote = null;
+                } else if (!innerQuote && (ch === '"' || ch === "'")) {
+                    innerQuote = ch;
+                }
                 i++;
             }
             if (i < path.length) i++; // skip ]
+
+            const trimmed = inner.trim();
+            if ((trimmed[0] === '"' || trimmed[0] === "'") && trimmed.at(-1) === trimmed[0]) {
+                if (trimmed[0] === '"') {
+                    try {
+                        segments.push(JSON.parse(trimmed));
+                        continue;
+                    } catch (_) { /* fall through to invalid bracket handling */ }
+                } else {
+                    let key = '';
+                    for (let j = 1; j < trimmed.length - 1; j++) {
+                        if (trimmed[j] === '\\' && j + 1 < trimmed.length - 1) key += trimmed[++j];
+                        else key += trimmed[j];
+                    }
+                    segments.push(key);
+                    continue;
+                }
+            }
 
             const eqIdx = inner.indexOf('=');
             if (eqIdx !== -1) {

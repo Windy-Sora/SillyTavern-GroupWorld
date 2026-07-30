@@ -46,6 +46,9 @@ const DEFAULT_ENTRIES = [
     { id: 'd42', placeholder: '{{storyBlueprintSchemaHint}}', name: 'Story Blueprint Schema Hint', descZh: '故事蓝图推进协议提示，说明 Director 应在当前块完成时更新哪个布尔变量。通常用于自定义 Director schema 或严格 JSON 输出说明。', descEn: 'Story Blueprint progression protocol hint. Explains which boolean variable Director should update when the current block is complete. Usually used in custom Director schemas or strict JSON output instructions.' },
     { id: 'd43', placeholder: '{{storyBlueprintFullJson}}', name: 'Story Blueprint Full JSON', descZh: '完整故事蓝图 JSON，包含蓝图 meta、节点树、进度状态等。主要用于续写蓝图、调试或高级自定义 Prompt。故事蓝图关闭时输出为空。', descEn: 'Full Story Blueprint JSON, including meta, node tree, and progress state. Mainly for blueprint continuation, debugging, or advanced custom prompts. Empty when disabled.' },
     { id: 'd44', placeholder: '{{storyBlueprintDoneField}}', name: 'Story Blueprint Done Field', descZh: 'Director JSON Schema 专用占位符。故事蓝图开启时展开为完成变量字段（默认 "gd_story_chapter_done": false），关闭时为空；建议放在 variable_update.global 内。', descEn: 'Director JSON Schema placeholder. Expands to the completion variable field when Story Blueprint is enabled (default "gd_story_chapter_done": false), or empty when disabled. Recommended inside variable_update.global.' },
+    { id: 'd45', placeholder: '{{gdWorldBooksFull}}', name: 'GD World Books Full', descZh: 'GD 世界书快照接口。按“世界书”抽屉的来源模式读取当前来源世界书，输出所有未禁用条目的完整正文；适合蓝图/NPC/档案生成等插件侧主动调用流程。', descEn: 'GD world book snapshot. Reads the current source from the World Books drawer and outputs full content for all non-disabled entries. Useful for plugin-side calls such as Story Blueprint, NPC, and profile generation.' },
+    { id: 'd46', placeholder: '{{gdWorldBooksConstant}}', name: 'GD World Books Constant', descZh: 'GD 世界书快照接口。只输出当前来源世界书中未禁用的无条件/constant 条目；比全量更省上下文，蓝图默认 Prompt 使用此接口。', descEn: 'GD world book snapshot for always-on entries only. Outputs non-disabled constant entries from the current source. More compact than the full snapshot and used by the default Story Blueprint prompt.' },
+    { id: 'd47', placeholder: '{{gdWorldBooksNames}}', name: 'GD World Books Names', descZh: '当前 GD 世界书来源中的世界书名称列表。用于调试、提示模型当前读取了哪些世界书，或配合 DSL 查询。', descEn: 'List of world book names in the current GD world book source. Useful for debugging, telling the model which books were read, or DSL queries.' },
 ];
 
 let nextUserIdx = 0;
@@ -123,10 +126,11 @@ registerSection('providerReference', function (ctx) {
             const idx = list.findIndex(e => e.id === id);
             if (idx < 0) return;
             const entry = list[idx];
+            const entryName = escHtml(entry.name || entry.placeholder);
             if (!await callGenericPopup(
                 isZh()
-                    ? `删除接口「${entry.name || entry.placeholder}」？可通过“恢复默认”找回内置接口。`
-                    : `Delete "${entry.name || entry.placeholder}"? Built-in entries can be restored with Reset Defaults.`,
+                    ? `删除接口「${entryName}」？可通过“恢复默认”找回内置接口。`
+                    : `Delete "${entryName}"? Built-in entries can be restored with Reset Defaults.`,
                 POPUP_TYPE.CONFIRM,
             )) return;
             if (DEFAULT_IDS.has(id) && !settings.providerReferenceDeletedDefaultIds.includes(id)) {

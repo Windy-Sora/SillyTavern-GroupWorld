@@ -190,7 +190,7 @@ export function createNpcExportSystem(deps) {
 
     async function loadPreset(name) {
         try {
-            const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupDirector/assets/profiles/${name}.json`);
+            const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupWorld/assets/profiles/${name}.json`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const text = await resp.text();
             return parseImportFile(text);

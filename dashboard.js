@@ -1,4 +1,4 @@
-import { registerSection } from './registry.js';
+import { registerSection } from './ui/sections/registry.js';
 
 registerSection('dashboard', function (ctx) {
     const {

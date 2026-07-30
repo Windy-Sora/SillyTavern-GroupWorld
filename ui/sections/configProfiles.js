@@ -72,9 +72,10 @@ registerSection('configProfiles', function (ctx) {
             const id = $(this).data('id');
             const profile = sys.getProfiles().find(p => p.id === id);
             if (!profile) return;
+            const profileName = escHtml(profile.name);
             if (!await callGenericPopup(isZh()
-                ? `应用配置档「${profile.name}」？当前设置将被覆盖。`
-                : `Apply config profile "${profile.name}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
+                ? `应用配置档「${profileName}」？当前设置将被覆盖。`
+                : `Apply config profile "${profileName}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
@@ -84,9 +85,10 @@ registerSection('configProfiles', function (ctx) {
                 const existingNames = new Set(existing.map(e => e.name));
                 const conflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
                 if (conflicts.length > 0) {
+                    const conflictNames = conflicts.map(escHtml).join(', ');
                     const msg = isZh()
-                        ? `检测到 ${conflicts.length} 个同名自定义 Prompt：${conflicts.join(', ')}。\n\n点"确定"保留现有（仅添加不同名的），点"取消"跳过全部自定义 Prompt 导入。`
-                        : `Found ${conflicts.length} custom prompt(s) with same name: ${conflicts.join(', ')}.\n\nOK = keep existing + add only different names. Cancel = skip all custom prompts.`;
+                        ? `检测到 ${conflicts.length} 个同名自定义 Prompt：${conflictNames}。\n\n点“确定”保留现有（仅添加不同名的），点“取消”跳过全部自定义 Prompt 导入。`
+                        : `Found ${conflicts.length} custom prompt(s) with same name: ${conflictNames}.\n\nOK = keep existing + add only different names. Cancel = skip all custom prompts.`;
                     const choice = await callGenericPopup(msg, POPUP_TYPE.CONFIRM);
                     if (!choice) {
                         mergeMode = 'skip';
@@ -96,6 +98,10 @@ registerSection('configProfiles', function (ctx) {
 
             const result = sys.applyProfile(id, mergeMode);
             try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[configProfiles] reload after apply failed:', e); }
+            window.__gdRefreshDashboard?.();
+            window.__gdRefreshProfileLibrary?.();
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshSummaryStatus?.();
             let msg = isZh()
                 ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
                 : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;
@@ -127,7 +133,8 @@ registerSection('configProfiles', function (ctx) {
             const id = $(this).data('id');
             const profile = sys.getProfiles().find(p => p.id === id);
             if (!profile) return;
-            if (!await callGenericPopup(isZh() ? `删除配置档「${profile.name}」？` : `Delete config profile "${profile.name}"?`, POPUP_TYPE.CONFIRM)) return;
+            const profileName = escHtml(profile.name);
+            if (!await callGenericPopup(isZh() ? `删除配置档「${profileName}」？` : `Delete config profile "${profileName}"?`, POPUP_TYPE.CONFIRM)) return;
             sys.deleteProfile(id);
             renderList();
             populatePresetDropdown();

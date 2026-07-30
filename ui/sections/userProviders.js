@@ -138,7 +138,8 @@ registerSection('userProviders', function (ctx) {
         $list.find('.gd-user-asset-delete').on('click', async function () {
             const name = $(this).attr('data-name');
             const t = $(this).attr('data-type');
-            if (await callGenericPopup(L(`删除 "${name}"？重启后生效。`, `Delete "${name}"? Takes effect after reload.`), POPUP_TYPE.CONFIRM)) {
+            const popupName = esc(name);
+            if (await callGenericPopup(L(`删除 "${popupName}"？重启后生效。`, `Delete "${popupName}"? Takes effect after reload.`), POPUP_TYPE.CONFIRM)) {
                 await userProviderLoader.deleteAsset(name, t);
                 renderList(t, type === 'provider' ? $pList : $cList);
                 toastr.info(L(`已删除 "${name}"`, `Deleted "${name}"`));

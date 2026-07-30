@@ -1,7 +1,7 @@
 /**
  * Custom Prompts System — user-defined prompt templates registered as Providers.
  *
- * Storage: settings.customPrompts = [{ id, name, content, enabled }]
+ * Storage: settings.customPrompts = [{ id, name, content, dataJson, scope, enabled }]
  * Each enabled entry auto-registers as {{name}} Provider on init and on change.
  */
 
@@ -79,6 +79,25 @@ export function createCustomPromptsSystem(deps) {
         return content.includes(`{{${name}}}`);
     }
 
+    function parseDataJson(dataJson) {
+        const text = String(dataJson || '').trim();
+        if (!text) return null;
+        const parsed = JSON.parse(text);
+        if (parsed === null || typeof parsed !== 'object') {
+            throw new Error('JSON 数据必须是对象或数组');
+        }
+        return parsed;
+    }
+
+    function validateDataJson(dataJson) {
+        try {
+            parseDataJson(dataJson);
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: `JSON 数据无效: ${e.message}` };
+        }
+    }
+
     // ── Provider sync ───────────────────────────────────────────────
 
     function syncOne(entry) {
@@ -88,7 +107,10 @@ export function createCustomPromptsSystem(deps) {
             registerProvider({
                 id: entry.name,
                 placeholder: `{{${entry.name}}}`,
-                render: () => ({ content: entry.content || '', data: null }),
+                render: () => ({
+                    content: entry.content || '',
+                    data: parseDataJson(entry.dataJson),
+                }),
             });
         }
     }
@@ -108,11 +130,20 @@ export function createCustomPromptsSystem(deps) {
 
     // ── CRUD ──────────────────────────────────────────────────────
 
-    function add(name, content, enabled = true) {
+    function add(name, content, enabled = true, extra = {}) {
         const valid = validateName(name);
         if (!valid.ok) throw new Error(valid.error);
+        const dataValid = validateDataJson(extra.dataJson);
+        if (!dataValid.ok) throw new Error(dataValid.error);
         const selfRef = hasSelfReference(name, content);
-        const entry = { id: genId(), name, content, enabled };
+        const entry = {
+            id: genId(),
+            name,
+            content,
+            dataJson: extra.dataJson || '',
+            scope: extra.scope || 'global',
+            enabled,
+        };
         getList().push(entry);
         syncOne(entry);
         saveSettings();
@@ -126,6 +157,10 @@ export function createCustomPromptsSystem(deps) {
         if (!entry) throw new Error('Not found');
         if (updates.name !== undefined && updates.name !== entry.name) {
             const valid = validateName(updates.name, id);
+            if (!valid.ok) throw new Error(valid.error);
+        }
+        if (updates.dataJson !== undefined) {
+            const valid = validateDataJson(updates.dataJson);
             if (!valid.ok) throw new Error(valid.error);
         }
         unregisterProvider(entry.name);
@@ -170,7 +205,13 @@ export function createCustomPromptsSystem(deps) {
             version: 1,
             type: 'custom-prompt-export',
             exportedAt: new Date().toISOString(),
-            prompts: selected.map(e => ({ name: e.name, content: e.content, enabled: e.enabled })),
+            prompts: selected.map(e => ({
+                name: e.name,
+                content: e.content,
+                dataJson: e.dataJson || '',
+                scope: e.scope || 'global',
+                enabled: e.enabled,
+            })),
         };
         const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -205,15 +246,22 @@ export function createCustomPromptsSystem(deps) {
 
         for (const p of data.prompts) {
             if (!p.name || !NAME_RE.test(p.name)) continue;
-            const nameCheck = validateName(p.name);
+            const dataValid = validateDataJson(p.dataJson);
+            if (!dataValid.ok) {
+                console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${dataValid.error}`);
+                continue;
+            }
+            const existing = list.find(e => e.name === p.name);
+            const nameCheck = validateName(p.name, existing?.id);
             if (!nameCheck.ok) {
                 console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${nameCheck.error}`);
                 continue;
             }
-            const existing = list.find(e => e.name === p.name);
             if (existing) {
                 if (overwriteConflicts) {
                     existing.content = p.content;
+                    existing.dataJson = p.dataJson || '';
+                    existing.scope = p.scope || 'global';
                     existing.enabled = p.enabled !== false;
                     syncOne(existing);
                     overwritten++;
@@ -221,7 +269,14 @@ export function createCustomPromptsSystem(deps) {
                     actualConflicts.push(p.name);
                 }
             } else {
-                const entry = { id: genId(), name: p.name, content: p.content || '', enabled: p.enabled !== false };
+                const entry = {
+                    id: genId(),
+                    name: p.name,
+                    content: p.content || '',
+                    dataJson: p.dataJson || '',
+                    scope: p.scope || 'global',
+                    enabled: p.enabled !== false,
+                };
                 list.push(entry);
                 syncOne(entry);
                 added++;
@@ -232,5 +287,5 @@ export function createCustomPromptsSystem(deps) {
         return { added, overwritten, conflicts: actualConflicts };
     }
 
-    return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled };
+    return { getList, add, update, remove, toggle, initAll, validateName, validateDataJson, hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled };
 }

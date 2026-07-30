@@ -14,12 +14,18 @@
  * @param {boolean} [options.blocking=true]   True = await each, false = fire-and-forget
  * @param {Function} [options.onExecuted]     Callback after each action: (capId, result)
  * @param {Function} [options.log]            Log function for debug output
- * @returns {{ run: (policy, capabilities) => Promise<Object> }}
+ * @param {Function} [options.resolveCapability] Resolve a capability by id at
+ *   execution time. When supplied, stale deferred plans are cancelled.
+ * @returns {{
+ *   run: (policy, capabilities) => Promise<Object>,
+ *   executeDeferred: (plans) => Promise<Object>
+ * }}
  */
 export function createExecutor(options = {}) {
     const blocking = options.blocking !== false;
     const onExecuted = options.onExecuted || (() => {});
     const log = options.log || (() => {});
+    const resolveCapability = options.resolveCapability;
 
     // ── resolve ──────────────────────────────────────────────────────
 
@@ -28,7 +34,7 @@ export function createExecutor(options = {}) {
         const enabled = capabilities.filter(c => c.enabled !== false);
         const actions = [];
 
-        for (const intent of intents) {
+        for (const [intentIndex, intent] of intents.entries()) {
             const intentType = (intent.type || '').toLowerCase().trim();
             if (!intentType) continue;
 
@@ -47,20 +53,25 @@ export function createExecutor(options = {}) {
             }
 
             for (const cap of matches) {
+                let params = { ...(intent.params || {}) };
+
                 // Schema validation: required params
                 if (cap.schema?.params) {
-                    const valid = validateParams(intent.params || {}, cap.schema.params);
+                    const valid = validateParams(params, cap.schema.params);
                     if (!valid.ok) {
                         log(`[Executor] ${cap.id}: param validation failed — ${valid.error}`);
                         continue;
                     }
-                    intent.params = valid.sanitized;
+                    params = valid.sanitized;
                 }
 
                 actions.push({
                     capabilityId: cap.id,
-                    params: intent.params || {},
+                    intentIndex,
+                    intentType: intent.type,
+                    params,
                     executor: cap.executor,
+                    capabilityRevision: cap.revision,
                 });
             }
         }
@@ -124,10 +135,39 @@ export function createExecutor(options = {}) {
     async function executeOne({ action, delay }) {
         await sleep(delay);
         try {
-            await action.executor(action.params);
-            return { capabilityId: action.capabilityId, success: true };
+            let executor = action.executor;
+            if (typeof resolveCapability === 'function') {
+                const current = resolveCapability(action.capabilityId);
+                const unavailable = !current
+                    || current.enabled === false
+                    || current.revision !== action.capabilityRevision;
+                if (unavailable) {
+                    return {
+                        capabilityId: action.capabilityId,
+                        intentIndex: action.intentIndex,
+                        intentType: action.intentType,
+                        success: false,
+                        cancelled: true,
+                        error: 'Capability unavailable or changed after scheduling',
+                    };
+                }
+                executor = current.executor;
+            }
+            await executor(action.params);
+            return {
+                capabilityId: action.capabilityId,
+                intentIndex: action.intentIndex,
+                intentType: action.intentType,
+                success: true,
+            };
         } catch (e) {
-            return { capabilityId: action.capabilityId, success: false, error: e.message };
+            return {
+                capabilityId: action.capabilityId,
+                intentIndex: action.intentIndex,
+                intentType: action.intentType,
+                success: false,
+                error: e.message,
+            };
         }
     }
 
@@ -142,15 +182,46 @@ export function createExecutor(options = {}) {
                 const r = await executeOne(s);
                 results.push(r);
             }
-            return results;
+            return { results, completion: Promise.resolve(results) };
         }
-        // Fire-and-forget: callbacks fire as each completes, return minimal
-        Promise.allSettled(scheduled.map(async s => {
+
+        // Non-blocking callers still receive a completion receipt for accurate
+        // bookkeeping after the fire-and-forget work settles.
+        const completion = Promise.all(scheduled.map(async s => {
             const r = await executeOne(s);
-            onExecuted(s.action.capabilityId, r);
+            try {
+                onExecuted(s.action.capabilityId, r);
+            } catch (e) {
+                log(`[Executor] onExecuted callback failed: ${e.message}`);
+            }
             return r;
-        })).catch(() => {});
-        return scheduled.map(s => ({ capabilityId: s.action.capabilityId, pending: true }));
+        }));
+        const results = scheduled.map(s => ({
+            capabilityId: s.action.capabilityId,
+            intentIndex: s.action.intentIndex,
+            intentType: s.action.intentType,
+            pending: true,
+        }));
+        return { results, completion };
+    }
+
+    function buildResult({
+        resolved,
+        scheduled,
+        executed,
+        deferred,
+        execution,
+    }) {
+        return {
+            resolved,
+            scheduled,
+            executed,
+            roundEndQueued: deferred.length,
+            blocking,
+            results: execution.results,
+            completion: execution.completion,
+            deferred,
+        };
     }
 
     // ── public API ───────────────────────────────────────────────────
@@ -163,23 +234,50 @@ export function createExecutor(options = {}) {
             // 1. resolve
             const actions = resolve(intents, capabilities);
             if (!actions.length) {
-                return { resolved: 0, scheduled: 0, executed: 0, results: [] };
+                return {
+                    resolved: 0,
+                    scheduled: 0,
+                    executed: 0,
+                    roundEndQueued: 0,
+                    blocking,
+                    results: [],
+                    completion: Promise.resolve([]),
+                    deferred: [],
+                };
             }
 
             // 2. schedule
             const planned = schedule(actions, timing);
+            const deferred = planned.filter(plan => plan.roundEnd);
+            const executable = planned.filter(plan => !plan.roundEnd);
 
-            // 3. execute
-            const results = await executeAll(planned);
-
-            return {
+            // 3. execute only work due now. round_end plans are caller-owned
+            // and must be passed back through executeDeferred at the boundary.
+            const execution = await executeAll(executable);
+            return buildResult({
                 resolved: actions.length,
                 scheduled: planned.length,
-                executed: planned.filter(p => !p.roundEnd).length,
-                roundEndQueued: planned.filter(p => p.roundEnd).length,
-                blocking,
-                results,
-            };
-        }
+                executed: executable.length,
+                deferred,
+                execution,
+            });
+        },
+
+        /** Execute a deferred plan batch returned by run(). */
+        async executeDeferred(deferred = []) {
+            if (!Array.isArray(deferred)) {
+                throw new TypeError('Deferred execution plans must be an array');
+            }
+
+            const executable = deferred.map(plan => ({ ...plan, roundEnd: false }));
+            const execution = await executeAll(executable);
+            return buildResult({
+                resolved: executable.length,
+                scheduled: executable.length,
+                executed: executable.length,
+                deferred: [],
+                execution,
+            });
+        },
     };
 }

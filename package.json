@@ -1,0 +1,19 @@
+{
+  "name": "sillytavern-group-world",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "description": "Group World extension and its zero-dependency automated test platform.",
+  "scripts": {
+    "test": "node tools/gd-test/cli.mjs quick",
+    "test:static": "node tools/gd-test/cli.mjs static",
+    "test:unit": "node tools/gd-test/cli.mjs unit",
+    "test:integration": "node tools/gd-test/cli.mjs integration",
+    "test:full": "node tools/gd-test/cli.mjs full",
+    "test:coverage": "node tools/gd-test/cli.mjs full --coverage",
+    "test:list": "node tools/gd-test/cli.mjs full --list"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -164,10 +164,14 @@ async function generateSingleProfile(avatar) {
         ...(jsonSchema ? { jsonSchema: { name: 'character_profile', value: jsonSchema, strict: true } } : {}),
     });
     const caller = createCaller(agentConfig, stGenerateRaw);
-    const response = await caller.generate(filled);
-    // Clean up QUIET_PROMPT to prevent profile generator prompt
-    // from leaking into subsequent Director generateRaw calls.
-    setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+    let response;
+    try {
+        response = await caller.generate(filled);
+    } finally {
+        // Clean up QUIET_PROMPT to prevent profile generator prompt
+        // from leaking into subsequent Director generateRaw calls.
+        setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+    }
 
     let parsed;
     try {
