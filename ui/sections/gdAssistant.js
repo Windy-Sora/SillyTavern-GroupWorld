@@ -7,7 +7,9 @@ registerSection('gdAssistant', function (ctx) {
     if (!$c('dash-get-assistant').length) return;
 
     const L = (zh, en) => (settings.lang || 'zh') === 'zh' ? zh : en;
-    const ASSET_BASE = 'scripts/extensions/third-party/SillyTavern-GroupDirector/assets/gd-assistant';
+    // Resolve relative to this module so renamed/custom extension folders keep
+    // serving the bundled assistant assets without a hard-coded URL.
+    const ASSET_BASE = new URL('../../assets/gd-assistant', import.meta.url).href.replace(/\/$/, '');
 
     // ── CSRF helpers ──
     let _csrfToken = null;
