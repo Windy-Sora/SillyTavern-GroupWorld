@@ -62,7 +62,11 @@ export async function loadSettingsUI(deps) {
         return;
     }
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    if (typeof html !== 'string') {
+        console.error('[GroupWorld] Settings template could not be loaded; UI initialization skipped');
+        return;
+    }
 
     // Create a top-level settings drawer at the same level as Extensions,
     // then render the Group World settings inside it.
@@ -124,7 +128,11 @@ export async function reloadSettingsUI(deps) {
         // 主路径未走（fallback 模式下不存在 panel）。不委托 loadSettingsUI，否则会重复 append。
         return;
     }
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupWorld', 'settings');
+    if (typeof html !== 'string') {
+        console.error('[GroupWorld] Settings template could not be reloaded; UI initialization skipped');
+        return;
+    }
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
     bindLanguageHandler(deps, $c);
