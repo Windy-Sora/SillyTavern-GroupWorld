@@ -2,73 +2,113 @@
 
 [English](README_EN.md) | 中文
 
-群聊最迷人的地方，是角色们像真正聚在同一张桌边；最令人出戏的地方，也是每个人都急着抢第一句话。
+面向 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 群聊的导演与连续性扩展。Group World 在每轮生成前决定哪些角色适合发言，并提供角色资料、记忆、世界书、剧情状态和可扩展的提示词数据源，帮助群聊保持节奏与上下文连续。
 
-Group World 为 SillyTavern 群聊放入一位安静的导演。它在生成前读一眼刚刚发生的事，判断此刻谁最该开口、谁该暂时沉默、谁又该在恰当的时候走进场景。你得到的不只是更少的抢话，而是更有呼吸感的对白、更清晰的戏剧节奏，以及一段能慢慢长成“世界”的故事。
+> 当前版本：0.6.0
 
-## 一位导演，和一座会记事的世界
+## 功能
 
-- Formula Director：本地评分选角，不需要额外 API 调用
-- LLM Director：由模型决定发言角色与顺序
-- Top-N 发言控制、关键词触发器、主动性与连续发言惩罚
-- Director Script：按角色注入本轮舞台指示
-- Director Ledger：保存跨轮次的导演记录
-- 角色档案、世界书、记忆、变量与剧情状态辅助能力
-- Provider、Prompt 模板与自定义 Agent 扩展接口
+- **Formula Director**：基于提及、关键词、最近发言、主动性和连续发言惩罚进行本地评分，不产生额外 API 请求。
+- **LLM Director**：由模型规划发言角色和顺序；可接管顺序生成，也可仅过滤未入选角色。
+- **发言控制**：支持 Top-N、角色关键词触发、Talkativeness 和连续发言惩罚。
+- **导演记录与剧本**：保存每轮决策；可为本轮角色注入单独的行动或场景指示。
+- **连续性工具**：角色档案、角色记忆、聊天摘要、世界书、NPC、变量与剧情状态。
+- **可扩展运行时**：支持 Provider、Prompt 模板、Capability、自定义 Agent 与脚本执行器。
+- **配置档**：内置默认与示例配置档，也可导入和导出自己的配置。
 
-它不只是“让谁说话”的筛子。Ledger 会记住故事走到哪里，变量会保存此刻正在发生什么，世界书与角色档案会在需要时被带回场景；久一点的对话，也不必每一轮都从遗忘开始。
+## 要求
 
-## 当一条消息到来时
+- 已安装且可正常运行的 SillyTavern。
+- 使用群聊功能。
+- Formula Director 不需要额外模型调用；LLM Director 和档案、记忆、摘要等 AI 功能需要在 SillyTavern 中配置可用的模型连接。
+
+## 安装
+
+### 通过扩展管理器
+
+1. 在 SillyTavern 中打开 **扩展管理器**。
+2. 使用“从 URL 安装”功能，填入：
+
+   ```text
+   https://github.com/Windy-Sora/SillyTavern-GroupWorld
+   ```
+
+3. 安装完成后刷新页面。
+4. 在左侧设置栏打开 **Group World**，并在扩展管理器中确认它已启用。
+
+### 手动安装
+
+将本仓库克隆或下载至 SillyTavern 的以下目录：
 
 ```text
-用户消息
-  → 导演分析当前群聊
-  → 选择一个或多个相关角色
-  → 可选：生成角色指示
-  → SillyTavern 生成角色回复
+public/scripts/extensions/third-party/SillyTavern-GroupWorld
 ```
 
-## 让故事开始
+然后重启或刷新 SillyTavern。插件不会修改 SillyTavern 核心文件。
 
-在 SillyTavern 的扩展安装界面中，使用本仓库地址安装 Group World；安装后刷新页面，在左侧设置栏打开 **Group World**。
+## 快速开始
 
-本插件不修改 SillyTavern 核心文件。所有设置保存在插件设置和当前聊天元数据中。
+1. 打开一个群聊，并进入 **Group World** 设置。
+2. 在“导演”中选择模式：建议先使用 **Formula Director**，无需额外 token，便于观察选角结果。
+3. 将 **Top-N** 设为 `1`，让每轮默认只选择一名角色发言。
+4. 发送消息，并根据结果调整提及、关键词、最近发言、主动性和连续发言惩罚等权重。
+5. 如果需要模型根据剧情决定角色和顺序，切换为 **LLM Director** 并配置导演提示词与模型。
 
-## 第一次排练
+如需立即应用一套推荐设置，可在仪表盘底部选择 `group-world-default` 配置档后点击“应用”。
 
-1. 打开一个群聊。
-2. 在 Group World 设置中启用 **Formula Director**。
-3. 将 Top-N 设为 `1`，先观察单角色选人效果。
-4. 按需要调整提及、最近发言、主动性和连续发言惩罚权重。
-5. 需要模型判断剧情时，切换到 **LLM Director** 并配置 Director 提示词。
+## 导演模式
 
-## 两种导演方式
+| 模式 | 适用场景 | 选择方式 | 额外模型调用 |
+| --- | --- | --- | --- |
+| Formula Director | 希望稳定控场、低延迟或不增加 token 消耗 | 本地权重评分并选择 Top-N | 无 |
+| LLM Director | 需要理解剧情、关系和场景意图 | 模型输出角色计划和可选顺序 | 有 |
 
-### Formula Director：凭线索选角
+## 常用工作流
 
-按角色名提及、关键词触发、最近发言、连续发言惩罚、角色主动性与 Talkativeness 计算分数，选取 Top-N 角色。
+| 目标 | 建议功能 |
+| --- | --- |
+| 减少角色抢话 | Formula Director + Top-N `1` + 连续发言惩罚 |
+| 按剧情安排出场顺序 | LLM Director + 顺序接管 |
+| 让角色记住长期事件 | 角色档案、角色记忆、导演记录和聊天摘要 |
+| 为角色提供本轮指令 | Director Script |
+| 管理世界、NPC 或任务状态 | 世界书、变量、剧情状态与自定义 Provider |
+| 保存或分享设置 | 配置档导入 / 导出 |
 
-### LLM Director：读懂场面的导演
+## 文档
 
-Director 模型输出角色计划。可启用顺序接管，让插件按计划逐个生成角色回复；也可只过滤未入选角色，保留 SillyTavern 的原生生成循环。
+- [用户手册](USER-GUIDE.md)：界面、设置项、场景配方与常见问题。
+- [模板语法](TEMPLATE-SYNTAX.md)：Prompt DSL、占位符与路径查询。
+- [设计文档](DESIGN.md)：架构、执行管线和扩展接口。
+- [故事蓝图](STORY-BLUEPRINT.md)：剧情状态与蓝图相关说明。
+- [测试说明](TESTING.md)：自动化测试平台和测试范围。
 
-## 慢慢把它调成你的世界
+## 开发与测试
 
-先从 Formula Director 开始，让角色学会轮流说话；等节奏稳定后，再启用 LLM Director、脚本、变量和长期状态。它们不是必须一次点亮的开关，而是可以随着故事一起长出来的能力。
+项目为原生 ES Module 扩展，运行插件本身不需要构建步骤。自动化测试需要 Node.js 22 或更高版本：
 
-遇到问题时，请附上 Group World 日志、群聊模式与复现步骤。
+```bash
+npm test
+```
 
-## 不止于群聊
+其他可用命令：
 
-如果你愿意继续往里走，Group World 也是一套 Agent Runtime、Provider 扩展框架与 Prompt DSL。你可以让新的数据源进入任意提示词位置，让自定义 Agent 在导演决策、角色发言或回合结束时工作；记忆、NPC、世界状态、关系、任务，都是可以逐步搭进来的舞台机关。
+```bash
+npm run test:static
+npm run test:unit
+npm run test:integration
+npm run test:full
+npm run test:coverage
+```
 
-不是先把世界设计得滴水不漏，再开始故事；而是给它一套会记录、会回忆、会响应的机制，让世界在对话里自己长出来。
+## 反馈与贡献
 
-## 接下来
+欢迎提交 Issue 或 Pull Request。报告问题时，请尽量附上：
 
-- [用户手册](USER-GUIDE.md)：设置项与日常使用
-- [设计文档](DESIGN.md)：架构、管线与扩展方式
+- SillyTavern 与 Group World 版本；
+- 使用的导演模式、群聊模式和相关配置；
+- Group World 日志；
+- 可稳定复现问题的步骤。
 
-## License
+## 许可证
 
-见 [LICENSE](LICENSE)。
+本项目采用 [MIT License](LICENSE)。

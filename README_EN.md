@@ -2,73 +2,113 @@
 
 English | [中文](README.md)
 
-A group chat is at its best when its characters feel gathered around the same table. It is at its worst when everyone lunges for the first line.
+A director and continuity extension for [SillyTavern](https://github.com/SillyTavern/SillyTavern) group chats. Before each generation, Group World selects the characters that should speak and supplies tools for character data, memory, world information, story state, and extensible prompt data sources.
 
-Group World places a quiet Director in your SillyTavern group chat. Before generation, it looks at what has just happened and decides who has something worth saying, who should hold the silence, and who should enter the scene at exactly the right moment. The result is not merely fewer interruptions: it is dialogue with breathing room, scenes with rhythm, and a story that can slowly become a world.
+> Current version: 0.6.0
 
-## A Director for a Living World
+## Features
 
-- Formula Director: local speaker scoring with no extra API call
-- LLM Director: model-selected speakers and optional order control
-- Top-N speaking, keyword triggers, initiative, and consecutive-speaker penalties
-- Per-character Director Script injection
-- Persistent Director Ledger
-- Character profiles, world info, memory, variables, and story-state helpers
-- Provider, prompt-template, and custom-agent extension points
+- **Formula Director** — Local speaker scoring based on mentions, keywords, recency, initiative, and consecutive-speaker penalties. No additional API request is required.
+- **LLM Director** — Model-planned speakers and order. It can take over ordered generation or only filter unselected characters.
+- **Speaking controls** — Top-N selection, per-character keyword triggers, Talkativeness, and consecutive-speaker penalties.
+- **Director Ledger and Scripts** — Persist each round's decision and inject character-specific instructions for the current turn.
+- **Continuity tools** — Character profiles, character memory, chat summaries, world books, NPCs, variables, and story state.
+- **Extensible runtime** — Providers, prompt templates, capabilities, custom agents, and script executors.
+- **Configuration profiles** — Built-in default and example profiles, plus profile import and export.
 
-It is more than a filter for deciding who talks. The Ledger remembers where the story has reached, variables hold what is happening now, and world info and character profiles can return to the scene when they matter. A long conversation no longer has to begin from amnesia every round.
+## Requirements
 
-## When a Message Arrives
+- A working installation of SillyTavern.
+- A group chat.
+- Formula Director makes no extra model call. LLM Director and AI-powered features such as profiles, memory, and summaries require a model connection configured in SillyTavern.
+
+## Installation
+
+### Extension Manager
+
+1. Open **Extension Manager** in SillyTavern.
+2. Choose the option to install from a URL and enter:
+
+   ```text
+   https://github.com/Windy-Sora/SillyTavern-GroupWorld
+   ```
+
+3. Install the extension, then refresh the page.
+4. Open **Group World** from the left settings sidebar and confirm that the extension is enabled.
+
+### Manual installation
+
+Clone or download this repository into the following SillyTavern directory:
 
 ```text
-User message
-  → Director analyzes the group chat
-  → Relevant speaker(s) are selected
-  → Optional character direction is prepared
-  → SillyTavern generates the reply
+public/scripts/extensions/third-party/SillyTavern-GroupWorld
 ```
 
-## Begin the Story
+Restart or refresh SillyTavern afterwards. The extension does not modify SillyTavern core files.
 
-Install this repository from SillyTavern's extension installer, refresh the page, then open **Group World** from the left settings sidebar.
+## Quick Start
 
-The extension does not modify SillyTavern core files. Its settings live in extension settings and current-chat metadata.
+1. Open a group chat and the **Group World** settings.
+2. In the Director section, choose a mode. Start with **Formula Director** to inspect speaker selection without spending additional tokens.
+3. Set **Top-N** to `1` so one character is selected per turn by default.
+4. Send messages and tune the mention, keyword, recency, initiative, and consecutive-speaker weights as needed.
+5. Switch to **LLM Director** when you want the model to decide speakers and order from the scene; configure its prompt and model connection.
 
-## Your First Rehearsal
+To apply a recommended starting configuration, select the `group-world-default` profile at the bottom of the dashboard and click Apply.
 
-1. Open a group chat.
-2. Enable **Formula Director** in Group World settings.
-3. Start with Top-N set to `1`.
-4. Tune mention, recency, initiative, and consecutive-speaker weights.
-5. Switch to **LLM Director** when you want model-driven narrative selection.
+## Director Modes
 
-## Two Ways to Direct
+| Mode | Best for | Selection method | Extra model call |
+| --- | --- | --- | --- |
+| Formula Director | Predictable control, low latency, or no added token cost | Local weighted scoring and Top-N selection | No |
+| LLM Director | Story-aware choices based on relationships and scene context | Model returns a speaker plan and optional order | Yes |
 
-### Formula Director: Follow the Clues
+## Common Workflows
 
-Ranks characters using name mentions, keyword triggers, recency, consecutive-speaking penalties, initiative, and Talkativeness. The highest-ranked Top-N characters may speak.
+| Goal | Recommended features |
+| --- | --- |
+| Reduce characters talking over each other | Formula Director + Top-N `1` + consecutive-speaker penalty |
+| Control who appears and in what order | LLM Director + ordered takeover |
+| Preserve long-running context | Profiles, character memory, Director Ledger, and chat summaries |
+| Give a character turn-specific direction | Director Script |
+| Manage a world, NPCs, or quest state | World books, variables, story state, and custom providers |
+| Save or share settings | Profile import / export |
 
-### LLM Director: Read the Room
+## Documentation
 
-A Director model returns a speaker plan. With ordered takeover enabled, Group World generates the planned characters one by one; otherwise it filters unselected speakers while retaining SillyTavern's normal group-generation loop.
+- [User Guide](USER-GUIDE_EN.md): interface, settings, recipes, and FAQ.
+- [Template Syntax](TEMPLATE-SYNTAX_EN.md): Prompt DSL, placeholders, and path queries.
+- [Design Notes](DESIGN_EN.md): architecture, execution pipeline, and extension points.
+- [Story Blueprint](STORY-BLUEPRINT.md): story-state and blueprint documentation.
+- [Testing](TESTING.md): automated test platform and coverage.
 
-## Let It Grow with Your Story
+## Development and Testing
 
-Start with Formula Director and let the cast learn to take turns. Once the rhythm feels right, bring in LLM Director, scripts, variables, and long-term state one layer at a time. They are not switches you must enable all at once; they are tools your world can grow into.
+The extension uses native ES modules and does not require a build step. Automated tests require Node.js 22 or later:
 
-When reporting an issue, include Group World logs, group-chat mode, and reproduction steps.
+```bash
+npm test
+```
 
-## Beyond Group Chat
+Other available commands:
 
-For those who want to go further, Group World is also an Agent Runtime, a Provider extension framework, and a Prompt DSL. New data sources can enter any prompt position; custom agents can work at Director decision time, character-message time, or round end. Memory, NPCs, world state, relationships, and quests are all stage machinery you can add as the story asks for them.
+```bash
+npm run test:static
+npm run test:unit
+npm run test:integration
+npm run test:full
+npm run test:coverage
+```
 
-The point is not to design a flawless world before the first message. It is to give the story a way to remember, respond, and grow its world through conversation.
+## Feedback and Contributions
 
-## Next
+Issues and pull requests are welcome. For a bug report, please include:
 
-- [User Guide](USER-GUIDE_EN.md): settings and everyday use
-- [Design Notes](DESIGN_EN.md): architecture, pipeline, and extension points
+- SillyTavern and Group World versions;
+- Director mode, group-chat mode, and relevant settings;
+- Group World logs; and
+- repeatable steps to reproduce the issue.
 
 ## License
 
-See [LICENSE](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
