@@ -14,7 +14,7 @@ export function createProfileAgent({
     return {
         id: 'profile',
         displayName: 'Profile Generator',
-        contextAccess: ['character', 'settings'],
+        contextAccess: ['character', 'settings', 'profileGeneratorDefault', 'profileSchemaDefault'],
         pipelineOrder: ['context', 'prompt', 'call', 'parse', 'validate'],
         pipeline: {
             async context(_input, _ctx, pool, settings) {

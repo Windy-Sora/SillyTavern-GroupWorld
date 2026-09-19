@@ -179,13 +179,18 @@ registerSection('customPrompts', function (ctx) {
 
     // Master enable/disable
     $c('cp-enabled').prop('checked', settings.customPromptsEnabled !== false);
-    $c('cp-enabled').on('change', function () {
+    $c('cp-enabled').on('change', async function () {
         const on = !!$(this).prop('checked');
-        sys.setMasterEnabled(on);
-        renderList();
-        toastr.info(on
-            ? (isZh() ? '自定义 Prompt 已激活' : 'Custom prompts activated')
-            : (isZh() ? '自定义 Prompt 已停用' : 'Custom prompts deactivated'));
+        try {
+            await sys.setMasterEnabled(on);
+            renderList();
+            toastr.info(on
+                ? (isZh() ? '自定义 Prompt 已激活' : 'Custom prompts activated')
+                : (isZh() ? '自定义 Prompt 已停用' : 'Custom prompts deactivated'));
+        } catch (error) {
+            $(this).prop('checked', !on);
+            toastr.error(error.message);
+        }
     });
 
     function renderList() {
@@ -278,7 +283,7 @@ registerSection('customPrompts', function (ctx) {
         });
 
         // Save
-        $list.find('.gd-cp-save-btn').off('click').on('click', function () {
+        $list.find('.gd-cp-save-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const name = $(`.gd-cp-edit-name[data-id="${escAttr(id)}"]`).val().trim();
             const content = $(`.gd-cp-edit-content[data-id="${escAttr(id)}"]`).val();
@@ -289,7 +294,7 @@ registerSection('customPrompts', function (ctx) {
             const dataValid = sys.validateDataJson(dataJson);
             if (!dataValid.ok) { toastr.warning(dataValid.error); return; }
             try {
-                sys.update(id, { name, content, dataJson, scope });
+                await sys.update(id, { name, content, dataJson, scope });
                 if (sys.hasSelfReference(name, content)) {
                     toastr.warning(isZh() ? `自引用警告: {{${name}}} 内容中引用了自身` : `Self-reference: {{${name}}} contains itself`);
                 }
@@ -299,10 +304,12 @@ registerSection('customPrompts', function (ctx) {
         });
 
         // Toggle
-        $list.find('.gd-cp-toggle-btn').off('click').on('click', function () {
+        $list.find('.gd-cp-toggle-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            sys.toggle(id);
-            renderList();
+            try {
+                await sys.toggle(id);
+                renderList();
+            } catch (error) { toastr.error(error.message); }
         });
 
         // Delete
@@ -314,9 +321,11 @@ registerSection('customPrompts', function (ctx) {
             if (!await callGenericPopup(isZh()
                 ? `删除 {{${promptName}}}？已引用此占位符的位置将变为空。`
                 : `Delete {{${promptName}}}? References to it will become empty.`, POPUP_TYPE.CONFIRM)) return;
-            sys.remove(id);
-            renderList();
-            toastr.info(isZh() ? '已删除' : 'Deleted');
+            try {
+                await sys.remove(id);
+                renderList();
+                toastr.info(isZh() ? '已删除' : 'Deleted');
+            } catch (error) { toastr.error(error.message); }
         });
     }
 
@@ -330,7 +339,7 @@ registerSection('customPrompts', function (ctx) {
         refreshBuilder($('#gd-cp-new-data-builder'), '', 'global', 'name');
     }
 
-    $c('cp-add-btn').off('click').on('click', () => {
+    $c('cp-add-btn').off('click').on('click', async () => {
         const name = $c('cp-new-name').val().trim();
         const content = $c('cp-new-content').val();
         const dataJson = $c('cp-new-data').val();
@@ -339,7 +348,7 @@ registerSection('customPrompts', function (ctx) {
         const dataValid = sys.validateDataJson(dataJson);
         if (!dataValid.ok) { toastr.warning(dataValid.error); return; }
         try {
-            const { selfRef } = sys.add(name, content, true, { dataJson, scope });
+            const { selfRef } = await sys.add(name, content, true, { dataJson, scope });
             resetAddForm();
             renderList();
             let msg = `{{${name}}} ${isZh() ? '已创建' : 'created'}`;
@@ -353,8 +362,10 @@ registerSection('customPrompts', function (ctx) {
     $c('cp-export-btn').off('click').on('click', () => {
         const list = sys.getList();
         if (!list.length) { toastr.warning(isZh() ? '无自定义 Prompt 可导出' : 'No custom prompts to export'); return; }
-        sys.exportPrompts(list.map(e => e.id));
-        toastr.success(isZh() ? `已导出 ${list.length} 个 Prompt` : `Exported ${list.length} prompt(s)`);
+        try {
+            sys.exportPrompts(list.map(e => e.id));
+            toastr.success(isZh() ? `已导出 ${list.length} 个 Prompt` : `Exported ${list.length} prompt(s)`);
+        } catch (error) { toastr.error(error.message); }
     });
 
     $c('cp-import-file').off('change').on('change', function () {
@@ -362,26 +373,28 @@ registerSection('customPrompts', function (ctx) {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = async function () {
-            const result = sys.parseImportFile(reader.result);
-            if (!result.ok) { toastr.error((isZh() ? '导入失败: ' : 'Import failed: ') + result.error); return; }
-            const conflicts = result.data.prompts.filter(p => {
-                const list = sys.getList();
-                return list.some(e => e.name === p.name);
-            });
-            let overwrite = false;
-            if (conflicts.length > 0) {
-                const conflictNames = conflicts.map(p => escHtml(p.name)).join(', ');
-                overwrite = await callGenericPopup(isZh()
-                    ? `检测到 ${conflicts.length} 个同名 Prompt：${conflictNames}。\n确定=覆盖同名，取消=仅添加不同名的`
-                    : `Found ${conflicts.length} same-name prompt(s): ${conflictNames}.\nOK=overwrite conflicts, Cancel=add only new ones`, POPUP_TYPE.CONFIRM);
+            try {
+                const result = sys.parseImportFile(reader.result);
+                if (!result.ok) throw new Error(result.error);
+                const conflicts = result.data.prompts.filter(p => sys.getList().some(e => e.name === p.name));
+                let overwrite = false;
+                if (conflicts.length > 0) {
+                    const conflictNames = conflicts.map(p => escHtml(p.name)).join(', ');
+                    overwrite = await callGenericPopup(isZh()
+                        ? `检测到 ${conflicts.length} 个同名 Prompt：${conflictNames}。\n确定=覆盖同名，取消=仅添加不同名的`
+                        : `Found ${conflicts.length} same-name prompt(s): ${conflictNames}.\nOK=overwrite conflicts, Cancel=add only new ones`, POPUP_TYPE.CONFIRM);
+                }
+                const result2 = await sys.importPrompts(result.data, overwrite);
+                renderList();
+                let msg = isZh() ? `已导入：${result2.added} 新增` : `Imported: ${result2.added} added`;
+                if (result2.overwritten > 0) msg += isZh() ? `, ${result2.overwritten} 覆盖` : `, ${result2.overwritten} overwritten`;
+                if (result2.conflicts.length > 0 && !overwrite) msg += isZh() ? `, ${result2.conflicts.length} 跳过` : `, ${result2.conflicts.length} skipped`;
+                toastr.success(msg);
+            } catch (error) {
+                toastr.error((isZh() ? '导入失败: ' : 'Import failed: ') + error.message);
             }
-            const result2 = sys.importPrompts(result.data, overwrite);
-            renderList();
-            let msg = isZh() ? `已导入：${result2.added} 新增` : `Imported: ${result2.added} added`;
-            if (result2.overwritten > 0) msg += isZh() ? `, ${result2.overwritten} 覆盖` : `, ${result2.overwritten} overwritten`;
-            if (result2.conflicts.length > 0 && !overwrite) msg += isZh() ? `, ${result2.conflicts.length} 跳过` : `, ${result2.conflicts.length} skipped`;
-            toastr.success(msg);
         };
+        reader.onerror = () => toastr.error(isZh() ? '导入失败：无法读取文件' : 'Import failed: could not read file');
         reader.readAsText(file);
         this.value = '';
     });

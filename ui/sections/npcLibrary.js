@@ -17,13 +17,15 @@ registerSection('npcLibrary', function (ctx) {
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
     const L = (zh, en) => isZh() ? zh : en;
+    const visibleLibraries = () => npcLibrarySystem.getLibraries().filter(lib => lib && typeof lib === 'object'
+        && typeof lib.id === 'string' && typeof lib.name === 'string');
 
     function selectedId() {
         return $('#gd-npc-library-select').val() || '';
     }
 
     function syncSelectors() {
-        const libraries = npcLibrarySystem.getLibraries();
+        const libraries = visibleLibraries();
         const $sel = $('#gd-npc-library-select');
         if (!$sel.length) return;
         const current = $sel.val();
@@ -43,7 +45,7 @@ registerSection('npcLibrary', function (ctx) {
 
     function renderList() {
         const $list = $('#gd-npc-library-list');
-        const libraries = npcLibrarySystem.getLibraries();
+        const libraries = visibleLibraries();
         syncSelectors();
         if (!$list.length) return;
         if (!libraries.length) {
@@ -81,10 +83,11 @@ registerSection('npcLibrary', function (ctx) {
         );
         if (!name || !String(name).trim()) return;
         try {
-            const entry = npcLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group?.name || '');
+            const entry = await npcLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group?.name || '');
             refreshLinkedUi();
             toastr.success(L(`NPC 包“${entry.name}”已保存`, `NPC library "${entry.name}" saved`));
         } catch (e) {
+            refreshLinkedUi();
             toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
         }
     }
@@ -102,7 +105,15 @@ registerSection('npcLibrary', function (ctx) {
             if (result.templateImported) msg += ' + Prompt';
             toastr.success(msg);
         } catch (e) {
-            toastr.error((L('应用失败：', 'Apply failed: ')) + e.message);
+            if (e.persistenceUnknown) {
+                refreshLinkedUi();
+                toastr.warning(L(
+                    'NPC 应用保存状态未确认，更改暂留当前页面。请勿直接刷新或重复应用；恢复连接后先导出 NPC 备份再核对。',
+                    'NPC apply save status is unknown; changes remain on this page. Do not reload or reapply yet; export an NPC backup before checking after reconnecting.',
+                ));
+            } else {
+                toastr.error((L('应用失败：', 'Apply failed: ')) + e.message);
+            }
         }
     }
 
@@ -117,6 +128,7 @@ registerSection('npcLibrary', function (ctx) {
             refreshLinkedUi();
             toastr.success(L(`已导入 NPC 包“${entry.name}”`, `Imported "${entry.name}"`));
         } catch (e) {
+            refreshLinkedUi();
             toastr.error((L('导入失败：', 'Import failed: ')) + e.message);
         } finally {
             this.value = '';
@@ -136,8 +148,13 @@ registerSection('npcLibrary', function (ctx) {
         const libName = esc(lib.name);
         const ok = await callGenericPopup(L(`删除 NPC 包“${libName}”？`, `Delete NPC library "${libName}"?`), POPUP_TYPE.CONFIRM);
         if (!ok) return;
-        npcLibrarySystem.deleteLibrary(id);
-        refreshLinkedUi();
+        try {
+            await npcLibrarySystem.deleteLibrary(id);
+            refreshLinkedUi();
+        } catch (e) {
+            refreshLinkedUi();
+            toastr.error((L('删除失败：', 'Delete failed: ')) + e.message);
+        }
     });
 
     window.__gdRefreshNpcLibrary = renderList;

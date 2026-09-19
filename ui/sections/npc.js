@@ -9,11 +9,25 @@ registerSection('npc', function (ctx) {
     const npcSystem = ctx.npcSystem;
     if (!npcSystem) return;
 
+    function reportNpcError(error, zh, en) {
+        if (error.persistenceUnknown) {
+            toastr.warning(L(
+                'NPC 保存状态未确认，更改暂留当前页面。请勿直接刷新或重试；恢复连接后先导出 NPC 备份再核对。',
+                'NPC save status is unknown; changes remain on this page. Do not reload or retry yet; export an NPC backup before checking after reconnecting.',
+            ));
+            renderNpcList();
+            window.__gdRefreshDashboard?.();
+            return;
+        }
+        toastr.error(L(zh + error.message, en + error.message));
+    }
+
     const $section = $('#gd-npc-section');
     const $toggle = $c('npc-enabled');
     const $generateBtn = $c('npc-generate');
     const $scanBtn = $c('npc-scan');
     const $list = $c('npc-list');
+    let deletionPending = false;
 
     // ── Bind values ──
     $toggle.prop('checked', settings.npcEnabled ?? false);
@@ -70,7 +84,7 @@ registerSection('npc', function (ctx) {
                 window.__gdRefreshDashboard?.();
             }
         } catch (e) {
-            toastr.error(L('NPC 生成失败: ' + e.message, 'NPC generation failed: ' + e.message));
+            reportNpcError(e, 'NPC 生成失败: ', 'NPC generation failed: ');
             console.error('[GroupDirector] NPC generation error:', e);
         } finally {
             btn.prop('disabled', false);
@@ -114,7 +128,7 @@ registerSection('npc', function (ctx) {
             const importedBadge = npc.imported
                 ? `<span style="color:green;font-size:0.8em;">&#10003; ${L('已导入', 'Imported')} (${esc(npc.importedAvatar || '')})</span>`
                 : '';
-            const importBtn = `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
+            const importBtn = npc.imported && npc.importedAvatar ? '' : `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
 
             html += `
                 <div class="gd-npc-card" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;" data-idx="${i}">
@@ -158,17 +172,35 @@ registerSection('npc', function (ctx) {
 
         // Delete
         $list.find('.gd-npc-delete').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
-            const npcName = esc(npcs[idx]?.name);
-            if (await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) {
-                npcSystem.deleteNpc(idx);
+            const target = npcs[idx];
+            if (!target) return;
+            const npcName = esc(target.name);
+            if (!await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) return;
+            if (deletionPending) return;
+            if (npcSystem.getNpcs()[idx] !== target) {
                 renderNpcList();
+                return;
+            }
+            deletionPending = true;
+            const btn = $(this);
+            btn.prop('disabled', true);
+            try {
+                await npcSystem.deleteNpc(idx);
                 window.__gdRefreshDashboard?.();
+            } catch (e) {
+                reportNpcError(e, 'NPC 删除失败: ', 'NPC delete failed: ');
+            } finally {
+                deletionPending = false;
+                renderNpcList();
+                btn.prop('disabled', false);
             }
         });
 
         // Import
         $list.find('.gd-npc-import').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             const btn = $(this);
             btn.prop('disabled', true);
@@ -178,6 +210,15 @@ registerSection('npc', function (ctx) {
                 renderNpcList();
                 window.__gdRefreshDashboard?.();
             } catch (e) {
+                if (e.name === 'NpcImportTrackingError' && e.avatarName) {
+                    toastr.warning(L(
+                        `角色卡已创建为 ${e.avatarName}，但导入状态未能确认。请勿重复导入。`,
+                        `Character card was created as ${e.avatarName}, but its import status could not be confirmed. Do not import it again.`,
+                    ));
+                    renderNpcList();
+                    window.__gdRefreshDashboard?.();
+                    return;
+                }
                 toastr.error(L('导入失败: ' + e.message, 'Import failed: ' + e.message));
                 btn.prop('disabled', false);
             }
@@ -185,6 +226,7 @@ registerSection('npc', function (ctx) {
 
         // Edit toggle
         $list.find('.gd-npc-edit').on('click', function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             // Close all other edit panels to prevent data loss from multi-edit
             const npcs = npcSystem.getNpcs();
@@ -200,13 +242,15 @@ registerSection('npc', function (ctx) {
 
         // Cancel edit
         $list.find('.gd-npc-cancel').on('click', function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             $(`.gd-npc-edit-${idx}`).toggle(false);
             $(`.gd-npc-view-${idx}`).toggle(true);
         });
 
         // Save edit
-        $list.find('.gd-npc-save').on('click', function () {
+        $list.find('.gd-npc-save').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             const nameEl = $list.find(`.gd-npc-edit-name[data-idx="${idx}"]`);
             const descEl = $list.find(`.gd-npc-edit-desc[data-idx="${idx}"]`);
@@ -237,10 +281,18 @@ registerSection('npc', function (ctx) {
                 updates.first_mes = (fmEl.val() || '').trim();
             }
 
-            npcSystem.updateNpc(idx, updates);
-            toastr.success(L('已保存', 'Saved'));
-            renderNpcList();
-            window.__gdRefreshDashboard?.();
+            const btn = $(this);
+            btn.prop('disabled', true);
+            try {
+                await npcSystem.updateNpc(idx, updates);
+                toastr.success(L('已保存', 'Saved'));
+                renderNpcList();
+                window.__gdRefreshDashboard?.();
+            } catch (e) {
+                reportNpcError(e, 'NPC 保存失败: ', 'NPC save failed: ');
+            } finally {
+                btn.prop('disabled', false);
+            }
         });
     }
 

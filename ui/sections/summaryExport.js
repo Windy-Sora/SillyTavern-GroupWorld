@@ -12,7 +12,8 @@ registerSection('summaryExport', function (ctx) {
         const $container = $('#gd-summary-imported-list');
         if (!$container.length) return;
 
-        const list = sys.getImportedSummaries();
+        const list = sys.getImportedSummaries().filter(s => s && typeof s === 'object'
+            && typeof s.id === 'string' && typeof s.name === 'string' && typeof s.content === 'string');
         if (!list.length) {
             $container.html(`<small style="color:var(--grey70a);">${isZh() ? '暂无导入的摘要' : 'No imported summaries'}</small>`);
             return;
@@ -48,7 +49,12 @@ registerSection('summaryExport', function (ctx) {
         // Enable/disable toggle
         $container.find('.gd-summary-enabled').off('change').on('change', async function () {
             const id = $(this).data('id');
-            await sys.setEnabled(id, $(this).prop('checked'));
+            try {
+                await sys.setEnabled(id, $(this).prop('checked'));
+            } catch (error) {
+                renderPanel();
+                toastr.error(isZh() ? '保存摘要状态失败' : 'Failed to save summary state');
+            }
         });
 
         // Delete
@@ -57,8 +63,13 @@ registerSection('summaryExport', function (ctx) {
             const entry = list.find(s => s.id === id);
             const entryName = escHtml(entry?.name || '');
             if (await callGenericPopup(isZh() ? `确定删除摘要「${entryName}」？` : `Delete summary "${entryName}"?`, POPUP_TYPE.CONFIRM)) {
-                await sys.deleteImportedSummary(id);
-                renderPanel();
+                try {
+                    await sys.deleteImportedSummary(id);
+                    renderPanel();
+                } catch (error) {
+                    renderPanel();
+                    toastr.error(isZh() ? '删除摘要失败' : 'Failed to delete summary');
+                }
             }
         });
 
@@ -101,8 +112,12 @@ registerSection('summaryExport', function (ctx) {
             return;
         }
         const groupNote = $c('summary-export-note').val() || '';
-        sys.exportActiveSummary(groupNote);
-        toastr.success(isZh() ? '已导出当前摘要' : 'Active summary exported');
+        try {
+            sys.exportActiveSummary(groupNote);
+            toastr.success(isZh() ? '已导出当前摘要' : 'Active summary exported');
+        } catch (error) {
+            toastr.error(isZh() ? '导出摘要失败' : 'Failed to export summary');
+        }
     });
 
     // Import file
@@ -123,10 +138,16 @@ registerSection('summaryExport', function (ctx) {
                 defaultName
             );
             if (!name || !name.trim()) return;
-            await sys.addImportedSummary(data, name.trim());
-            renderPanel();
-            toastr.success(isZh() ? `已导入摘要「${name.trim()}」` : `Summary "${name.trim()}" imported`);
+            try {
+                await sys.addImportedSummary(data, name.trim());
+                renderPanel();
+                toastr.success(isZh() ? `已导入摘要「${name.trim()}」` : `Summary "${name.trim()}" imported`);
+            } catch (error) {
+                renderPanel();
+                toastr.error(isZh() ? '导入摘要失败' : 'Failed to import summary');
+            }
         };
+        reader.onerror = () => toastr.error(isZh() ? '读取摘要文件失败' : 'Failed to read summary file');
         reader.readAsText(file);
         this.value = '';
     });

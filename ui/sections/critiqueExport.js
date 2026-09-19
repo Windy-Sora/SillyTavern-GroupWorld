@@ -48,7 +48,12 @@ registerSection('critiqueExport', function (ctx) {
         // Enable/disable toggle
         $container.find('.gd-critique-enabled').off('change').on('change', async function () {
             const id = $(this).data('id');
-            await sys.setEnabled(id, $(this).prop('checked'));
+            try {
+                await sys.setEnabled(id, $(this).prop('checked'));
+            } catch (error) {
+                renderPanel();
+                toastr.error(isZh() ? '保存批判状态失败' : 'Failed to save critique state');
+            }
         });
 
         // Delete
@@ -57,8 +62,13 @@ registerSection('critiqueExport', function (ctx) {
             const entry = list.find(s => s.id === id);
             const entryName = escHtml(entry?.name || '');
             if (await callGenericPopup(isZh() ? `确定删除批判「${entryName}」？` : `Delete critique "${entryName}"?`, POPUP_TYPE.CONFIRM)) {
-                await sys.deleteImportedCritique(id);
-                renderPanel();
+                try {
+                    await sys.deleteImportedCritique(id);
+                    renderPanel();
+                } catch (error) {
+                    renderPanel();
+                    toastr.error(isZh() ? '删除批判失败' : 'Failed to delete critique');
+                }
             }
         });
 
@@ -101,8 +111,12 @@ registerSection('critiqueExport', function (ctx) {
             return;
         }
         const groupNote = $c('critique-export-note').val() || '';
-        sys.exportActiveCritique(groupNote);
-        toastr.success(isZh() ? '已导出当前批判' : 'Active critique exported');
+        try {
+            sys.exportActiveCritique(groupNote);
+            toastr.success(isZh() ? '已导出当前批判' : 'Active critique exported');
+        } catch (error) {
+            toastr.error(isZh() ? '导出批判失败' : 'Failed to export critique');
+        }
     });
 
     // Import file
@@ -123,10 +137,16 @@ registerSection('critiqueExport', function (ctx) {
                 defaultName
             );
             if (!name || !name.trim()) return;
-            await sys.addImportedCritique(data, name.trim());
-            renderPanel();
-            toastr.success(isZh() ? `已导入批判「${name.trim()}」` : `Critique "${name.trim()}" imported`);
+            try {
+                await sys.addImportedCritique(data, name.trim());
+                renderPanel();
+                toastr.success(isZh() ? `已导入批判「${name.trim()}」` : `Critique "${name.trim()}" imported`);
+            } catch (error) {
+                renderPanel();
+                toastr.error(isZh() ? '导入批判失败' : 'Failed to import critique');
+            }
         };
+        reader.onerror = () => toastr.error(isZh() ? '读取批判文件失败' : 'Failed to read critique file');
         reader.readAsText(file);
         this.value = '';
     });

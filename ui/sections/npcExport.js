@@ -190,7 +190,15 @@ registerSection('npcExport', function (ctx) {
             if (result.templateImported) msg += isZh() ? ' + Prompt' : ' + Prompt';
             toastr.success(msg);
         } catch (e) {
-            toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + e.message);
+            if (e.persistenceUnknown) {
+                renderNpcList?.();
+                renderExportList();
+                toastr.warning(isZh()
+                    ? 'NPC 导入保存状态未确认，更改暂留当前页面。请勿直接刷新或重复导入；恢复连接后先导出 NPC 备份再核对。'
+                    : 'NPC import save status is unknown; changes remain on this page. Do not reload or re-import yet; export an NPC backup before checking after reconnecting.');
+            } else {
+                toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + e.message);
+            }
             console.error('[GroupDirector] NPC import apply error:', e);
         } finally {
             btn.prop('disabled', false);

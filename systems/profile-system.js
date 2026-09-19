@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    snapshotValue,
+} from './execution-snapshot.js';
+
 export function createProfileSystem(deps) {
     const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
@@ -22,13 +28,14 @@ function computeProfileSchemaHash() {
     return djb2Hash(schema);
 }
 
-function getProfileContainer() {
-    if (!cm()[EXT_KEY]) cm()[EXT_KEY] = {};
-    const meta = cm()[EXT_KEY];
+function getProfileContainer(metadata = cm()) {
+    if (!metadata[EXT_KEY]) metadata[EXT_KEY] = {};
+    const meta = metadata[EXT_KEY];
     if (!meta.characterProfiles) meta.characterProfiles = {};
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
     if (meta.profileSchemaHash === undefined) meta.profileSchemaHash = '';
+    migrateProfileData(meta);
     return meta;
 }
 
@@ -44,18 +51,65 @@ function migrateProfileData(container) {
     container.profileSchemaHash = currentHash;
 }
 
-function getProfiles() {
-    return getProfileContainer().characterProfiles;
+function getProfiles(metadata = cm()) {
+    return getProfileContainer(metadata).characterProfiles;
 }
 
-function getArchivedProfiles() {
-    return getProfileContainer().archivedProfiles;
+function getArchivedProfiles(metadata = cm()) {
+    return getProfileContainer(metadata).archivedProfiles;
 }
 
-async function saveProfile(avatar, profileObj) {
-    const profiles = getProfiles();
+async function saveProfile(avatar, profileObj, metadata = cm()) {
+    const profiles = getProfiles(metadata);
+    const hadPrevious = Object.prototype.hasOwnProperty.call(profiles, avatar);
+    const previous = profiles[avatar];
     profiles[avatar] = profileObj;
-    await saveChatConditional();
+    const appliedState = snapshotValue(profileObj);
+    try { await saveChatConditional(); }
+    catch (error) {
+        if (snapshotValue(profiles[avatar]) === appliedState) {
+            if (hadPrevious) profiles[avatar] = previous;
+            else delete profiles[avatar];
+        }
+        throw error;
+    }
+}
+
+async function archiveProfiles(avatars, metadata = cm()) {
+    const profiles = getProfiles(metadata);
+    const archivedProfiles = getArchivedProfiles(metadata);
+    const changes = [];
+
+    for (const avatar of avatars) {
+        if (!Object.prototype.hasOwnProperty.call(profiles, avatar)) continue;
+        const profile = profiles[avatar];
+        changes.push({
+            avatar,
+            profile,
+            appliedArchive: snapshotValue(profile),
+            hadArchived: Object.prototype.hasOwnProperty.call(archivedProfiles, avatar),
+            previousArchived: archivedProfiles[avatar],
+        });
+        archivedProfiles[avatar] = profile;
+        delete profiles[avatar];
+    }
+
+    if (changes.length === 0) return 0;
+    try {
+        await saveChatConditional();
+    } catch (error) {
+        for (const change of changes) {
+            if (!Object.prototype.hasOwnProperty.call(profiles, change.avatar)) {
+                profiles[change.avatar] = change.profile;
+            }
+            if (snapshotValue(archivedProfiles[change.avatar]) === change.appliedArchive) {
+                if (change.hadArchived) archivedProfiles[change.avatar] = change.previousArchived;
+                else delete archivedProfiles[change.avatar];
+            }
+        }
+        throw error;
+    }
+    return changes.length;
 }
 
 function diffProfiles(enabledMembers) {
@@ -196,9 +250,32 @@ async function generateProfilesBatch(avatars) {
     const buildTask = (avatar) => async () => {
         const char = getCharacters().find(c => c.avatar === avatar);
         if (!char) return;
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const liveChar = getCharacters().find(candidate => candidate.avatar === avatar);
+                return {
+                    profile: getProfiles(metadata)[avatar] ?? null,
+                    character: liveChar ? [liveChar.name, liveChar.description, liveChar.personality, liveChar.scenario] : null,
+                };
+            },
+        });
+        const assertCurrent = () => assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const liveChar = getCharacters().find(candidate => candidate.avatar === avatar);
+                return {
+                    profile: getProfiles(metadata)[avatar] ?? null,
+                    character: liveChar ? [liveChar.name, liveChar.description, liveChar.personality, liveChar.scenario] : null,
+                };
+            },
+            message: 'Profile generation became stale',
+        });
 
         const currentHash = hashChar(char.description, char.personality, char.scenario);
-        const existing = getProfiles()[avatar];
+        const existing = getProfiles(executionSnapshot.metadata)[avatar];
 
         // Preserve existing ready data as base; only overwrite on success
         const base = (existing && existing.state === 'ready')
@@ -209,32 +286,31 @@ async function generateProfilesBatch(avatars) {
                 state: 'pending', manualEdited: false,
             };
         base.updatedAt = Date.now();
-        await saveProfile(avatar, base);
 
         try {
             const result = await generateSingleProfile(avatar);
+            assertCurrent();
             if (result) {
                 base.profile = result;
                 base.state = 'ready';
                 base.hash = currentHash;
             } else {
-                // Null means skipped (e.g. round active) — restore previous ready state
-                if (existing && existing.state === 'ready') {
-                    base.state = 'ready';
-                    base.profile = existing.profile;
-                }
+                // Null means skipped (e.g. round active) — leave stored state unchanged.
+                return;
             }
         } catch (e) {
+            if (e?.name === 'StaleExecutionError') throw e;
+            assertCurrent();
             console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
             base.state = 'failed';
         }
         base.updatedAt = Date.now();
         // Avoid overwriting a ready profile with a failed one from a concurrent run
-        const currentProfile = getProfiles()[avatar];
+        const currentProfile = getProfiles(executionSnapshot.metadata)[avatar];
         if (base.state === 'failed' && currentProfile?.state === 'ready') {
             console.warn(`[GroupDirector] Profile generation failed for ${char.name}, keeping existing ready profile`);
         } else {
-            await saveProfile(avatar, base);
+            await saveProfile(avatar, base, executionSnapshot.metadata);
         }
     };
 
@@ -373,21 +449,14 @@ async function syncProfiles(enabledMembers) {
     getProfileContainer(); // ensure migration
     const { newChars, removedChars, hashMismatches } = diffProfiles(enabledMembers);
 
-    // Archive removed characters
-    for (const avatar of removedChars) {
-        const profile = getProfiles()[avatar];
-        if (profile) {
-            getArchivedProfiles()[avatar] = profile;
-            delete getProfiles()[avatar];
-        }
-    }
-
     if (hashMismatches.length > 0) {
         const names = hashMismatches.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ');
         log(`Profile hash mismatch for: ${names} — use Regenerate button to update`);
     }
 
-    if (removedChars.length || hashMismatches.length) {
+    if (removedChars.length) {
+        await archiveProfiles(removedChars);
+    } else if (hashMismatches.length) {
         await saveChatConditional();
     }
 
@@ -488,6 +557,9 @@ function buildProfileLoaderPanel() {
                 $('#gd-profile-loader').remove();
                 refreshProfileManagementUI();
                 toastr.success(isZh ? '档案已更新' : 'Profiles updated');
+            }).catch(error => {
+                console.error('[GroupDirector] Profile generation failed:', error);
+                toastr.error(isZh ? '档案生成失败' : 'Profile generation failed');
             }).finally(() => btn.prop('disabled', false));
         } else {
             $('#gd-profile-loader').remove();
@@ -504,6 +576,9 @@ function buildProfileLoaderPanel() {
             $('#gd-profile-loader').remove();
             refreshProfileManagementUI();
             toastr.success(isZh ? '全部档案已更新' : 'All profiles updated');
+        }).catch(error => {
+            console.error('[GroupDirector] Profile generation failed:', error);
+            toastr.error(isZh ? '档案生成失败' : 'Profile generation failed');
         }).finally(() => btn.prop('disabled', false));
     });
 }
@@ -570,41 +645,38 @@ function detectCharacterChanges() {
     $('.gd-changes-btn-apply').off('click').on('click', async function () {
         const btn = $(this);
         btn.prop('disabled', true);
-        const toGenerate = [];
-        const toArchive = [];
+        try {
+            const toGenerate = [];
+            const toArchive = [];
 
-        $('.gd-change-row').each(function () {
-            const $row = $(this);
-            if (!$row.find('.gd-change-check').prop('checked')) return;
-            const action = $row.data('action');
-            const avatar = $row.data('avatar');
-            if (action === 'add') toGenerate.push(avatar);
-            else if (action === 'remove') toArchive.push(avatar);
-        });
+            $('.gd-change-row').each(function () {
+                const $row = $(this);
+                if (!$row.find('.gd-change-check').prop('checked')) return;
+                const action = $row.data('action');
+                const avatar = $row.data('avatar');
+                if (action === 'add') toGenerate.push(avatar);
+                else if (action === 'remove') toArchive.push(avatar);
+            });
 
-        // Archive removed characters
-        for (const avatar of toArchive) {
-            const prof = profiles[avatar];
-            if (prof) {
-                getArchivedProfiles()[avatar] = prof;
-                delete profiles[avatar];
+            if (toArchive.length > 0) {
+                await archiveProfiles(toArchive);
+                toastr.info(isZh ? `已归档 ${toArchive.length} 个档案` : `Archived ${toArchive.length} profile(s)`);
             }
-        }
-        if (toArchive.length > 0) {
-            await saveChatConditional();
-            toastr.info(isZh ? `已归档 ${toArchive.length} 个档案` : `Archived ${toArchive.length} profile(s)`);
-        }
 
-        // Generate new profiles
-        if (toGenerate.length > 0) {
-            toastr.info(isZh ? `正在生成 ${toGenerate.length} 个新角色档案...` : `Generating ${toGenerate.length} new profile(s)...`);
-            await generateProfilesBatch(toGenerate);
-        }
+            if (toGenerate.length > 0) {
+                toastr.info(isZh ? `正在生成 ${toGenerate.length} 个新角色档案...` : `Generating ${toGenerate.length} new profile(s)...`);
+                await generateProfilesBatch(toGenerate);
+            }
 
-        $('#gd-profile-changes').remove();
-        refreshProfileManagementUI();
-        toastr.success(isZh ? '变动已处理' : 'Changes processed');
-        btn.prop('disabled', false);
+            $('#gd-profile-changes').remove();
+            refreshProfileManagementUI();
+            toastr.success(isZh ? '变动已处理' : 'Changes processed');
+        } catch (error) {
+            console.error('[GroupDirector] Failed to process profile changes:', error);
+            toastr.error(isZh ? '处理角色变动失败' : 'Failed to process character changes');
+        } finally {
+            btn.prop('disabled', false);
+        }
     });
 }
 
@@ -631,8 +703,6 @@ function refreshProfileManagementUI() {
         const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
         const stateLabel = stateLabels[prof.state] || prof.state;
         const stateClass = { ready: 'gd-profile-state-ready', pending: 'gd-profile-state-pending', failed: 'gd-profile-state-failed' }[prof.state] || '';
-        const safeId = CSS.escape(avatar);
-
         const card = $(`
             <div class="gd-profile-card" data-avatar="${esc(avatar)}">
                 <div class="gd-profile-card-header">
@@ -650,7 +720,7 @@ function refreshProfileManagementUI() {
                         <button class="gd-profile-btn-delete" data-avatar="${esc(avatar)}">${isZh ? '删除' : 'Delete'}</button>
                     </div>
                 </div>
-                <div class="gd-profile-card-edit" id="gd-profile-edit-${safeId}" style="display:none;">
+                <div class="gd-profile-card-edit" style="display:none;">
                     <label>Summary <textarea class="gd-profile-edit-field" data-field="summary" rows="2">${esc(prof.profile.summary || '')}</textarea></label>
                     <label>Tags <input class="gd-profile-edit-field" data-field="tags" value="${esc((prof.profile.tags || []).join(', '))}"></label>
                     <label>Motivation <textarea class="gd-profile-edit-field" data-field="motivation" rows="2">${esc(prof.profile.motivation || '')}</textarea></label>
@@ -672,37 +742,40 @@ function bindProfileCardActions() {
 
     $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function (e) {
         e.stopPropagation();
-        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        const el = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit')[0];
         if (el) { el.style.display = el.style.display === 'none' ? '' : 'none'; }
     });
 
     $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function (e) {
         e.stopPropagation();
-        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        const el = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit')[0];
         if (el) el.style.display = 'none';
     });
 
     $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function (e) {
         e.stopPropagation();
         const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const $edit = $(document.getElementById('gd-profile-edit-' + CSS.escape(avatar || '')));
-        const profiles = getProfiles();
-        const prof = profiles[avatar];
+        const $edit = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit');
+        const prof = getProfiles()[avatar];
         if (!prof) return;
 
-        prof.profile.summary = $edit.find('[data-field="summary"]').val();
-        prof.profile.tags = ($edit.find('[data-field="tags"]').val() || '').split(',').map(s => s.trim()).filter(Boolean);
-        prof.profile.motivation = $edit.find('[data-field="motivation"]').val();
-        prof.profile.relationships = $edit.find('[data-field="relationships"]').val();
-        prof.manualEdited = true;
-        prof.updatedAt = Date.now();
-        prof.state = 'ready';
+        const next = structuredClone(prof);
+        next.profile.summary = $edit.find('[data-field="summary"]').val();
+        next.profile.tags = ($edit.find('[data-field="tags"]').val() || '').split(',').map(s => s.trim()).filter(Boolean);
+        next.profile.motivation = $edit.find('[data-field="motivation"]').val();
+        next.profile.relationships = $edit.find('[data-field="relationships"]').val();
+        next.manualEdited = true;
+        next.updatedAt = Date.now();
+        next.state = 'ready';
 
-        await saveProfile(avatar, prof);
-        $edit.hide();
-        toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
+        try {
+            await saveProfile(avatar, next);
+            $edit.hide();
+            toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
+        } catch (error) {
+            console.error('[GroupDirector] Failed to save profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案保存失败' : 'Failed to save profile');
+        }
     });
 
     $container.off('click', '.gd-profile-btn-regen').on('click', '.gd-profile-btn-regen', async function () {
@@ -711,6 +784,9 @@ function bindProfileCardActions() {
         btn.prop('disabled', true);
         try {
             await generateProfilesBatch([avatar]);
+        } catch (error) {
+            console.error('[GroupDirector] Failed to regenerate profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案重生成失败' : 'Failed to regenerate profile');
         } finally {
             btn.prop('disabled', false);
         }
@@ -718,19 +794,18 @@ function bindProfileCardActions() {
 
     $container.off('click', '.gd-profile-btn-delete').on('click', '.gd-profile-btn-delete', async function () {
         const avatar = $(this).data('avatar');
-        const profiles = getProfiles();
-        const prof = profiles[avatar];
-        if (prof) {
-            getArchivedProfiles()[avatar] = prof;
-            delete profiles[avatar];
+        try {
+            await archiveProfiles([avatar]);
+            refreshProfileManagementUI();
+        } catch (error) {
+            console.error('[GroupDirector] Failed to delete profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案删除失败' : 'Failed to delete profile');
         }
-        await saveChatConditional();
-        refreshProfileManagementUI();
     });
 }
 
     return {
-        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, diffProfiles,
+        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
         buildCharacterProfilesText,

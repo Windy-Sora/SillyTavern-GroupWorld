@@ -17,7 +17,7 @@ Omit minor details. Keep under 500 words.`,
     return {
         id: 'summary',
         displayName: 'Chat Summary',
-        contextAccess: ['chat', 'settings'],
+        contextAccess: ['chat', 'settings', 'summaryLatest'],
         pipelineOrder: ['context', 'prompt', 'call'],
         pipeline: {
             async context(_input, _ctx, pool, settings) {

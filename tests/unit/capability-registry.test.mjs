@@ -32,3 +32,23 @@ test('unregister removes a live capability', t => {
     assert.equal(CapabilityRegistry.unregister(id), true);
     assert.equal(CapabilityRegistry.get(id), undefined);
 });
+
+test('capability ownership rejects cross-owner replacement and protects unregister', t => {
+    const id = 'test.capability.owner';
+    t.after(() => CapabilityRegistry.unregister(id));
+    CapabilityRegistry.register({
+        id, executor() {}, _gdOwner: 'owner-a', _gdOwnerId: 'asset-a',
+    });
+
+    assert.throws(() => CapabilityRegistry.register({
+        id, executor() {}, _gdOwner: 'owner-b', _gdOwnerId: 'asset-b',
+    }), /already registered/);
+    assert.equal(CapabilityRegistry.unregister(id, { owner: 'owner-b', ownerId: 'asset-b' }), false);
+    assert.equal(CapabilityRegistry.get(id)._gdOwner, 'owner-a');
+
+    CapabilityRegistry.register({
+        id, executor() { return 'updated'; }, _gdOwner: 'owner-a', _gdOwnerId: 'asset-a',
+    });
+    assert.equal(CapabilityRegistry.get(id).executor(), 'updated');
+    assert.equal(CapabilityRegistry.unregister(id, { owner: 'owner-a', ownerId: 'asset-a' }), true);
+});

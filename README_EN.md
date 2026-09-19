@@ -87,6 +87,7 @@ To apply a recommended starting configuration, select the `group-world-default` 
 The extension uses native ES modules and does not require a build step. Automated tests require Node.js 22 or later:
 
 ```bash
+npm ci
 npm test
 ```
 

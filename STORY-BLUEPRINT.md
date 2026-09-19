@@ -100,6 +100,8 @@ The default generation prompt also includes `{{storyBlueprintFullJson}}` and `{{
 
 The default generation and continuation prompts inject always-on world book entries via `{{gdWorldBooksConstant}}` (replacing the older `{{worldBooks}}` reference), so the LLM sees constant world-setting context while generating or continuing the blueprint. See [TEMPLATE-SYNTAX.md](TEMPLATE-SYNTAX.md) for the full set of `gdWorldBooks*` placeholders.
 
+Generation and continuation are guarded by an execution snapshot. Switching chats, editing/replacing the blueprint, changing progress signals, or appending/editing chat messages while the LLM is pending invalidates the older response with `StaleExecutionError`; the stale response cannot overwrite the newer chat or blueprint state.
+
 Generation uses `settings.agentConfigs["story-blueprint"]`, so it can have an independent API endpoint, key, model, retry policy, and timeout in the Tools drawer's Agent Configuration card.
 
 Continuation rules:

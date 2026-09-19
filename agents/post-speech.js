@@ -103,7 +103,7 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
         id: 'post-speech',
         displayName: 'PostSpeech Policy',
         contextAccess: ['chat', 'recentMessages', 'characters', 'group', 'settings', 'worldInfoText',
-            'speakerMessage', 'speakerName', 'speakerDescription'],
+            'speakerMessage', 'speakerName', 'speakerDescription', 'postSpeechMode'],
         pipelineOrder: ['context', 'prompt', 'call'],
         pipeline: {
             async context(_input, _ctx, pool, settings) {

@@ -1,65 +1,181 @@
 import { withTimeout } from './agent-runtime.js';
+import {
+    SCRIPT_EXECUTOR_EXPORT_VERSION,
+    generateScriptExecutorId,
+    normalizeScriptExecutor,
+    validateScriptExecutorExport,
+} from './script-executor-validation.js';
 
-let turnShared = {};
-let turnId = 0;    // incremented per turn to guard against cross-turn async contamination
-let decisionSnapshot = null; // snapshot after decision hook completes, read-only for message/round
+export function createScriptExecutorSystem({ settings, saveSettings, renderPrompt, AgentTrace, log, decisionTimeoutMs = 10000, phaseTimeoutMs = 5000 }) {
+    // Turn state belongs to this system instance. Keeping it at module scope made
+    // tests and multiple extension contexts contaminate one another.
+    let turnShared = {};
+    let turnId = 0;
+    let decisionSnapshot = null;
+    let mutationQueue = Promise.resolve();
 
-export function createScriptExecutorSystem({ settings, saveSettings, renderPrompt, AgentTrace, log }) {
+    function enqueueMutation(work) {
+        const result = mutationQueue.then(work, work);
+        mutationQueue = result.catch(() => {});
+        return result;
+    }
+
     function getList() {
-        return settings.scriptExecutors || [];
+        if (settings.scriptExecutors === undefined) settings.scriptExecutors = [];
+        if (!Array.isArray(settings.scriptExecutors)) throw new Error('scriptExecutors must be an array');
+        return settings.scriptExecutors;
     }
 
     function save() {
-        saveSettings();
+        return saveSettings();
     }
 
     function generateId() {
-        return 'se_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+        return generateScriptExecutorId();
     }
 
-    function add(partial) {
-        const entry = {
+    async function add(partial) {
+        if (partial === undefined) partial = {};
+        if (partial === null || typeof partial !== 'object' || Array.isArray(partial)) {
+            throw new Error('executor must be an object');
+        }
+        const source = { ...partial, name: partial.name ?? 'Untitled' };
+        const entry = normalizeScriptExecutor(source, {
+            path: 'executor',
             id: generateId(),
-            name: partial.name || 'Untitled',
-            triggerOn: partial.triggerOn || 'both',
-            priority: typeof partial.priority === 'number' ? partial.priority : 0,
-            code: partial.code || '',
-            enabled: partial.enabled !== false,
-            params: Array.isArray(partial.params) ? partial.params : [],
-            renderParams: !!partial.renderParams,
-            returnMode: partial.returnMode === 'shared' ? 'shared' : 'ignore',
-        };
+        });
         const list = getList();
         list.push(entry);
-        save();
+        try {
+            await save();
+        } catch (error) {
+            const index = list.indexOf(entry);
+            if (index !== -1) list.splice(index, 1);
+            throw error;
+        }
         return entry;
     }
 
-    function update(id, updates) {
+    async function update(id, updates) {
         const list = getList();
         const idx = list.findIndex(e => e.id === id);
-        if (idx === -1) return;
-        const allowed = ['name', 'triggerOn', 'priority', 'code', 'enabled', 'params', 'renderParams', 'returnMode'];
-        for (const k of allowed) {
-            if (updates.hasOwnProperty(k)) list[idx][k] = updates[k];
+        if (idx === -1) return undefined;
+        if (updates === null || typeof updates !== 'object' || Array.isArray(updates)) {
+            throw new Error('updates must be an object');
         }
-        save();
+        const allowed = ['name', 'triggerOn', 'priority', 'code', 'enabled', 'params', 'renderParams', 'returnMode'];
+        const candidate = { ...list[idx] };
+        for (const k of allowed) {
+            if (Object.prototype.hasOwnProperty.call(updates, k)) candidate[k] = updates[k];
+        }
+        const entry = normalizeScriptExecutor(candidate, { path: 'executor', id });
+        const previous = list[idx];
+        list[idx] = entry;
+        const appliedSnapshot = structuredClone(entry);
+        try {
+            await save();
+        } catch (error) {
+            const currentIndex = list.findIndex(e => e.id === id);
+            if (currentIndex !== -1) {
+                const current = list[currentIndex];
+                if (current === entry && JSON.stringify(current) === JSON.stringify(appliedSnapshot)) {
+                    list[currentIndex] = previous;
+                } else {
+                    for (const key of allowed) {
+                        if (Object.prototype.hasOwnProperty.call(updates, key)
+                            && JSON.stringify(appliedSnapshot[key]) !== JSON.stringify(previous[key])
+                            && JSON.stringify(current[key]) === JSON.stringify(appliedSnapshot[key])) {
+                            current[key] = previous[key];
+                        }
+                    }
+                }
+            }
+            throw error;
+        }
+        return entry;
     }
 
-    function remove(id) {
+    async function remove(id) {
         const list = getList();
         const idx = list.findIndex(e => e.id === id);
         if (idx === -1) return;
-        list.splice(idx, 1);
-        save();
+        const [removed] = list.splice(idx, 1);
+        try {
+            await save();
+        } catch (error) {
+            if (!list.some(e => e.id === id)) list.splice(Math.min(idx, list.length), 0, removed);
+            throw error;
+        }
     }
 
-    function toggle(id) {
+    async function toggle(id) {
         const list = getList();
         const entry = list.find(e => e.id === id);
         if (!entry) return;
+        const previous = entry.enabled;
         entry.enabled = !entry.enabled;
-        save();
+        try {
+            await save();
+        } catch (error) {
+            if (entry.enabled === !previous) entry.enabled = previous;
+            throw error;
+        }
+        return entry;
+    }
+
+    function createExportData() {
+        return {
+            version: SCRIPT_EXECUTOR_EXPORT_VERSION,
+            type: 'script-executor-export',
+            exportedAt: new Date().toISOString(),
+            executors: getList().map((entry, index) => normalizeScriptExecutor(entry, {
+                path: `scriptExecutors[${index}]`,
+            })),
+            migrations: [],
+        };
+    }
+
+    /**
+     * Validate the complete payload and resolve every conflict before replacing
+     * settings. The live list is never touched until the single commit below.
+     */
+    async function importExecutors(data, { resolveConflict } = {}) {
+        const incoming = validateScriptExecutorExport(data);
+        const candidate = [...getList()];
+        let imported = 0;
+        let skipped = 0;
+
+        for (const executor of incoming) {
+            const conflictIndex = candidate.findIndex(entry => entry.name === executor.name);
+            if (conflictIndex !== -1) {
+                const conflict = candidate[conflictIndex];
+                const resolution = resolveConflict
+                    ? await resolveConflict({ incoming: executor, existing: conflict })
+                    : 'skip';
+                if (resolution === 'cancel') return { imported: 0, skipped: 0, cancelled: true };
+                if (resolution === 'skip') {
+                    skipped++;
+                    continue;
+                }
+                if (resolution !== 'overwrite') throw new Error('Invalid conflict resolution');
+                candidate[conflictIndex] = { ...executor, id: conflict.id || generateId() };
+            } else {
+                candidate.push({ ...executor, id: generateId() });
+            }
+            imported++;
+        }
+
+        if (imported > 0) {
+            const previous = settings.scriptExecutors;
+            settings.scriptExecutors = candidate;
+            try {
+                await save();
+            } catch (error) {
+                settings.scriptExecutors = previous;
+                throw error;
+            }
+        }
+        return { imported, skipped, cancelled: false };
     }
 
     function resetTurnShared() {
@@ -73,7 +189,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     function getDecisionSnapshot() { return decisionSnapshot; }
 
     async function buildParams(entry) {
-        const params = {};
+        const params = Object.create(null);
         for (const p of (entry.params || [])) {
             params[p.key] = p.default;
         }
@@ -184,13 +300,14 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             const stage = { id: entry.id, name: entry.name, trigger: 'decision', priority: entry.priority, startTime: Date.now() };
             try {
                 const params = await buildParams(entry);
+                if (turnId !== myTurnId) break;
 
                 // Per-script clone prevents timed-out scripts from mutating workingDecision
                 const decisionForScript = safeClone(workingDecision);
 
                 const ctx = {
                     params,
-                    shared: { ...turnShared },
+                    shared: safeClone(turnShared),
                     decision: decisionForScript,             // per-script clone — mutation-safe
                     chat: event.chat || null,
                     characters: event.characters || null,
@@ -201,8 +318,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                const result = await withTimeout(Promise.resolve(fn(ctx)), 10000).catch(e => {
-                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after 10s`); x.name = 'TimeoutError'; throw x; }
+                const result = await withTimeout(Promise.resolve(fn(ctx)), decisionTimeoutMs).catch(e => {
+                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after ${decisionTimeoutMs}ms`); x.name = 'TimeoutError'; throw x; }
                     throw e;
                 });
 
@@ -211,7 +328,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                         log?.(`[GD] Script executor (decision) "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
                         assertSnapshotValue(result);
-                        Object.assign(turnShared, result);
+                        Object.assign(turnShared, safeClone(result));
                     }
                 }
 
@@ -227,7 +344,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                             log?.(`[GD] Script executor (decision) "${entry.name}" replaced ctx.decision; lost keys: ${lostKeys.join(', ')}`);
                         }
                     }
-                    workingDecision = ctx.decision;
+                    workingDecision = safeClone(ctx.decision);
                 }
 
                 stage.ok = true;
@@ -240,6 +357,12 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             }
             stage.elapsed = Date.now() - stage.startTime;
             traceEntry.stages.push(stage);
+            if (turnId !== myTurnId) break;
+        }
+
+        if (turnId !== myTurnId) {
+            pushTrace(traceEntry);
+            return null;
         }
 
         // Write back to live event for downstream consumers.
@@ -281,13 +404,15 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         };
 
         for (const entry of sorted) {
+            if (turnId !== myTurnId) break;
             const stage = { id: entry.id, name: entry.name, trigger: mode, priority: entry.priority, startTime: Date.now() };
             try {
                 const params = await buildParams(entry);
+                if (turnId !== myTurnId) break;
 
                 const ctx = {
                     params,
-                    shared: { ...turnShared },
+                    shared: safeClone(turnShared),
                     decisionSnapshot: decisionSnapshot,    // read-only snapshot from decision phase
                     message: event.message || null,
                     character: event.character || null,
@@ -299,8 +424,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                const result = await withTimeout(Promise.resolve(fn(ctx)), 5000).catch(e => {
-                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after 5s`); x.name = 'TimeoutError'; throw x; }
+                const result = await withTimeout(Promise.resolve(fn(ctx)), phaseTimeoutMs).catch(e => {
+                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after ${phaseTimeoutMs}ms`); x.name = 'TimeoutError'; throw x; }
                     throw e;
                 });
 
@@ -309,7 +434,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                         log?.(`[GD] Script executor "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
                         assertSnapshotValue(result);
-                        Object.assign(turnShared, result);
+                        Object.assign(turnShared, safeClone(result));
                     }
                 }
 
@@ -322,13 +447,20 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             }
             stage.elapsed = Date.now() - stage.startTime;
             traceEntry.stages.push(stage);
+            if (turnId !== myTurnId) break;
         }
 
         pushTrace(traceEntry);
     }
 
     return {
-        getList, add, update, remove, toggle,
+        getList,
+        add: (...args) => enqueueMutation(() => add(...args)),
+        update: (...args) => enqueueMutation(() => update(...args)),
+        remove: (...args) => enqueueMutation(() => remove(...args)),
+        toggle: (...args) => enqueueMutation(() => toggle(...args)),
+        createExportData,
+        importExecutors: (...args) => enqueueMutation(() => importExecutors(...args)),
         executeAll, executeAllDecision,
         resetTurnShared, getTurnShared, getTurnId, getDecisionSnapshot,
         safeClone,

@@ -34,9 +34,9 @@ export function createNpcLibrarySystem({
         return settings.npcLibraries;
     }
 
-    function saveAll() {
+    async function saveAll() {
         extension_settings[EXT_KEY] = settings;
-        saveSettings();
+        await saveSettings();
     }
 
     function normalize(entryOrData) {
@@ -76,7 +76,7 @@ export function createNpcLibrarySystem({
         };
     }
 
-    function saveCurrentAsLibrary(name, description = '') {
+    async function saveCurrentAsLibrary(name, description = '') {
         const title = String(name || '').trim();
         if (!title) throw new Error('Library name is required');
         const data = buildExportData(title, description);
@@ -91,22 +91,39 @@ export function createNpcLibrarySystem({
             npcCount: data.npcs.length,
             exportData: data,
         };
-        getLibraries().push(entry);
-        saveAll();
+        const list = getLibraries();
+        list.push(entry);
+        try { await saveAll(); }
+        catch (error) {
+            const index = list.indexOf(entry);
+            if (index >= 0) list.splice(index, 1);
+            throw error;
+        }
         log(`[GroupDirector] NPC library saved: "${title}" (${entry.npcCount})`);
         return entry;
     }
 
     function getLibrary(id) {
-        return getLibraries().find(x => x.id === id) || null;
+        return getLibraries().find(x => x?.id === id) || null;
     }
 
-    function deleteLibrary(id) {
+    async function deleteLibrary(id) {
         const list = getLibraries();
-        const idx = list.findIndex(x => x.id === id);
+        const idx = list.findIndex(x => x?.id === id);
         if (idx < 0) return false;
-        list.splice(idx, 1);
-        saveAll();
+        const before = list[idx - 1];
+        const after = list[idx + 1];
+        const [removed] = list.splice(idx, 1);
+        try { await saveAll(); }
+        catch (error) {
+            if (!list.includes(removed)) {
+                const afterIndex = after ? list.indexOf(after) : -1;
+                const beforeIndex = before ? list.indexOf(before) : -1;
+                const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(idx, list.length);
+                list.splice(restoreIndex, 0, removed);
+            }
+            throw error;
+        }
         return true;
     }
 
@@ -139,15 +156,22 @@ export function createNpcLibrarySystem({
         const entry = getLibrary(id);
         if (!entry) throw new Error('NPC library not found');
         const data = normalize(entry);
+        if (!data) throw new Error('Invalid NPC library data');
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `npcs-${safeFileName(entry.name)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        let a;
+        let appended = false;
+        try {
+            a = document.createElement('a');
+            a.href = url;
+            a.download = `npcs-${safeFileName(entry.name)}.json`;
+            document.body.appendChild(a);
+            appended = true;
+            a.click();
+        } finally {
+            try { if (appended) document.body.removeChild(a); }
+            finally { URL.revokeObjectURL(url); }
+        }
         return data;
     }
 
@@ -167,8 +191,14 @@ export function createNpcLibrarySystem({
             npcCount: Array.isArray(data.npcs) ? data.npcs.length : 0,
             exportData: data,
         };
-        getLibraries().push(entry);
-        saveAll();
+        const list = getLibraries();
+        list.push(entry);
+        try { await saveAll(); }
+        catch (error) {
+            const index = list.indexOf(entry);
+            if (index >= 0) list.splice(index, 1);
+            throw error;
+        }
         return entry;
     }
 

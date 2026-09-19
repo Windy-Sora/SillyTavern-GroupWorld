@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    staleExecutionError,
+} from './execution-snapshot.js';
+
 const DEFAULT_COMPLETION_VARIABLE = 'gd_story_chapter_done';
 
 export const DEFAULT_STORY_BLUEPRINT_SCHEMA = `Reply with ONLY a JSON object, no prose, no code fences:
@@ -213,6 +219,86 @@ function clone(value) {
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
 }
 
+function sameJsonValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function findMatchingArrayValues(left, right) {
+    const leftKeys = left.map(value => JSON.stringify(value));
+    const rightKeys = right.map(value => JSON.stringify(value));
+    const table = Array.from({ length: left.length + 1 }, () => new Uint32Array(right.length + 1));
+    for (let i = left.length - 1; i >= 0; i--) {
+        for (let j = right.length - 1; j >= 0; j--) {
+            table[i][j] = leftKeys[i] === rightKeys[j]
+                ? table[i + 1][j + 1] + 1
+                : Math.max(table[i + 1][j], table[i][j + 1]);
+        }
+    }
+    const matches = [];
+    for (let i = 0, j = 0; i < left.length && j < right.length;) {
+        if (leftKeys[i] === rightKeys[j]) matches.push([i++, j++]);
+        else if (table[i + 1][j] >= table[i][j + 1]) i++;
+        else j++;
+    }
+    return matches;
+}
+
+function rollbackJsonArray(previous = [], applied = [], current = []) {
+    const appliedToPrevious = new Map(findMatchingArrayValues(previous, applied).map(([before, after]) => [after, before]));
+    const matches = [[-1, -1], ...findMatchingArrayValues(applied, current), [applied.length, current.length]];
+    const result = clone(previous);
+    for (let gap = matches.length - 2; gap >= 0; gap--) {
+        const [leftApplied, leftCurrent] = matches[gap];
+        const [rightApplied, rightCurrent] = matches[gap + 1];
+        const removedIndexes = [];
+        for (let index = leftApplied + 1; index < rightApplied; index++) {
+            if (appliedToPrevious.has(index)) removedIndexes.push(appliedToPrevious.get(index));
+        }
+        const inserted = current.slice(leftCurrent + 1, rightCurrent);
+        if (!removedIndexes.length && !inserted.length) continue;
+        let insertAt;
+        if (removedIndexes.length) {
+            insertAt = Math.min(...removedIndexes);
+            for (const index of removedIndexes.sort((a, b) => b - a)) result.splice(index, 1);
+        } else {
+            let anchor = leftApplied;
+            while (anchor >= 0 && !appliedToPrevious.has(anchor)) anchor--;
+            if (anchor >= 0) insertAt = appliedToPrevious.get(anchor) + 1;
+            else {
+                anchor = rightApplied;
+                while (anchor < applied.length && !appliedToPrevious.has(anchor)) anchor++;
+                insertAt = anchor < applied.length ? appliedToPrevious.get(anchor) : result.length;
+            }
+        }
+        result.splice(insertAt, 0, ...clone(inserted));
+    }
+    return result;
+}
+
+function isJsonObject(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function rollbackJsonValue(previous, applied, current) {
+    if (sameJsonValue(current, applied)) return clone(previous);
+    if (sameJsonValue(previous, applied)) return clone(current);
+    if (Array.isArray(applied) && Array.isArray(current)) {
+        return rollbackJsonArray(Array.isArray(previous) ? previous : [], applied, current);
+    }
+    if (!isJsonObject(applied) || !isJsonObject(current)) return clone(current);
+    const result = {};
+    const keys = new Set([
+        ...Object.keys(isJsonObject(previous) ? previous : {}),
+        ...Object.keys(applied),
+        ...Object.keys(current),
+    ]);
+    for (const key of keys) {
+        const value = rollbackJsonValue(previous?.[key], applied[key], current[key]);
+        if (value !== undefined) result[key] = value;
+    }
+    return result;
+}
+
 function getChatLength(getChat) {
     return getChat?.()?.length ?? 0;
 }
@@ -398,6 +484,7 @@ export function createStoryBlueprintSystem({
     getChat,
     EXT_KEY,
     saveChatConditional,
+    saveChatConfirmed = saveChatConditional,
     renderPrompt,
     generateRaw,
     createCaller,
@@ -412,8 +499,8 @@ export function createStoryBlueprintSystem({
     function lang() { return getLang?.() || settings.lang || 'zh'; }
     function completionVariable() { return variableId(settings.storyBlueprintCompletionVariable); }
 
-    function root() {
-        const meta = getChatMetadata();
+    function root(metadata = getChatMetadata()) {
+        const meta = metadata;
         if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
         if (!meta[EXT_KEY].storyBlueprint) {
             meta[EXT_KEY].storyBlueprint = {
@@ -487,7 +574,7 @@ export function createStoryBlueprintSystem({
         state.lastGeneratedAt = Date.now();
         state.lastError = '';
         state.continuePending = false;
-        saveChatConditional?.();
+        if (options.persist !== false) saveChatConditional?.();
         return state.blueprint;
     }
 
@@ -821,9 +908,27 @@ ${schema}`;
         if (mode === 'continue' && !getBlueprint()) {
             throw new Error(lang() === 'zh' ? '没有可续写的故事蓝图，请先生成蓝图。' : 'No Story Blueprint to continue. Generate one first.');
         }
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const state = root(metadata);
+                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+            },
+        });
+        const executionState = root(executionSnapshot.metadata);
+        const assertCurrent = () => assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const state = root(metadata);
+                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+            },
+            message: 'Story Blueprint generation became stale',
+        });
         generating = true;
         try {
-            root().continuePending = mode === 'continue';
+            executionState.continuePending = mode === 'continue';
             saveChatConditional?.();
             const agentConfig = settings.agentConfigs?.['story-blueprint'] || {};
             const caller = createCaller(agentConfig, (opts) => generateRaw(opts));
@@ -833,7 +938,9 @@ ${schema}`;
                 debugPlaceholders: settings.templateDebugPlaceholders,
                 locals: buildGenerationLocals(),
             });
+            assertCurrent();
             const raw = await caller.generate(prompt);
+            assertCurrent();
             const parsed = parseJson(raw);
             if (!parsed) throw new Error('LLM returned no valid JSON blueprint');
             if (mode === 'continue' && getBlueprint()) {
@@ -861,13 +968,18 @@ ${schema}`;
             }
             return getBlueprint();
         } catch (e) {
-            root().lastError = e.message || String(e);
-            saveChatConditional?.();
-            throw e;
+            let failure = e;
+            try { assertCurrent(); }
+            catch (staleError) { failure = staleError; }
+            if (failure === e) {
+                executionState.lastError = e.message || String(e);
+                saveChatConditional?.();
+            }
+            throw failure;
         } finally {
             generating = false;
-            root().continuePending = false;
-            saveChatConditional?.();
+            executionState.continuePending = false;
+            if (getChatMetadata() === executionSnapshot.metadata) saveChatConditional?.();
         }
     }
 
@@ -916,13 +1028,43 @@ ${schema}`;
         if (!valid.ok) return valid;
         const payload = valid.payload;
         const hasProgress = options.includeProgress && Array.isArray(payload.doneSignals);
-        setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress });
+        setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress, persist: options.persist });
         if (options.includeProgress && Array.isArray(payload.doneSignals)) {
             root().doneSignals = sanitizeDoneSignals(payload.doneSignals, getSteps(), getChatLength(getChat), 'import');
             root().completeNoticeKey = '';
-            saveChatConditional?.();
+            if (options.persist !== false) saveChatConditional?.();
         }
         return { ok: true };
+    }
+
+    async function applyImportTextAndSave(text, options = {}) {
+        const metadata = getChatMetadata();
+        const state = root(metadata);
+        const previous = clone(state);
+        const result = applyImportText(text, { ...options, persist: false });
+        if (!result.ok) return result;
+        const applied = clone(state);
+        try {
+            await saveChatConfirmed?.(metadata);
+        } catch (error) {
+            if (error.persistenceUnknown) throw error;
+            const restored = rollbackJsonValue(previous, applied, state);
+            for (const key of Object.keys(state)) delete state[key];
+            Object.assign(state, restored);
+            if (getChatMetadata() === metadata) {
+                try { await saveChatConfirmed?.(metadata); }
+                catch (rollbackError) {
+                    const failure = new Error(`Story Blueprint import failed and rollback persistence failed: ${rollbackError.message || rollbackError}`, { cause: error });
+                    failure.rollbackIncomplete = true;
+                    throw failure;
+                }
+            }
+            throw error;
+        }
+        if (getChatMetadata() !== metadata) {
+            throw staleExecutionError('Story Blueprint import became stale');
+        }
+        return result;
     }
 
     function getState() { return root(); }
@@ -961,6 +1103,7 @@ ${schema}`;
         buildExportFile,
         validateBlueprintInput,
         applyImportText,
+        applyImportTextAndSave,
         getDefaultTemplate: () => DEFAULT_STORY_BLUEPRINT_TEMPLATE,
         getDefaultSchema: () => DEFAULT_STORY_BLUEPRINT_SCHEMA,
         getDefaultPrompt,

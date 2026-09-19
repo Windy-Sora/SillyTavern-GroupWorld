@@ -272,9 +272,14 @@ export async function execute(agent, { pool, caller, config = {} }) {
 
         try {
             if (stage === 'call' && (fn === null || fn === undefined)) {
-                const mcResult = await managedCall(caller, state.prompt, config.call);
-                state.raw = mcResult.text;
-                if (trace) trace.push({ stage, duration: performance.now() - t0, retries: mcResult.retries, promptLength: state.prompt?.length ?? 0 });
+                if (state.prompt == null) {
+                    state.raw = null;
+                    if (trace) trace.push({ stage, duration: performance.now() - t0, skipped: 'empty-prompt' });
+                } else {
+                    const mcResult = await managedCall(caller, state.prompt, config.call);
+                    state.raw = mcResult.text;
+                    if (trace) trace.push({ stage, duration: performance.now() - t0, retries: mcResult.retries, promptLength: state.prompt?.length ?? 0 });
+                }
             } else if (stage === 'call') {
                 state.raw = await fn(caller, state.prompt, state);
                 if (trace) trace.push({ stage, duration: performance.now() - t0, customCall: true });
@@ -292,7 +297,12 @@ export async function execute(agent, { pool, caller, config = {} }) {
                 }
             }
         } catch (e) {
-            if (trace) trace.push({ stage, duration: performance.now() - t0, error: e.message });
+            if (trace) {
+                trace.push({ stage, duration: performance.now() - t0, error: e.message });
+                const snapshot = trace.snapshot();
+                AgentTrace.push(snapshot);
+                console.log('[AgentTrace]', agent.id, `${stage} failed`);
+            }
             throw e;
         }
     }

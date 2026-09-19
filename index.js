@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
+import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
@@ -12,6 +12,13 @@ import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
+import { scoreFormulaCharacter } from './systems/speaker-selection.js';
+import { decideFormulaTurn } from './systems/round-state.js';
+import { recoverDirectorPlan } from './systems/director-plan.js';
+import { createRoundOrchestrator } from './systems/round-orchestrator.js';
+import { decideLlmSpeakerTurn } from './systems/llm-speaker-state.js';
+import { getForceSpeakAction } from './systems/generation-guards.js';
+import { matchesTrigger, rollInitiative as rollInitiativeValue } from './systems/trigger-initiative.js';
 // ─── Providers (assets/providers/) ──────────────────────────────────
 import { register as registerRecentMessages } from './assets/providers/recent-messages.js';
 import { register as registerCharacters } from './assets/providers/characters.js';
@@ -45,8 +52,11 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { createConfirmedChatMetadataSave } from './systems/chat-metadata-save-confirmation.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
+import { createCritiqueAutoCoordinator } from './systems/critique-auto-coordinator.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
+import { planCustomAgentAutoRuns } from './systems/custom-agent-auto-coordinator.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createProfileLibrarySystem } from './systems/profile-library-system.js';
@@ -77,6 +87,7 @@ import { createSummaryAgent } from './agents/summary.js';
 import { createCritiqueAgent } from './agents/critique.js';
 import { createNpcAgent, DEFAULT_NPC_PROMPT } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
+import { createConfirmedNpcChatSave } from './systems/npc-save-confirmation.js';
 import { createMemoryAgent, DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from './agents/memory.js';
 import { createMemorySystem } from './systems/memory-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
@@ -84,6 +95,7 @@ import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
 import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
+import { createConfirmedPostSpeechChatSave } from './systems/post-speech-save-confirmation.js';
 import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -123,11 +135,7 @@ let llmCursor = 0;
 let roundInitialized = false;
 let initPromise = null;              // guards concurrent interceptor calls
 let isGroupChat = false;
-let takeoverPending = false;
-let takeoverGenCount = 0;
-let takeoverFailed = false;          // set when manual generation fails mid-round
-let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
-let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at 5)
+const roundOrchestrator = createRoundOrchestrator();
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let directorLastReason = '';         // reason from last director decision, exposed to script executors
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
@@ -135,6 +143,7 @@ const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
+let postSpeechRoundQueueEpoch = 0;
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
@@ -151,11 +160,12 @@ function isPostSpeechIntentQueued(messageIndex, capabilityId) {
     );
 }
 
-function enqueuePostSpeechRoundJob(contexts, deferred = []) {
+function enqueuePostSpeechRoundJob(contexts, deferred = [], allowPending = false) {
     if (!contexts.length) return;
     postSpeechRoundQueue.push({
         contexts: [...contexts],
         deferred: [...deferred],
+        allowPending,
     });
 }
 
@@ -163,7 +173,13 @@ function countQueuedPostSpeechIntents() {
     return postSpeechRoundQueue.reduce((total, job) => total + job.contexts.length, 0);
 }
 
+function invalidatePostSpeechRoundQueue() {
+    postSpeechRoundQueueEpoch++;
+    postSpeechRoundQueue = [];
+}
+
 async function drainPostSpeechRoundQueue() {
+    const queueEpoch = postSpeechRoundQueueEpoch;
     const pendingJobs = postSpeechRoundQueue.splice(0);
     const pendingCount = pendingJobs.reduce(
         (total, job) => total + job.contexts.length,
@@ -172,19 +188,36 @@ async function drainPostSpeechRoundQueue() {
     log(`PostSpeech: executing ${pendingCount} deferred per-message intents`);
 
     for (const job of pendingJobs) {
-        let execResult;
-        if (job.deferred.length) {
-            execResult = await postSpeechExecutor.executeDeferred(job.deferred);
-        } else {
-            execResult = await postSpeechExecutor.run(
-                { intents: job.contexts.map(context => context.intent) },
-                CapabilityRegistry.listExecutableForMode('message')
-            );
-            if (execResult.deferred.length) {
-                execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+        if (queueEpoch !== postSpeechRoundQueueEpoch) break;
+        const reservation = postSpeechSystem.reserveExecution(job.contexts, { allowPending: job.allowPending });
+        if (!reservation.contexts.length) continue;
+        let trackingStarted = false;
+        try {
+            let execResult;
+            if (job.deferred.length) {
+                const selected = new Map(reservation.indexes.map((index, selectedIndex) => [index, selectedIndex]));
+                const plans = job.deferred
+                    .filter(plan => selected.has(plan.action.intentIndex))
+                    .map(plan => ({
+                        ...plan,
+                        action: { ...plan.action, intentIndex: selected.get(plan.action.intentIndex) },
+                    }));
+                execResult = await postSpeechExecutor.executeDeferred(plans);
+            } else {
+                execResult = await postSpeechExecutor.run(
+                    { intents: reservation.contexts.map(context => context.intent) },
+                    CapabilityRegistry.listExecutableForMode('message')
+                );
+                if (execResult.deferred.length) {
+                    execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                }
             }
+            trackingStarted = true;
+            await postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation);
+        } catch (error) {
+            if (!trackingStarted) reservation.release();
+            throw error;
         }
-        await postSpeechSystem.trackExecution(execResult, job.contexts);
     }
 }
 
@@ -236,12 +269,48 @@ function saveSettings() {
     saveSettingsDebounced();
 }
 
+async function saveSettingsConfirmed() {
+    extension_settings[EXT_KEY] = settings;
+    setProviderTimeoutDefault(settings.providerTimeoutMs);
+    let confirmed = false;
+    const onSaved = () => { confirmed = true; };
+    eventSource.on(event_types.SETTINGS_UPDATED, onSaved);
+    try {
+        await saveSettingsHost();
+        if (!confirmed) throw new Error('Settings persistence was not confirmed');
+    } finally {
+        eventSource.removeListener(event_types.SETTINGS_UPDATED, onSaved);
+    }
+}
+
 // ─── Systems ──────────────────────────────────────────────────────────
 // chat_metadata, chat, and characters are export let in ST — they get
 // replaced on chat load. Pass as getters so modules always read current values.
 const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
+const saveNpcChatConfirmed = createConfirmedNpcChatSave({
+    saveChatConditional, getCurrentChatId, getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext, getChatMetadata, getRequestHeaders, EXT_KEY,
+});
+const confirmedChatSaveDependencies = {
+    saveChatConditional,
+    getCurrentChatId,
+    getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext,
+    getChatMetadata,
+    getRequestHeaders,
+};
+const saveSummaryChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.summaries ?? [],
+    label: 'Chat Summary',
+});
+const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.storyBlueprint ?? null,
+    label: 'Story Blueprint',
+});
 
 const variableSystem = createVariableSystem({
     getChatMetadata,
@@ -260,6 +329,7 @@ const storyBlueprintSystem = createStoryBlueprintSystem({
     getChat,
     EXT_KEY,
     saveChatConditional,
+    saveChatConfirmed: saveStoryBlueprintChatConfirmed,
     renderPrompt,
     generateRaw: (opts) => getContext().generateRaw(opts),
     createCaller,
@@ -280,7 +350,7 @@ const storyBlueprintLibrarySystem = createStoryBlueprintLibrarySystem({
     settings,
     extension_settings,
     EXT_KEY,
-    saveSettings,
+    saveSettings: saveSettingsConfirmed,
     saveChatConditional,
     getCurrentGroup,
     storyBlueprintSystem,
@@ -294,7 +364,7 @@ const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
 
 const chatSummarySystem = createChatSummarySystem({
-    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional: saveSummaryChatConfirmed,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     inject_ids, extension_prompt_types, setExtensionPrompt, log,
     createCaller,
@@ -309,6 +379,7 @@ const critiqueSystem = createCritiqueSystem({
 
 const customAgentSystem = createCustomAgentSystem({
     settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    saveSettings: saveSettingsDebounced,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     createCaller,
     log,
@@ -371,7 +442,8 @@ function log(...args) {
 
 const { exportGroup, importGroup } = createExportImportSystem({
     settings, getCurrentGroup, getChat, getCharacters,
-    world_names, selected_world_info, world_info, getChatMetadata, log,
+    world_names, getWorldNames: () => world_names,
+    selected_world_info, world_info, getChatMetadata, log,
 });
 
 // ─── Profile Export System ──────────────────────────────────────────
@@ -387,7 +459,7 @@ const profileLibrarySystem = createProfileLibrarySystem({
     settings,
     extension_settings,
     EXT_KEY,
-    saveSettings,
+    saveSettings: saveSettingsConfirmed,
     saveChatConditional,
     getProfiles,
     getCurrentGroup,
@@ -406,7 +478,7 @@ const profileLibrarySystem = createProfileLibrarySystem({
 const { exportNpcs, parseImportFile: parseNpcImportFile, applyImport: applyNpcImport,
     loadPreset: loadNpcPreset, getPresetNames: getNpcPresetNames } =
     createNpcExportSystem({
-        settings, EXT_KEY, saveSettings, getCurrentGroup, getChatMetadata, saveChatConditional,
+        settings, EXT_KEY, saveSettings, getCurrentGroup, getChatMetadata, saveChatConditional: saveNpcChatConfirmed,
         defaultNpcPrompt: DEFAULT_NPC_PROMPT, log,
     });
 
@@ -440,7 +512,17 @@ const memoryExportSystem = createMemoryExportSystem({
 
 // ─── Config Profile System ──────────────────────────────────────────
 const configProfileSystem = createConfigProfileSystem({
-    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log,
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault,
+    variableSystem, customAgentSystem, log,
+});
+
+const critiqueAutoCoordinator = createCritiqueAutoCoordinator({
+    getChatMetadata,
+    getChat,
+    getLatestActive: () => critiqueSystem.getLatestActive(),
+    generateCritique: () => critiqueSystem.generateCritique(),
+    saveChatConditional,
+    EXT_KEY,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
@@ -448,7 +530,7 @@ const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = c
 const customPromptsSystem = createCustomPromptsSystem({
     settings, saveSettings,
     registerProvider: (p) => registerProvider(p),
-    unregisterProvider: (id) => unregisterProvider(id),
+    unregisterProvider: (id, owner) => unregisterProvider(id, owner),
     getProviders: () => getProviders(),
     log,
 });
@@ -567,7 +649,7 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 
 // ─── NPC System ──────────────────────────────────────────────────────
 const npcSystem = createNpcSystem({
-    settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional: saveNpcChatConfirmed, getCharacters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
 
@@ -575,7 +657,7 @@ const npcLibrarySystem = createNpcLibrarySystem({
     settings,
     extension_settings,
     EXT_KEY,
-    saveSettings,
+    saveSettings: saveSettingsConfirmed,
     getCurrentGroup,
     npcSystem,
     parseNpcImportFile,
@@ -593,8 +675,12 @@ const memorySystem = createMemorySystem({
 });
 
 // ─── PostSpeech System ───────────────────────────────────────────────
+const savePostSpeechChatConfirmed = createConfirmedPostSpeechChatSave({
+    saveChatConditional, getCurrentChatId, getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext, getChatMetadata, getRequestHeaders, EXT_KEY,
+});
 const postSpeechSystem = createPostSpeechSystem({
-    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, log,
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional: savePostSpeechChatConfirmed, log,
 });
 
 // ─── PostSpeech Executor ─────────────────────────────────────────────
@@ -612,7 +698,8 @@ const postSpeechExecutor = createExecutor({
 const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
-    unregisterProvider: (id) => unregisterProvider(id),
+    getRegisteredProvider: id => getProviders().find(p => p.id === id),
+    unregisterProvider: (id, owner) => unregisterProvider(id, owner),
     CapabilityRegistry,
     confirmImport: html => callGenericPopup(html, POPUP_TYPE.CONFIRM),
 });
@@ -641,6 +728,13 @@ function checkTriggers(characterName, characterAvatar, recentMessages) {
     const char = characters.find(c => c.avatar === characterAvatar);
     if (!char) return false;
 
+    const matched = matchesTrigger(char, recentMessages, { enabled: settings.triggerEnabled });
+    if (matched) log(`Trigger matched for ${characterName}`);
+    return matched;
+
+    // Legacy implementation retained temporarily while the extracted trigger
+    // engine is characterized by tests.
+
     // Extract keywords from character description + personality + scenario
     const desc = (char.description || '') + ' ' + (char.personality || '') + ' ' + (char.scenario || '');
     const keywords = desc
@@ -664,10 +758,10 @@ function checkTriggers(characterName, characterAvatar, recentMessages) {
 
 // ─── Initiative Engine ────────────────────────────────────────────────
 function rollInitiative(avatar) {
-    if (!settings.initiativeEnabled) return 0;
-    // Initiative: random base + slight variation
-    const base = settings.initiativeBaseScore;
-    const roll = Math.random() * base;
+    const roll = rollInitiativeValue({
+        enabled: settings.initiativeEnabled,
+        baseScore: settings.initiativeBaseScore,
+    });
     roundInitiative[avatar] = roll;
     return roll;
 }
@@ -679,6 +773,23 @@ function scoreCharacter(chId, recentMessages) {
 
     const name = char.name;
     const avatar = char.avatar;
+    const result = scoreFormulaCharacter({
+        character: char,
+        recentMessages,
+        chat,
+        scoreWeights: settings.scoreWeights,
+        triggerScore: settings.triggerScore,
+        consecutivePenalty: settings.consecutivePenalty,
+        triggered: roundTriggeredAvatars.has(avatar),
+        initiative: roundInitiative[avatar] || 0,
+    });
+    const { score, breakdown } = result;
+    log(`Score for ${name}: ${score.toFixed(1)} (mention=${breakdown.mentionCount}, trigger=${breakdown.triggered}, recencyIdx=${breakdown.lastSpokenIndex}, consec=${breakdown.consecutiveCount}, talk=${breakdown.talkativeness.toFixed(2)})`);
+    return score;
+
+    /* Legacy implementation retained temporarily while this extraction is
+     * characterized by tests. Remove after the next state-machine slice. */
+    {
     const weights = settings.scoreWeights;
 
     let score = 0;
@@ -731,6 +842,7 @@ function scoreCharacter(chId, recentMessages) {
 
     log(`Score for ${name}: ${score.toFixed(1)} (mention=${mentionCount}, trigger=${roundTriggeredAvatars.has(avatar)}, recencyIdx=${lastSpokenIndex}, consec=${consecutiveCount}, talk=${talkativeness.toFixed(2)})`);
     return score;
+    }
 }
 
 function findLastSpokenIndex(avatar, recentMessages) {
@@ -830,14 +942,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     // in a group chat. /send and /sendas add a user or character message first,
     // so lastMsgIsUser or normal round flags will be set — they fall through to Director.
     const lastMsgIsUser = chat.length > 0 && !!chat[chat.length - 1]?.is_user;
-    const isForceTriggered = !roundInitialized
-        && roundGenerateType !== 'swipe'
-        && roundGenerateType !== 'regenerate'
-        && !lastMsgIsUser
-        && !!getCurrentGroup();
+    const forceSpeakAction = getForceSpeakAction({
+        roundInitialized,
+        generationType: roundGenerateType,
+        lastMessageIsUser: lastMsgIsUser,
+        hasGroup: !!getCurrentGroup(),
+        mode: settings.forceSpeakMode || 'native',
+    });
+    const isForceTriggered = forceSpeakAction !== 'pass';
 
     if (isForceTriggered) {
-        const mode = settings.forceSpeakMode || 'native';
+        const mode = forceSpeakAction;
         if (mode === 'block') {
             abort(false);
             return;
@@ -900,6 +1015,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             reason: directorLastReason || '',
             scripts: { ...(directorScripts || {}) },
         };
+        const scriptTurnId = scriptExecutorSystem.getTurnId();
         try {
             await scriptExecutorSystem.executeAllDecision({
                 decision: decisionObj,
@@ -911,6 +1027,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         } catch (e) {
             log('Script executor (decision): unexpected error', e);
         }
+        if (scriptExecutorSystem.getTurnId() !== scriptTurnId) return;
         // Sync mutations back — decisionObj was mutated by reference
         if (decisionObj.speakers.length > 0) {
             const newAvatars = decisionObj.speakers.filter(a => characters.some(c => c.avatar === a));
@@ -931,31 +1048,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     // ─── Mode: LLM ──────────────────────────────────────────────────
     if (settings.mode === MODE_LLM) {
         // Manual ordered generation in progress — validate identity, inject script, let through
-        if (takeoverGenCount > 0) {
-            // Auto-swipe/regenerate during takeover: same character re-rolling,
-            // don't consume the takeover count. Detected via roundGenerateType
-            // which is now captured before the nested START guard.
-            const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
-            if (isReroll) {
-                takeoverSwipeCount++;
-                if (takeoverSwipeCount > 5) {
-                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting takeover for ${char.name}`);
-                    takeoverFailed = true;
-                    takeoverGenCount = 0;
-                    abort(false);
-                    return;
-                }
-            } else {
-                takeoverGenCount--;
-                roundSpeakerCount++;
-                takeoverSwipeCount = 0; // new character, reset swipe counter
-            }
-            // Verify this character is actually in the director's plan
-            if (llmPickedAvatars && !llmPickedAvatars.includes(avatar)) {
-                console.error(`[GroupDirector] TAKEOVER MISMATCH: ${char.name} (${avatar}) not in director plan — aborting!`);
+        if (roundOrchestrator.getSnapshot().takeoverRemaining > 0) {
+            const takeoverDecision = roundOrchestrator.decideTakeoverTurn({
+                generationType: roundGenerateType,
+                avatar,
+                plannedAvatars: llmPickedAvatars,
+            });
+            if (takeoverDecision.action === 'block') {
                 abort(false);
                 return;
             }
+            if (!takeoverDecision.reroll) roundSpeakerCount++;
             // Safety-net script injection: ensure the correct per-character script is set
             const takeoverScript = await getScriptForChar(char.name, {
                 speakerIndex: roundSpeakerCount,
@@ -965,11 +1068,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, getScriptPosition(), 0, true);
             }
-            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverRemaining→${takeoverDecision.remaining}, speaker #${roundSpeakerCount}${takeoverDecision.reroll ? ', reroll' : ''})`);
             return;
         }
         // ST's activation loop is being suppressed — abort all
-        if (takeoverPending) {
+        if (roundOrchestrator.getSnapshot().takeoverPending) {
             console.warn(`[GroupDirector] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
             abort(false);
             return;
@@ -981,6 +1084,45 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         // filter by director picks — the swiped character may differ from
         // the original plan (e.g., user swipes a message from a prior round).
         const isSwipeOrRegen = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+        const llmTurn = decideLlmSpeakerTurn({
+            plannedAvatars: llmPickedAvatars,
+            spokenAvatars: [...llmSpokenSet],
+            cursor: llmCursor,
+            avatar,
+            generationType: roundGenerateType,
+            respectOrder: settings.llmRespectOrder,
+        });
+        if (llmTurn.action === 'block') {
+            log(`BLOCKED ${char.name} (not in LLM picks)`);
+            abort(false);
+            return;
+        }
+        if (isSwipeOrRegen) {
+            // Re-rolls operate on an existing message, not a new Director
+            // decision. Keep script context if available, but do not mutate
+            // the plan cursor, spoken set, or round speaker count.
+            const rerollScript = await getScriptForChar(char.name, {
+                speakerIndex: Math.max(roundSpeakerCount, 1),
+                speakerIndex0: Math.max(roundSpeakerCount - 1, 0),
+                speakerCount: llmPickedAvatars?.length || 0,
+            });
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, rerollScript || '', getScriptPosition(), 0, true);
+            log(`REROLL ALLOWED ${char.name} (Director plan state unchanged)`);
+            return;
+        }
+        // Normal LLM-mode generations commit the reducer's state in one
+        // place; the legacy branch below is retained only during migration.
+        llmSpokenSet = new Set(llmTurn.spokenAvatars);
+        llmCursor = llmTurn.cursor;
+        roundSpeakerCount++;
+        const plannedScript = await getScriptForChar(char.name, {
+            speakerIndex: roundSpeakerCount,
+            speakerIndex0: roundSpeakerCount - 1,
+            speakerCount: llmPickedAvatars?.length || 0,
+        });
+        setExtensionPrompt(DIRECTOR_SCRIPT_KEY, plannedScript || '', getScriptPosition(), 0, true);
+        log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
+        return;
         if (!isSwipeOrRegen && !llmPickedSet.has(avatar)) {
             log(`BLOCKED ${char.name} (not in LLM picks)`);
             abort(false);
@@ -1001,7 +1143,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             }
         }
         // Validate: this character must be in the picked set
-        if (!llmPickedSet.has(avatar)) {
+        if (!isSwipeOrRegen && !llmPickedSet.has(avatar)) {
             console.warn(`[GroupDirector] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
             abort(false);
             return;
@@ -1024,15 +1166,16 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     }
 
     // ─── Mode: Formula (Top-N) ──────────────────────────────────────
-    const sortedAvatars = Object.entries(roundScores)
-        .sort((a, b) => b[1] - a[1])
-        .map(([a]) => a);
-    const topN = Math.min(settings.topN, sortedAvatars.length);
-    const allowedAvatars = new Set(sortedAvatars.slice(0, topN));
-    const score = roundScores[avatar] ?? -Infinity;
+    const formulaTurn = decideFormulaTurn({
+        scores: roundScores,
+        topN: settings.topN,
+        avatar,
+        speakerCount: roundSpeakerCount,
+    });
+    const { allowed, score, nextSpeakerCount } = formulaTurn;
 
-    if (allowedAvatars.has(avatar)) {
-        roundSpeakerCount++;
+    if (allowed) {
+        roundSpeakerCount = nextSpeakerCount;
         log(`ALLOWED ${char.name} (score=${score.toFixed(1)}, speaker #${roundSpeakerCount})`);
     } else {
         log(`BLOCKED ${char.name} (score=${score.toFixed(1)})`);
@@ -1046,10 +1189,11 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
+    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType });
 
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
-    if (takeoverGenCount > 0) {
+    if (wrapperTransition.kind === 'preserve_nested') {
         console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
@@ -1057,10 +1201,8 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Previous takeover failed mid-round: reuse the existing director decision
     // instead of making a new one. Chat already has partial messages from the
     // failed attempt; a new decision would conflict with existing dialog boxes.
-    if (takeoverFailed) {
-        takeoverFailed = false;
-        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
-        takeoverGenCount = 0;
+    if (wrapperTransition.kind === 'retry_failed') {
+        roundOrchestrator.retryFailed({ pending: settings.mode === MODE_LLM && settings.llmRespectOrder });
         llmSpokenSet = new Set();
         llmCursor = 0;
         roundSpeakerCount = 0;
@@ -1076,7 +1218,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // per-speaker tracking. Don't re-trigger takeover; let ST decide which
     // messages to regenerate. Reconstruct state from chat_metadata so it
     // survives browser restarts (in-memory state is gone on reload).
-    if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
+    if (wrapperTransition.kind === 'reuse_or_restore_plan') {
         // Allow PostSpeech to re-analyze the swiped messages
         postSpeechLastMsgIndex = -1;
         postSpeechRoundRan = false;
@@ -1088,6 +1230,29 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
                 const group = getCurrentGroup();
                 const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
+                const recovered = recoverDirectorPlan(lastPlan, {
+                    enabledMembers: members,
+                    maxSpeakers: settings.llmMaxSpeakers,
+                    matchCharacterByName,
+                });
+                if (recovered) {
+                    llmPickedAvatars = recovered.avatars;
+                    llmPickedSet = new Set(recovered.avatars);
+                    directorScripts = recovered.scripts;
+                    llmSpokenSet = new Set();
+                    llmCursor = 0;
+                    roundSpeakerCount = 0;
+                    roundOrchestrator.clearTakeover();
+                    roundInitialized = true;
+                    const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
+                    if (saved) {
+                        for (const [name, val] of Object.entries(saved)) {
+                            if (!scriptCounterSnapshots.has(name)) scriptCounterSnapshots.set(name, val);
+                        }
+                    }
+                    log('Regenerate/swipe — restored director plan from history');
+                    return;
+                }
                 const avatars = [];
                 for (const name of lastPlan.speakers) {
                     const c = matchCharacterByName(name, members);
@@ -1130,8 +1295,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             llmSpokenSet = new Set();
             llmCursor = 0;
             roundSpeakerCount = 0;
-            takeoverPending = false;
-            takeoverGenCount = 0;
+            roundOrchestrator.clearTakeover();
             roundInitialized = true;
             // Restore counter snapshots (may be lost on page reload while plan survived in memory)
             const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
@@ -1158,11 +1322,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundInitialized = false;
     initPromise = null;
     generationStopped = false;
-    takeoverPending = false;
-    takeoverGenCount = 0;
-    takeoverFailed = false;
-    takeoverCompleted = new Set();
-    takeoverSwipeCount = 0;
+    roundOrchestrator.reset();
     manualGenInProgress = false;
     directorScripts = {};
     directorLastReason = '';
@@ -1184,16 +1344,19 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     isGroupChat = false;
     log('Group generation finished');
 
-    if (takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
+    if (roundOrchestrator.getSnapshot().takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
         await runManualOrderedGeneration();
     }
-    takeoverPending = false;
+    roundOrchestrator.setPending(false);
     let postSpeechRoundWasAborted = false;
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
     // Only fire when takeover is fully complete (not during nested wrappers)
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && roundOrchestrator.canFinalize({
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    })) {
         postSpeechRoundRan = true;
 
         generationStopped = false;
@@ -1268,14 +1431,24 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             intent,
                             policy,
                         }));
-                        let execResult = await postSpeechExecutor.run(
-                            policy,
-                            CapabilityRegistry.listExecutableForMode('round')
-                        );
-                        if (execResult.deferred.length) {
-                            execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                        const reservation = postSpeechSystem.reserveExecution(contexts, { allowPending: true });
+                        if (reservation.contexts.length) {
+                            let trackingStarted = false;
+                            try {
+                                let execResult = await postSpeechExecutor.run(
+                                    { ...policy, intents: reservation.contexts.map(context => context.intent) },
+                                    CapabilityRegistry.listExecutableForMode('round')
+                                );
+                                if (execResult.deferred.length) {
+                                    execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                                }
+                                trackingStarted = true;
+                                await postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation);
+                            } catch (error) {
+                                if (!trackingStarted) reservation.release();
+                                throw error;
+                            }
                         }
-                        await postSpeechSystem.trackExecution(execResult, contexts);
                     }
                 }
 
@@ -1306,8 +1479,10 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     // round boundary even when the optional round-analysis agent is disabled
     // or fails.
     if (!postSpeechRoundWasAborted &&
-        takeoverGenCount === 0 &&
-        !manualGenInProgress &&
+        roundOrchestrator.canFinalize({
+            manualGenerationInProgress: manualGenInProgress,
+            generationStopped,
+        }) &&
         postSpeechRoundQueue.length > 0) {
         try {
             await drainPostSpeechRoundQueue();
@@ -1318,7 +1493,10 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // ─── Script Executor: round trigger (before auto summary, deduped) ──
     // Only fire when takeover is fully complete (same guard as PostSpeech round)
-    if (!scriptExecutorRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
+    if (!scriptExecutorRoundRan && roundOrchestrator.canFinalize({
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    })) {
         scriptExecutorRoundRan = true;
         try {
             scriptExecutorSystem.executeAll('round', {
@@ -1335,9 +1513,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     const lang = settings.lang || 'zh';
     const hasAutoCA = (settings.customAgents || []).some(a => a.enabled && a.autoEnabled);
     const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled || hasAutoCA;
-    const _c2 = takeoverGenCount === 0;
+    const _c2 = roundOrchestrator.canFinalize({
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    });
     const _c3 = !manualGenInProgress;
-    console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
+    console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: roundOrchestrator.getSnapshot().takeoverRemaining, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
     if (_c1 && _c2 && _c3) {
         const currentLen = chat.length;
         // Base prevLen on actual summary/memory coverage, not a possibly stale counter
@@ -1516,92 +1697,54 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             // Check Auto Critique
             if (settings.autoCritiqueEnabled && settings.critiqueEnabled) {
                 const interval = settings.autoCritiqueInterval || 10;
-                let criLen = chat_metadata[EXT_KEY]._autoCritiqueLen;
-                if (criLen === undefined) criLen = critiqueSystem.getLatestActive?.()?.rangeEnd ?? 0;
-
-                if (criLen === 0 && chat_metadata[EXT_KEY]._autoCritiqueLen === undefined && legacyLen === undefined) {
-                    console.log('[GD-auto-cri] path: first-enable currentLen=', currentLen);
-                    if (currentLen >= interval) {
-                        try {
-                            log(`Auto-critique: first enable, ${currentLen} existing msgs`);
-                            toastr?.info?.(lang === 'zh' ? `自动批判触发（检测到 ${currentLen} 条现有消息）...` : `Auto-critique (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
-                            await critiqueSystem.generateCritique();
-                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                            await saveChatConditional();
-                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-critique failed:', e.message); }
-                    } else {
-                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                        await saveChatConditional();
+                try {
+                    const action = await critiqueAutoCoordinator.run({
+                        interval,
+                        legacyLength: legacyLen,
+                        beforeExecute: ({ newMessages, firstEnable }) => {
+                            const detail = firstEnable ? `${currentLen} existing msgs` : `${newMessages} msgs`;
+                            log(`Auto-critique triggered (${detail})`);
+                            toastr?.info?.(lang === 'zh'
+                                ? `自动批判触发（${firstEnable ? `${currentLen} 条现有消息` : `${newMessages} 条新消息`}）...`
+                                : `Auto-critique (${detail})...`, '', { timeOut: 3000 });
+                        },
+                    });
+                    if (action.type === 'execute') {
+                        toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
+                    } else if (action.type === 'reset') {
+                        toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动批判计数器已重置。' : 'Messages deleted. Auto-critique counter reset.', '', { timeOut: 8000 });
                     }
-                } else if (currentLen < criLen) {
-                    console.log('[GD-auto-cri] path: deletion');
-                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                    await saveChatConditional();
-                    toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动批判计数器已重置。' : 'Messages deleted. Auto-critique counter reset.', '', { timeOut: 8000 });
-                } else {
-                    const newMsgs = currentLen - criLen;
-                    console.log('[GD-auto-cri] path: normal newMsgs=', newMsgs, 'interval=', interval);
-                    if (newMsgs >= interval) {
-                        try {
-                            log(`Auto-critique triggered (${newMsgs} msgs)`);
-                            toastr?.info?.(lang === 'zh' ? `自动批判触发（${newMsgs} 条新消息）...` : `Auto-critique (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                            await critiqueSystem.generateCritique();
-                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                            await saveChatConditional();
-                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-critique failed:', e.message); }
-                    }
+                } catch (e) {
+                    log('Auto-critique failed:', e.message);
                 }
             }
 
             // ─── Auto Custom Agents ────────────────────────
             const caInstances = (settings.customAgents || []).filter(a => a.enabled && a.autoEnabled);
-            console.log('[GD-auto-ca] instances found:', caInstances.length, 'total in settings:', (settings.customAgents || []).length);
-            if (caInstances.length) {
-                const sorted = [...caInstances].sort((a, b) => (a.order || 0) - (b.order || 0));
-                for (const inst of sorted) {
-                    const caKey = `_autoCAG_${inst.id}`;
-                    let caLen = chat_metadata[EXT_KEY][caKey];
-                    if (caLen === undefined) {
-                        const store = customAgentSystem.getData(inst.id);
-                        caLen = store?.rangeEnd ?? 0;
-                    }
-                    const interval = inst.autoInterval || 10;
-
-                    if (caLen === 0 && chat_metadata[EXT_KEY][caKey] === undefined && legacyLen === undefined) {
-                        if (currentLen >= interval) {
-                            try {
-                                log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
-                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
-                                const result = await customAgentSystem.execute(inst);
-                                if (!result) throw new Error('Custom agent returned no result');
-                                chat_metadata[EXT_KEY][caKey] = currentLen;
-                                await saveChatConditional();
-                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
-                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
-                        } else {
-                            chat_metadata[EXT_KEY][caKey] = currentLen;
-                            await saveChatConditional();
-                        }
-                    } else if (currentLen < caLen) {
-                        chat_metadata[EXT_KEY][caKey] = currentLen;
-                        await saveChatConditional();
-                        toastr?.warning?.(lang === 'zh' ? `检测到消息被删除，"${inst.name}" 计数器已重置。` : `Msgs deleted. "${inst.name}" counter reset.`, '', { timeOut: 8000 });
+            const caActions = planCustomAgentAutoRuns({
+                instances: caInstances,
+                currentLength: currentLen,
+                counters: chat_metadata[EXT_KEY],
+                getLatestRangeEnd: id => customAgentSystem.getData(id)?.rangeEnd ?? 0,
+                legacyLength: legacyLen,
+            });
+            for (const action of caActions) {
+                const inst = action.instance;
+                try {
+                    if (action.type === 'execute') {
+                        log(`[GD-auto-ca] "${inst.name}" triggered (${action.newMessages} msgs)`);
+                        toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${action.newMessages} 条消息）...` : `"${inst.name}" auto (${action.newMessages} msgs)...`, '', { timeOut: 3000 });
+                        const result = await customAgentSystem.executeAuto(inst, action.currentLength);
+                        if (!result) throw new Error('Custom agent returned no result');
+                        toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                     } else {
-                        const newMsgs = currentLen - caLen;
-                        if (newMsgs >= interval) {
-                            try {
-                                log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
-                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                                const result = await customAgentSystem.execute(inst);
-                                if (!result) throw new Error('Custom agent returned no result');
-                                chat_metadata[EXT_KEY][caKey] = currentLen;
-                                await saveChatConditional();
-                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
-                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        await customAgentSystem.setAutoCounter(inst.id, action.currentLength);
+                        if (action.type === 'reset') {
+                            toastr?.warning?.(lang === 'zh' ? `检测到消息被删除，"${inst.name}" 计数器已重置。` : `Msgs deleted. "${inst.name}" counter reset.`, '', { timeOut: 8000 });
                         }
                     }
+                } catch (e) {
+                    log(`[GD-auto-ca] "${inst.name}" failed:`, e.message);
                 }
             }
 
@@ -1754,26 +1897,38 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             policy,
         }));
 
+        let activeContexts = intentContexts;
         let queuedByPolicy = false;
         if (timing === 'message' || timing === 'both') {
-            const execResult = await postSpeechExecutor.run(
-                { ...policy, intents: freshIntents },
-                CapabilityRegistry.listExecutableForMode('message')
-            );
-            if (execResult.deferred.length) {
-                enqueuePostSpeechRoundJob(intentContexts, execResult.deferred);
-                queuedByPolicy = true;
-                log(`PostSpeech: policy deferred ${intentContexts.length} intents to round end`);
-            } else {
-                await postSpeechSystem.trackExecution(execResult, intentContexts);
+            const reservation = postSpeechSystem.reserveExecution(intentContexts);
+            if (!reservation.contexts.length) return;
+            activeContexts = reservation.contexts;
+            let trackingStarted = false;
+            try {
+                const execResult = await postSpeechExecutor.run(
+                    { ...policy, intents: activeContexts.map(context => context.intent) },
+                    CapabilityRegistry.listExecutableForMode('message')
+                );
+                if (execResult.deferred.length) {
+                    enqueuePostSpeechRoundJob(activeContexts, execResult.deferred);
+                    reservation.release();
+                    queuedByPolicy = true;
+                    log(`PostSpeech: policy deferred ${activeContexts.length} intents to round end`);
+                } else {
+                    trackingStarted = true;
+                    await postSpeechSystem.trackExecution(execResult, activeContexts, reservation);
+                }
+                log('PostSpeech execution (message):', execResult);
+            } catch (error) {
+                if (!trackingStarted) reservation.release();
+                throw error;
             }
-            log('PostSpeech execution (message):', execResult);
         }
 
         // Queue for round-end execution (round | both modes)
         if ((timing === 'round' || timing === 'both') && !queuedByPolicy) {
-            enqueuePostSpeechRoundJob(intentContexts);
-            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
+            enqueuePostSpeechRoundJob(activeContexts, [], timing === 'both');
+            log(`PostSpeech: queued ${activeContexts.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
         }
 
         // Done notification
@@ -1795,6 +1950,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 // ───
 
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
+    customAgentSystem.invalidateExecutions();
     roundScores = {};
     roundSpeakerCount = 0;
     roundTriggeredAvatars.clear();
@@ -1806,11 +1962,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     roundInitialized = false;
     initPromise = null;
     generationStopped = false;
-    takeoverPending = false;
-    takeoverGenCount = 0;
-    takeoverFailed = false;
-    takeoverCompleted = new Set();
-    takeoverSwipeCount = 0;
+    roundOrchestrator.reset();
     manualGenInProgress = false;
     directorScripts = {};
     wiState.text = '';
@@ -1825,13 +1977,14 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    invalidatePostSpeechRoundQueue();
+    postSpeechSystem.resetPending();
+    customAgentSystem.invalidateExecutions();
     profileLibrarySystem.resetAutoLoadDedup?.();
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await critiqueSystem.pruneCritiques();
-    await postSpeechSystem.clearAll();
-    postSpeechRoundQueue = [];
     // Reset auto-check counter on chat change
     if (chat_metadata[EXT_KEY]) {
         delete chat_metadata[EXT_KEY]._autoCheckLength;
@@ -1865,29 +2018,25 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
 let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
     manualGenInProgress = true;
-    takeoverPending = false;
-    const orderedList = [...llmPickedAvatars];
-    takeoverGenCount = orderedList.length;
+    roundOrchestrator.setPending(false);
+    const schedule = roundOrchestrator.beginTakeover(llmPickedAvatars, {
+        knownAvatars: new Set(characters.map(character => character.avatar)),
+    });
+    const orderedList = schedule.queue.map(step => step.avatar);
     const ctx = getContext();
     const savedChId = ctx.characterId;
     const savedChName = characters[savedChId]?.name || '';
 
     console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
-    console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
+    console.warn('[GroupDirector] takeoverRemaining:', roundOrchestrator.getSnapshot().takeoverRemaining);
 
     try {
         for (let i = 0; i < orderedList.length; i++) {
             const avatar = orderedList[i];
-            // Resume after failure: skip characters already generated
-            if (takeoverCompleted.has(avatar)) {
-                takeoverGenCount--;
-                console.warn(`[GroupDirector] SKIP already completed: ${characters.find(c => c.avatar === avatar)?.name}, takeoverGenCount→${takeoverGenCount}`);
-                continue;
-            }
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
-                takeoverGenCount--;
-                console.warn('[GroupDirector] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
+                const remaining = roundOrchestrator.skipTurn();
+                console.warn('[GroupDirector] SKIP unknown avatar, takeoverRemaining→', remaining);
                 continue;
             }
             setCharacterId(chId);
@@ -1897,10 +2046,10 @@ async function runManualOrderedGeneration() {
             const verifyAvatar = characters[verifyChId]?.avatar;
             if (verifyAvatar !== avatar) {
                 console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
-                takeoverGenCount--;
+                roundOrchestrator.skipTurn();
                 continue;
             }
-            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverRemaining=${roundOrchestrator.getSnapshot().takeoverRemaining})`);
 
             // Inject per-character director script with order context.
             // Use original plan position so retries/skips don't shift the index.
@@ -1935,11 +2084,10 @@ async function runManualOrderedGeneration() {
                     }
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
-                takeoverCompleted.add(avatar);
+                roundOrchestrator.markCompleted(avatar);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
-                takeoverGenCount = 0;
-                takeoverFailed = true;
+                roundOrchestrator.markFailed();
                 // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
                 // so a retry reuses the same director decision instead of making a new one.
                 return;
@@ -1953,7 +2101,7 @@ async function runManualOrderedGeneration() {
         console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
-        takeoverGenCount = 0;
+        roundOrchestrator.finishTakeover();
         manualGenInProgress = false;
         // Restore the original character context so ST doesn't stay stuck
         // on the last generated character after takeover
@@ -2239,7 +2387,7 @@ async function initRoundWithLLM() {
 
         // Takeover
         if (settings.llmRespectOrder) {
-            takeoverPending = true;
+            roundOrchestrator.setPending(true);
             console.warn('[GroupDirector] TAKEOVER SET — picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
         }
 
@@ -2261,6 +2409,18 @@ async function initRoundWithLLM() {
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+            const recovered = recoverDirectorPlan(lastPlan, {
+                enabledMembers,
+                maxSpeakers: settings.llmMaxSpeakers,
+                matchCharacterByName,
+            });
+            if (recovered) {
+                llmPickedAvatars = recovered.avatars;
+                llmPickedSet = new Set(recovered.avatars);
+                directorScripts = recovered.scripts;
+                if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
+                return;
+            }
             toastr.warning('导演决策失败，正在复用上一轮决策...');
             console.warn('[GroupDirector] Director failed — reusing last plan from history');
             const avatars = [];
@@ -2278,7 +2438,7 @@ async function initRoundWithLLM() {
                         if (c) directorScripts[c.name] = script;
                     }
                 }
-                if (settings.llmRespectOrder) takeoverPending = true;
+                if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
                 return;
             }
         }
@@ -2598,8 +2758,8 @@ eventSource.on(event_types.APP_READY, async () => {
     // Inject window.GroupDirector so user modules don't need relative imports.
     CapabilityRegistry._scopeOverrides = settings._capabilityScopes || {};
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-    userProviderLoader.restoreAll('provider', userDeps);
-    userProviderLoader.restoreAll('capability', userDeps);
+    await userProviderLoader.restoreAll('provider', userDeps);
+    await userProviderLoader.restoreAll('capability', userDeps);
 
     // Hook capability toggle to persist enabled state.
     // Always replace the monkey-patch so closure captures current settings/saveSettingsDebounced on hot reload.
@@ -2608,7 +2768,7 @@ eventSource.on(event_types.APP_READY, async () => {
     }
     CapabilityRegistry.setEnabled = function (id, enabled) {
         CapabilityRegistry._gdOrigSetEnabled(id, enabled);
-        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
+        userProviderLoader.persistCapabilityEnabled().catch(e => console.warn('[GroupDirector] Capability state save failed:', e.message || e));
         try {
             if (!settings._builtinCapEnabled) settings._builtinCapEnabled = {};
             settings._builtinCapEnabled[id] = enabled;
@@ -2652,7 +2812,7 @@ eventSource.on(event_types.APP_READY, async () => {
         setProviderTimeoutDefault(extension_settings[EXT_KEY]?.providerTimeoutMs ?? 10000);
         customPromptsSystem.initAll();
         const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-        userProviderLoader.restoreAll('provider', ud);
-        userProviderLoader.restoreAll('capability', ud);
+        await userProviderLoader.restoreAll('provider', ud);
+        await userProviderLoader.restoreAll('capability', ud);
     };
 });

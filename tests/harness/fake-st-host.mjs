@@ -39,6 +39,7 @@ export class FakeSillyTavernHost {
     #plans;
     #active;
     #nextRequestId;
+    #cancellations = new Map();
 
     queueResponse(plan) {
         this.#plans.push(typeof plan === 'object' ? { ...plan } : { type: 'resolve', value: plan });
@@ -77,6 +78,7 @@ export class FakeSillyTavernHost {
             this.eventSource.removeListener(TEST_EVENT_TYPES.GENERATION_STOPPED, onGlobalStop);
             if (onSignalAbort) signal?.removeEventListener('abort', onSignalAbort);
             this.#active.delete(id);
+            this.#cancellations.delete(id);
             record.settledAt = Date.now();
         };
         const settle = (status, reason, callback) => {
@@ -95,6 +97,11 @@ export class FakeSillyTavernHost {
             rejectRequest = reject;
         });
         record.promise = promise;
+        this.#cancellations.set(id, () => {
+            // Disposal owns requests whose callers may already have timed out.
+            void promise.catch(() => {});
+            settle('aborted', 'disposed', () => rejectRequest(abortError('Host disposed')));
+        });
         this.eventSource.on(TEST_EVENT_TYPES.GENERATION_STOPPED, onGlobalStop);
 
         if (this.requestScopedAbort && signal) {
@@ -102,7 +109,10 @@ export class FakeSillyTavernHost {
                 settle('aborted', 'request-signal', () => rejectRequest(abortError('Cancelled by request signal')));
             };
             signal.addEventListener('abort', onSignalAbort, { once: true });
-            if (signal.aborted) onSignalAbort();
+            if (signal.aborted) {
+                onSignalAbort();
+                return promise;
+            }
         }
 
         const delay = Math.max(0, plan.delayMs || 0);
@@ -166,7 +176,8 @@ export class FakeSillyTavernHost {
     }
 
     dispose() {
+        for (const cancel of this.#cancellations.values()) cancel();
+        this.#plans.length = 0;
         this.eventSource.clear();
-        this.#active.clear();
     }
 }

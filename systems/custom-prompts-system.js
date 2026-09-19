@@ -1,291 +1,365 @@
 /**
  * Custom Prompts System — user-defined prompt templates registered as Providers.
- *
  * Storage: settings.customPrompts = [{ id, name, content, dataJson, scope, enabled }]
- * Each enabled entry auto-registers as {{name}} Provider on init and on change.
  */
 
-const NAME_RE = /^\w+$/;
+import {
+    CUSTOM_PROMPT_NAME_RE,
+    generateCustomPromptId,
+    normalizeCustomPrompt,
+    normalizeCustomPromptList,
+    parseCustomPromptData,
+    validateCustomPromptExport,
+} from './custom-prompt-validation.js';
 
-// ST built-in macros that use {{name}} syntax — prevent name collisions.
-// These run in ST's own pipeline AFTER our Provider rendering, but naming
-// a custom prompt the same as a ST macro would cause confusing behavior.
+const PROVIDER_OWNER = 'group-director/custom-prompt';
 const ST_MACRO_NAMES = new Set([
-    // env-macros
     'user', 'char', 'group', 'groupNotMuted', 'notChar', 'persona', 'original',
     'model', 'charPrompt', 'charInstruction', 'charDescription', 'charPersonality',
     'charScenario', 'charDepthPrompt', 'charCreatorNotes', 'charFirstMessage',
     'charVersion', 'mesExamples', 'mesExamplesRaw',
-    // time-macros
     'time', 'date', 'weekday', 'isotime', 'isodate', 'datetimeformat', 'idleDuration', 'timeDiff',
-    // core-macros
     'random', 'roll', 'pick', 'if', 'else', 'input', 'trim', 'noop', 'space', 'newline',
     'reverse', 'maxPrompt', 'maxContext', 'maxResponse', 'banned', 'outlet',
-    // variable-macros
     'setvar', 'getvar', 'hasvar', 'deletevar', 'addvar', 'incvar', 'decvar',
     'setglobalvar', 'getglobalvar', 'hasglobalvar', 'deleteglobalvar',
     'addglobalvar', 'incglobalvar', 'decglobalvar',
-    // chat-macros
     'lastMessage', 'lastMessageId', 'lastUserMessage', 'lastCharMessage',
     'firstIncludedMessageId', 'firstDisplayedMessageId', 'lastSwipeId',
-    'currentSwipeId', 'allChatRange',
-    // state-macros
-    'lastGenerationType', 'hasExtension', 'isMobile',
-    // instruct-macros
-    'systemPrompt',
-    // comment
-    '//',
-    // extensions (commonly installed)
-    'summary', 'authorsNote', 'charAuthorsNote', 'defaultAuthorsNote',
+    'currentSwipeId', 'allChatRange', 'lastGenerationType', 'hasExtension', 'isMobile',
+    'systemPrompt', '//', 'summary', 'authorsNote', 'charAuthorsNote', 'defaultAuthorsNote',
     'charPrefix', 'charNegativePrefix',
 ]);
 
 export function createCustomPromptsSystem(deps) {
     const { settings, saveSettings, registerProvider, unregisterProvider, getProviders, log } = deps;
-
-    let _idCounter = 0;
-    function genId() { return `cp_${Date.now()}_${++_idCounter}`; }
+    const managed = new Map();
+    let mutationQueue = Promise.resolve();
 
     function getList() {
-        if (!settings.customPrompts) settings.customPrompts = [];
+        if (!Array.isArray(settings.customPrompts)) settings.customPrompts = [];
         return settings.customPrompts;
     }
 
-    // ── Validation ──────────────────────────────────────────────────
+    function enqueue(work) {
+        const result = mutationQueue.then(work, work);
+        mutationQueue = result.catch(() => {});
+        return result;
+    }
+
+    function isOwned(provider, ownerId) {
+        return provider?._gdOwner === PROVIDER_OWNER
+            && (ownerId === undefined || provider._gdOwnerId === ownerId);
+    }
 
     function validateName(name, skipId) {
-        if (!name || !NAME_RE.test(name)) {
+        if (!name || !CUSTOM_PROMPT_NAME_RE.test(name)) {
             return { ok: false, error: '仅限字母、数字、下划线 (a-z, 0-9, _)' };
         }
         if (ST_MACRO_NAMES.has(name)) {
             return { ok: false, error: `"${name}" 与 ST 内置宏冲突，请换一个名称` };
         }
-        const providers = getProviders();
-        const builtins = new Set(providers.map(p => p.placeholder));
-        if (builtins.has(`{{${name}}}`)) {
-            const list = getList();
-            if (!list.some(e => e.name === name && e.id === skipId)) {
-                return { ok: false, error: `"${name}" 与内置 Provider 冲突` };
-            }
+        const provider = getProviders().find(item => item.id === name || item.placeholder === `{{${name}}}`);
+        if (provider && !isOwned(provider, skipId)) {
+            return { ok: false, error: `"${name}" 与内置 Provider 冲突` };
         }
-        const dup = getList().find(e => e.name === name && e.id !== skipId);
-        if (dup) {
-            return { ok: false, error: `"${name}" 已被其他自定义 prompt 使用` };
-        }
+        const duplicate = getList().find(entry => entry.name === name && entry.id !== skipId);
+        if (duplicate) return { ok: false, error: `"${name}" 已被其他自定义 prompt 使用` };
         return { ok: true };
     }
 
     function hasSelfReference(name, content) {
-        return content.includes(`{{${name}}}`);
-    }
-
-    function parseDataJson(dataJson) {
-        const text = String(dataJson || '').trim();
-        if (!text) return null;
-        const parsed = JSON.parse(text);
-        if (parsed === null || typeof parsed !== 'object') {
-            throw new Error('JSON 数据必须是对象或数组');
-        }
-        return parsed;
+        return String(content ?? '').includes(`{{${name}}}`);
     }
 
     function validateDataJson(dataJson) {
         try {
-            parseDataJson(dataJson);
+            parseCustomPromptData(dataJson);
             return { ok: true };
-        } catch (e) {
-            return { ok: false, error: `JSON 数据无效: ${e.message}` };
+        } catch (error) {
+            return { ok: false, error: `JSON 数据无效: ${error.message}` };
         }
     }
 
-    // ── Provider sync ───────────────────────────────────────────────
+    function unregisterOwned(name, entryId) {
+        return unregisterProvider(name, { owner: PROVIDER_OWNER, ownerId: entryId });
+    }
 
-    function syncOne(entry) {
-        unregisterProvider(entry.name);
+    function registerOne(entry) {
+        registerProvider({
+            id: entry.name,
+            placeholder: `{{${entry.name}}}`,
+            _gdOwner: PROVIDER_OWNER,
+            _gdOwnerId: entry.id,
+            render: () => ({
+                content: entry.content || '',
+                data: parseCustomPromptData(entry.dataJson),
+            }),
+        });
+        const previousName = managed.get(entry.id);
+        managed.set(entry.id, entry.name);
+        if (previousName && previousName !== entry.name) unregisterOwned(previousName, entry.id);
+    }
+
+    function reconcile({ strict = false } = {}) {
+        const desired = new Set();
+        const seenIds = new Set();
+        const list = getList();
         const masterOn = settings.customPromptsEnabled !== false;
-        if (entry.enabled && masterOn && entry.name && NAME_RE.test(entry.name)) {
-            registerProvider({
-                id: entry.name,
-                placeholder: `{{${entry.name}}}`,
-                render: () => ({
-                    content: entry.content || '',
-                    data: parseDataJson(entry.dataJson),
-                }),
-            });
+        for (let index = 0; index < list.length; index++) {
+            const rawEntry = list[index];
+            try {
+                const entry = normalizeCustomPrompt(rawEntry, {
+                    path: `customPrompts[${index}]`,
+                    id: rawEntry?.id,
+                });
+                if (!entry.id) throw new Error('custom prompt id is required');
+                if (seenIds.has(entry.id)) throw new Error(`duplicate custom prompt id "${entry.id}"`);
+                seenIds.add(entry.id);
+                const valid = validateName(entry.name, entry.id);
+                if (!valid.ok) throw new Error(valid.error);
+                if (entry.enabled && masterOn) {
+                    registerOne(rawEntry);
+                    desired.add(entry.id);
+                }
+            } catch (error) {
+                if (strict) throw error;
+                console.warn(`[GroupDirector] Custom prompt skipped: ${error.message}`);
+            }
+        }
+        for (const [entryId, name] of [...managed]) {
+            if (desired.has(entryId)) continue;
+            unregisterOwned(name, entryId);
+            managed.delete(entryId);
         }
     }
 
-    function syncAll() {
-        getList().forEach(e => unregisterProvider(e.name));
-        if (settings.customPromptsEnabled !== false) {
-            getList().forEach(e => syncOne(e));
+    function restoreFields(entry, before, applied) {
+        for (const key of Object.keys(applied)) {
+            if (Object.is(entry[key], applied[key])) entry[key] = before[key];
+        }
+    }
+
+    async function persistOrRollback(rollback) {
+        try {
+            await saveSettings();
+        } catch (error) {
+            rollback();
+            reconcile();
+            throw error;
         }
     }
 
     function setMasterEnabled(on) {
-        settings.customPromptsEnabled = !!on;
-        syncAll();
-        saveSettings();
+        return enqueue(async () => {
+            const before = settings.customPromptsEnabled;
+            const applied = !!on;
+            settings.customPromptsEnabled = applied;
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(() => {
+                    if (settings.customPromptsEnabled === applied) settings.customPromptsEnabled = before;
+                });
+            } catch (error) {
+                if (settings.customPromptsEnabled === applied) settings.customPromptsEnabled = before;
+                reconcile();
+                throw error;
+            }
+        });
     }
 
-    // ── CRUD ──────────────────────────────────────────────────────
-
     function add(name, content, enabled = true, extra = {}) {
-        const valid = validateName(name);
-        if (!valid.ok) throw new Error(valid.error);
-        const dataValid = validateDataJson(extra.dataJson);
-        if (!dataValid.ok) throw new Error(dataValid.error);
-        const selfRef = hasSelfReference(name, content);
-        const entry = {
-            id: genId(),
-            name,
-            content,
-            dataJson: extra.dataJson || '',
-            scope: extra.scope || 'global',
-            enabled,
-        };
-        getList().push(entry);
-        syncOne(entry);
-        saveSettings();
-        log(`Custom prompt added: {{${name}}}${selfRef ? ' (self-ref — may render empty)' : ''}`);
-        return { entry, selfRef };
+        return enqueue(async () => {
+            const valid = validateName(name);
+            if (!valid.ok) throw new Error(valid.error);
+            const entry = normalizeCustomPrompt({ name, content, enabled, ...extra }, {
+                id: generateCustomPromptId(),
+            });
+            const selfRef = hasSelfReference(entry.name, entry.content);
+            const list = getList();
+            list.push(entry);
+            const rollback = () => {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+            };
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(rollback);
+            } catch (error) {
+                rollback();
+                reconcile();
+                throw error;
+            }
+            log(`Custom prompt added: {{${name}}}${selfRef ? ' (self-ref — may render empty)' : ''}`);
+            return { entry, selfRef };
+        });
     }
 
     function update(id, updates) {
-        const list = getList();
-        const entry = list.find(e => e.id === id);
-        if (!entry) throw new Error('Not found');
-        if (updates.name !== undefined && updates.name !== entry.name) {
-            const valid = validateName(updates.name, id);
+        return enqueue(async () => {
+            const entry = getList().find(item => item.id === id);
+            if (!entry) throw new Error('Not found');
+            const candidate = normalizeCustomPrompt({ ...entry, ...updates }, { id });
+            const valid = validateName(candidate.name, id);
             if (!valid.ok) throw new Error(valid.error);
-        }
-        if (updates.dataJson !== undefined) {
-            const valid = validateDataJson(updates.dataJson);
-            if (!valid.ok) throw new Error(valid.error);
-        }
-        unregisterProvider(entry.name);
-        Object.assign(entry, updates);
-        syncOne(entry);
-        saveSettings();
+            const before = { ...entry };
+            Object.assign(entry, candidate);
+            const rollback = () => restoreFields(entry, before, candidate);
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(rollback);
+            } catch (error) {
+                rollback();
+                reconcile();
+                throw error;
+            }
+            return entry;
+        });
     }
 
     function remove(id) {
-        const list = getList();
-        const idx = list.findIndex(e => e.id === id);
-        if (idx < 0) return;
-        unregisterProvider(list[idx].name);
-        const removed = list.splice(idx, 1)[0];
-        saveSettings();
-        log(`Custom prompt removed: {{${removed.name}}}`);
-        return removed;
+        return enqueue(async () => {
+            const list = getList();
+            const index = list.findIndex(entry => entry.id === id);
+            if (index < 0) return undefined;
+            const removed = list.splice(index, 1)[0];
+            const rollback = () => {
+                if (!list.some(entry => entry.id === id)) list.splice(Math.min(index, list.length), 0, removed);
+            };
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(rollback);
+            } catch (error) {
+                rollback();
+                reconcile();
+                throw error;
+            }
+            log(`Custom prompt removed: {{${removed.name}}}`);
+            return removed;
+        });
     }
 
     function toggle(id) {
-        const list = getList();
-        const entry = list.find(e => e.id === id);
-        if (!entry) return;
-        entry.enabled = !entry.enabled;
-        syncOne(entry);
-        saveSettings();
+        return enqueue(async () => {
+            const entry = getList().find(item => item.id === id);
+            if (!entry) return undefined;
+            const before = entry.enabled;
+            const applied = !before;
+            entry.enabled = applied;
+            const rollback = () => {
+                if (entry.enabled === applied) entry.enabled = before;
+            };
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(rollback);
+            } catch (error) {
+                rollback();
+                reconcile();
+                throw error;
+            }
+            return entry.enabled;
+        });
     }
 
     function initAll() {
-        syncAll();
+        reconcile();
         const list = getList();
-        if (list.length) log(`${list.filter(e => e.enabled).length}/${list.length} custom prompts enabled`);
+        if (list.length) log(`${list.filter(entry => entry.enabled).length}/${list.length} custom prompts enabled`);
     }
 
-    // ── Export/Import ───────────────────────────────────────────────
-
     function exportPrompts(selectedIds) {
-        const list = getList();
-        const selected = list.filter(e => selectedIds.includes(e.id));
+        const selected = getList().filter(entry => selectedIds.includes(entry.id));
         if (!selected.length) return null;
         const json = {
             version: 1,
             type: 'custom-prompt-export',
             exportedAt: new Date().toISOString(),
-            prompts: selected.map(e => ({
-                name: e.name,
-                content: e.content,
-                dataJson: e.dataJson || '',
-                scope: e.scope || 'global',
-                enabled: e.enabled,
+            prompts: selected.map(({ name, content, dataJson = '', scope = 'global', enabled }) => ({
+                name, content, dataJson, scope, enabled,
             })),
         };
-        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const dateStr = new Date().toISOString().slice(0, 10);
-        a.download = `custom-prompts-${dateStr}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const url = URL.createObjectURL(new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' }));
+        const anchor = document.createElement('a');
+        let attached = false;
+        try {
+            anchor.href = url;
+            anchor.download = `custom-prompts-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(anchor);
+            attached = true;
+            anchor.click();
+        } finally {
+            try {
+                if (attached && anchor.parentNode) anchor.parentNode.removeChild(anchor);
+                else if (attached) document.body.removeChild(anchor);
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        }
         log(`Exported ${selected.length} custom prompt(s)`);
         return json;
     }
 
     function parseImportFile(jsonText) {
-        let obj;
-        try { obj = JSON.parse(jsonText); } catch (e) {
-            return { ok: false, error: `Invalid JSON: ${e.message}` };
+        try {
+            const data = JSON.parse(jsonText);
+            data.prompts = validateCustomPromptExport(data);
+            return { ok: true, data };
+        } catch (error) {
+            return { ok: false, error: error.message };
         }
-        if (obj.type !== 'custom-prompt-export') return { ok: false, error: 'Not a custom prompt export file' };
-        if (!Array.isArray(obj.prompts)) return { ok: false, error: 'Missing prompts array' };
-        return { ok: true, data: obj };
     }
 
     function importPrompts(data, overwriteConflicts = false) {
-        const list = getList();
-        const existingNames = new Set(list.map(e => e.name));
-        let added = 0;
-        let overwritten = 0;
-        const actualConflicts = [];
-
-        for (const p of data.prompts) {
-            if (!p.name || !NAME_RE.test(p.name)) continue;
-            const dataValid = validateDataJson(p.dataJson);
-            if (!dataValid.ok) {
-                console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${dataValid.error}`);
-                continue;
+        return enqueue(async () => {
+            const imported = normalizeCustomPromptList(data?.prompts, { path: 'prompts', preserveIds: false });
+            const list = getList();
+            for (const prompt of imported) {
+                const existing = list.find(entry => entry.name === prompt.name);
+                const valid = validateName(prompt.name, existing?.id);
+                if (!valid.ok) throw new Error(valid.error);
             }
-            const existing = list.find(e => e.name === p.name);
-            const nameCheck = validateName(p.name, existing?.id);
-            if (!nameCheck.ok) {
-                console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${nameCheck.error}`);
-                continue;
-            }
-            if (existing) {
-                if (overwriteConflicts) {
-                    existing.content = p.content;
-                    existing.dataJson = p.dataJson || '';
-                    existing.scope = p.scope || 'global';
-                    existing.enabled = p.enabled !== false;
-                    syncOne(existing);
-                    overwritten++;
+            const addedEntries = [];
+            const overwrittenEntries = [];
+            const conflicts = [];
+            for (const prompt of imported) {
+                const existing = list.find(entry => entry.name === prompt.name);
+                if (existing) {
+                    if (!overwriteConflicts) {
+                        conflicts.push(prompt.name);
+                        continue;
+                    }
+                    const before = { ...existing };
+                    const applied = { ...prompt, id: existing.id };
+                    Object.assign(existing, applied);
+                    overwrittenEntries.push({ entry: existing, before, applied });
                 } else {
-                    actualConflicts.push(p.name);
+                    const entry = { ...prompt, id: generateCustomPromptId() };
+                    list.push(entry);
+                    addedEntries.push(entry);
                 }
-            } else {
-                const entry = {
-                    id: genId(),
-                    name: p.name,
-                    content: p.content || '',
-                    dataJson: p.dataJson || '',
-                    scope: p.scope || 'global',
-                    enabled: p.enabled !== false,
-                };
-                list.push(entry);
-                syncOne(entry);
-                added++;
             }
-        }
-        saveSettings();
-        log(`Imported custom prompts: ${added} added, ${overwritten} overwritten`);
-        return { added, overwritten, conflicts: actualConflicts };
+            const rollback = () => {
+                for (const entry of addedEntries) {
+                    const index = list.indexOf(entry);
+                    if (index >= 0) list.splice(index, 1);
+                }
+                for (const item of overwrittenEntries) restoreFields(item.entry, item.before, item.applied);
+            };
+            try {
+                reconcile({ strict: true });
+                await persistOrRollback(rollback);
+            } catch (error) {
+                rollback();
+                reconcile();
+                throw error;
+            }
+            log(`Imported custom prompts: ${addedEntries.length} added, ${overwrittenEntries.length} overwritten`);
+            return { added: addedEntries.length, overwritten: overwrittenEntries.length, conflicts };
+        });
     }
 
-    return { getList, add, update, remove, toggle, initAll, validateName, validateDataJson, hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled };
+    return {
+        getList, add, update, remove, toggle, initAll, validateName, validateDataJson,
+        hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled,
+    };
 }

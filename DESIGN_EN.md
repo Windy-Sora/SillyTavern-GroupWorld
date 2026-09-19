@@ -283,12 +283,15 @@ The variable system provides structured, long-term state tracking for Group Worl
 - **Change log** — last 100 operations, with messageId/hash for stale detection
 - **Stale detection** — variables marked as "possibly stale" when messages are deleted or modified
 - **Rollback support** — revert to the previous non-ignored record
+- **Transactional import** — success is returned only after asynchronous chat-metadata persistence succeeds; on failure, a `before / applied / current` three-way rollback removes imported writes while preserving concurrent edits made during the save
 - **Locking** — locked=true records LLM updates but does not write values
 - **Config profile integration** — variable data syncs with config profile export/import
 
 **LLM interaction:** `{{variableMaintenance}}` injected into Director system prompt → LLM returns `variable_update` field in JSON response → `applyUpdates()` parses and writes to `chat_metadata`.
 
 **Storage:** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**Import rollback:** definitions and values use path-aware three-way rollback. Arrays use a longest-common-subsequence match to derive the `applied → current` sequence delta and replay concurrent additions/removals over the pre-import array. Logs remove only the imported segment and retain records appended while persistence was pending. A failed save therefore leaves neither imported data behind nor overwrites unrelated edits or same-array concurrent sequence additions/removals with an old snapshot.
 
 **UI:** Tools drawer → Variables card (list + editor + templates + import/export); Dashboard → Variables panel (click "Variables" button to expand, real-time view/edit/rollback/lock).
 
@@ -337,9 +340,23 @@ Three library systems (`profile-library-system` / `npc-library-system` / `story-
 
 **Profile library auto-load** (core capability): `settings.profileLibraryAutoLoad` configures `enabled` / `mode('best'|'fixed')` / `fixedId` / match rules / `overwriteExisting` / `importTemplate`. `findBestLibrary` scores by "usable matches×100 + total matches×10 + match rate" and picks the best library; triggered automatically on `CHAT_CHANGED` and `APP_READY` (when `profileEnabled`), with a toastr toast and UI refresh on success; `lastAutoLoadKey` dedupes to avoid repeated applies.
 
+**Library persistence transaction boundary**: Profile and Story Blueprint Library save, delete, file-import, and Profile auto-load setting mutations are serialized and await confirmed settings persistence. “Save current” captures the current chat name and a detached content payload before entering the queue, so switching chats while an earlier operation is pending cannot change the requested source. Failure compensation removes only this operation's addition, restores a deletion relative to surviving neighbors, or restores only configuration fields still owned by the failed write; it never replaces the whole library snapshot. Dedicated cards and dashboard actions await completion before success feedback or refresh. Export always releases its temporary node and Blob URL. Profile Library application relies on Profile Import's single chat save, while Story Blueprint Library delegates to `applyImportTextAndSave()` for one awaited save plus a readback of the original chat header. A definite mismatch triggers three-way rollback that retains concurrent object fields and array additions, followed by another confirmed compensation save; compensation failure is reported as incomplete. If the verification request itself fails, the outcome is marked `persistenceUnknown` and the possibly persisted in-memory state is retained rather than overwritten by compensation.
+
 **Relationship to config profiles**: library entries are "reusable content data", explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles.
 
-### 3.7 Coding Rules
+**Profile persistence transaction boundary**: `saveProfile()` owns single-profile writes and `archiveProfiles()` owns active-to-archive moves; both must `await saveChatConditional()`. On persistence failure, compensation is applied per avatar and only to slots that still equal this operation's applied state, so a whole-store snapshot never overwrites concurrent edits to the same or another character. Synchronization, change detection, and card deletion all delegate to this transaction API instead of mutating both maps in the UI.
+
+**Profile management UI safety boundary**: every asynchronous load, generation, save, and delete handler catches rejection, displays failure feedback, and restores disabled controls in `finally`. Imported avatar values enter markup only through HTML attribute encoding; edit panels are located through card DOM ancestry rather than avatar-derived HTML IDs or CSS selectors.
+
+### 3.7 Group ZIP Import and Export
+
+`export-import-system.js` exports PNG cards for enabled group members, activated world books, and `group.json`. It snapshots group and world-book selection before the first asynchronous request. Failed card requests are excluded from the manifest; if all cards fail, no unusable ZIP is downloaded. Partial exports show a warning, and temporary download nodes and Blob URLs are released even when clicking fails.
+
+Import validates the full archive before any host POST: manifest member and option types, safe single-level paths, no duplicate files, exactly one PNG for every member, and readable world-book JSON with an `entries` field. Character uploads omit `preserved_name` so SillyTavern assigns a non-conflicting filename; member remapping uses only validated full card filenames, so basename or archive-path aliases cannot overwrite another member. World-book names avoid both the host's live name list and names already allocated by the current system instance. The host character endpoint can return `{ error: true }` with HTTP 200, so only a valid `file_name` counts as success. A group is created only when every required character was imported, with members remapped to the returned filenames.
+
+Remote character and world-book uploads are independent irreversible effects, not an atomic transaction. Results distinguish complete success, incomplete work after a write request, and definite zero-write preflight failure. Once a write request has been sent, even a failed response must prompt users to inspect host resources rather than claiming nothing was created or announcing success. UI handlers catch unexpected rejections and restore controls. The same plugin instance reserves world-book names synchronously before upload, preventing sequential or concurrent imports from overwriting one another; eliminating races across pages or clients still requires an atomic no-overwrite host contract.
+
+### 3.8 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters
@@ -457,6 +474,25 @@ MESSAGE_DELETED → trim ledger + trim summary + clear state
 CHAT_CHANGED → trim ledger + trim summary (branch/switch)
 ```
 
+### 7.1 Round Orchestrator and State Ownership
+
+`systems/round-orchestrator.js` is the stateful coordinator for takeover rounds. `index.js` receives SillyTavern events and performs generation side effects, but no longer derives remaining-speaker counts, retry state, or finalization readiness on its own.
+
+| Module | Responsibility |
+|------|------|
+| `round-state.js` | Pure wrapper/takeover transitions with no retained runtime state |
+| `takeover-scheduler.js` | Builds the queue in Director order and excludes completed or unavailable characters |
+| `round-finalization.js` | Determines whether round-end work may run |
+| `round-orchestrator.js` | Owns takeover state and composes the rules above for `index.js` |
+
+Key invariants:
+
+- Blocking an out-of-plan character does not consume `takeoverRemaining`.
+- Swipe/regenerate preserves the plan and only advances the safety-limit counter.
+- Round finalization is blocked while takeover is pending, failed, manually generating, or stopped by the user.
+- Nested wrappers preserve the active takeover; a failed plan enters the retry path on the next normal wrapper.
+- `takeoverCompleted` survives retries, so resumed scheduling does not regenerate completed characters.
+
 ---
 
 ## 8. How to Add a New Agent
@@ -530,6 +566,16 @@ The dashboard and Tools drawer each have a config profile dropdown (`#gd-dash-cf
 
 Save/delete/import operations auto-refresh both dropdowns and the config profile list.
 
+### 9.9 Testable UI Security Boundaries
+
+UI sections retain event binding and DOM mutation, while security-sensitive rules such as input normalization, output encoding, and display/editor separation live in pure helpers in the same directory and are called directly by production sections. Current boundaries include:
+
+- `custom-agent-helpers.js`: UI numeric bounds and exact `data-id` comparison; the system validator owns the import contract.
+- `execution-trace-helpers.js`: trace summarization and safe stage HTML encoding.
+- `profile-summary-helpers.js`: separation of composite profile display text from the raw editor value.
+
+These helpers use DOM-free `node:test` behavior contracts. Browser-level tests are reserved for event propagation, focus, layout, or SillyTavern-owned widget behavior.
+
 ---
 
 ## 10. Directory Structure
@@ -580,6 +626,10 @@ SillyTavern-GroupWorld/
 │
 ├── systems/                   # Stateful business logic
 │   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry + Trace
+│   ├── round-state.js         # Pure wrapper/takeover state transitions
+│   ├── takeover-scheduler.js  # Ordered takeover queue and skip reasons
+│   ├── round-finalization.js  # Round-end gating rules
+│   ├── round-orchestrator.js  # Takeover state owner and coordination entry point
 │   ├── capability-registry.js # CapabilityRegistry (multimodal capability registration)
 │   ├── executor.js            # PostSpeech Executor (resolve→schedule→execute)
 │   ├── history-system.js      # Director ledger CRUD
@@ -596,11 +646,21 @@ SillyTavern-GroupWorld/
 │   ├── memory-export-system.js
 │   ├── post-speech-system.js  # PostSpeech decision persistence
 │   ├── config-profile-system.js # Config profile management (with JSZip fallback loading)
+│   ├── custom-prompt-validation.js # Shared Custom Prompt import/field contract
 │   ├── custom-prompts-system.js # Custom Prompt templates
 │   ├── variable-system.js      # Variable system (defs/values/validation/log/rollback/stale detection)
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
-│   ├── critique-system.js     # AI critique
+│   ├── critique-validation.js # Shared critique/import data contract
+│   ├── critique-parser.js     # Balanced LLM JSON extraction and normalization
+│   ├── critique-repository.js # History, activation chain, revert, transactions
+│   ├── critique-execution.js  # LLM lock and quiet-prompt cleanup
+│   ├── critique-auto-coordinator.js # Auto-critique checkpoint policy
+│   ├── critique-system.js     # AI critique business facade
+│   ├── custom-agent-validation.js # Shared Custom Agent/import/profile contract
+│   ├── custom-agent-system.js # CRUD, import/export, result storage, Provider lifecycle
+│   ├── custom-agent-execution.js # Serial execution, deduplication, stale checks, result transaction
+│   ├── custom-agent-auto-coordinator.js # Pure auto-trigger scheduling policy
 │   ├── story-blueprint-system.js  # Story Blueprint system
 │   ├── story-blueprint-library-system.js # Story Blueprint reusable library
 │   ├── summary-export-system.js
@@ -723,7 +783,7 @@ Director decision (LLM/Formula)
   ↓
 ┌─ decision hook (blocking, await all, 10s timeout) ──────────┐
 │  ctx.decision.speakers / .names / .reason / .scripts        │
-│  Scripts can directly modify ctx.decision (live reference)  │
+│  Scripts can modify ctx.decision (per-script isolated copy)  │
 │  Modified snapshot serves message/round stages as read-only │
 └─────────────────────────────────────────────────────────────┘
   ↓
@@ -740,7 +800,7 @@ Next round GROUP_WRAPPER_STARTED → turnShared reset
 |------|--------|----------|-------------|
 | `message` | CHARACTER_MESSAGE_RENDERED | fire-and-forget, 5s timeout | `ctx.message`, `ctx.character`, `ctx.decisionSnapshot` |
 | `round` | GROUP_WRAPPER_FINISHED | fire-and-forget, dedup, 5s timeout | `ctx.decisionSnapshot` |
-| `decision` | After Director decision | blocking await all, 10s timeout | `ctx.decision` (live, mutable) |
+| `decision` | After Director decision | blocking await all, 10s timeout | `ctx.decision` (isolated, mutable copy) |
 | `both` | message + round | same as respective modes | Phase-specific fields |
 | `all` | All three | same as respective modes | Phase-specific fields |
 
@@ -752,7 +812,7 @@ The three phases have different `ctx` shapes, providing phase-appropriate fields
 |------|:---:|:---:|:---:|
 | `ctx.params` | ✓ | ✓ | ✓ |
 | `ctx.shared` (turnShared) | ✓ | ✓ | ✓ |
-| `ctx.decision` (live) | ✓ | - | - |
+| `ctx.decision` (isolated copy) | ✓ | - | - |
 | `ctx.decisionSnapshot` (read-only) | - | ✓ | ✓ |
 | `ctx.message` | - | ✓ | - |
 | `ctx.character` | - | ✓ | - |
@@ -764,14 +824,14 @@ The three phases have different `ctx` shapes, providing phase-appropriate fields
 
 ### 12.4 Shared State (turnShared)
 
-Module closure variable, not persisted to settings:
+System-instance closure state, not persisted to settings; separate executor system instances never share turn state:
 
 - **Creation**: `resetTurnShared()` resets to `{}` on `GROUP_WRAPPER_STARTED`
-- **Write**: Script sets `returnMode: 'shared'` and returns an object → `Object.assign(turnShared, result)`
-- **Read**: All scripts read current snapshot via `ctx.shared`
+- **Write**: Script sets `returnMode: 'shared'` and returns a validated plain object → clone before merging into `turnShared`
+- **Read**: All scripts read an isolated `ctx.shared` copy; mutating that copy does not write back
 - **Lifetime**: decision → message → round throughout, reset next round
 
-After the decision phase completes, `decisionSnapshot = { decision: deepClone, shared: {...turnShared} }` is provided as read-only for message/round scripts.
+After the decision phase completes, `decisionSnapshot = deepFreeze({ decision: deepClone, shared: deepClone(turnShared) })` is provided as read-only for message/round scripts.
 
 ### 12.5 Data Structure
 
@@ -794,19 +854,24 @@ After the decision phase completes, `decisionSnapshot = { decision: deepClone, s
 ```
 Filter enabled && triggerOn match → sort by priority ascending →
   new Function('ctx', code) per script → Promise.race(script, timeout) →
-    success + returnMode='shared' → Object.assign(turnShared, result)
+    success + returnMode='shared' → validate and clone result, then merge into turnShared
     timeout/exception → trace record → continue to next
 ```
 
 - **decision**: Blocking, await all complete then return snapshot
 - **message/round**: Fire-and-forget, does not block character generation
+- A timeout does not cancel already-running asynchronous JS; its late result and retained `ctx.shared`/`ctx.decision` references cannot mutate executor-owned state. After a turn reset, the old execution chain will not start later scripts. Host objects passed to scripts and page globals remain accessible; this is not a sandbox.
 - Execution trace recorded via `AgentTrace` for per-stage duration and status
 
 ### 12.7 Import/Export
 
 Export format: `{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
 
-Import prompts confirmation for same-name overwrite. Config profile management includes scriptExecutors.
+Import is split between UI and system layers: the UI only reads the file, shows the security warning, and collects same-name overwrite choices. `script-executor-system` uses `script-executor-validation` to validate the complete file and every entry, resolve conflicts on a candidate list, then replace settings once and save once. Import shares the mutation queue with add, update, remove, and toggle; another write cannot interleave while a conflict choice is pending. An invalid entry, transaction cancellation, or persistence failure leaves the existing list unchanged. Overwrites retain the trusted existing ID, new entries receive trusted IDs, and external IDs are ignored.
+
+The shared contract bounds trigger and return-mode enums, integer priority (`-100..100`), boolean fields, and parameter types. Parameter keys must be non-empty and unique; `__proto__`, `prototype`, and `constructor` are rejected. System CRUD, standalone import, and config-profile import reuse this contract. Config profile management includes `scriptExecutors`.
+
+Add, update, remove, and toggle return Promises, execute serially within the system instance, and await the injected `saveSettings` callback. An observable callback failure compensates only that operation while preserving edits to other executors made during the wait. The UI refreshes after the Promise settles and reports rejection. SillyTavern's current `saveSettingsDebounced` does not return the actual save Promise, and its direct save function catches network failures internally; the plugin therefore cannot guarantee server persistence from these APIs. This rollback contract applies when the injected callback throws or rejects.
 
 ---
 
@@ -835,6 +900,29 @@ Query: CapabilityRegistry.get(id) / list() / listEnabled()
 Toggle: CapabilityRegistry.setEnabled(id, true/false)
 ```
 
+**Executor boundary:** malformed intents and non-string `type` values are skipped; valid intents resolve by exact Capability ID, then Schema alias, and only then by ID substring, while disabled entries never enter a plan. Numeric Schema parameters accept only finite numbers or convertible non-empty numeric strings before defaults, range clamps, and enum fallbacks are applied. Nested parameters and Schema defaults passed to a Capability are isolated copies, so Capability mutations cannot contaminate the LLM policy or later executions. `immediate`, `deferred`, and `round_end` are the only scheduling modes; unknown values are logged and fall back to immediate execution. Both blocking and non-blocking execution invoke and isolate `onExecuted` after every action, and non-blocking `completion` settles only after both the Capability and any asynchronous callback finish.
+
+---
+
+### 13.3 Critique Module Boundaries
+
+Critique separates the data contract, parsing, persistence, LLM side effects, and automatic scheduling. `critique-system.js` only orchestrates these boundaries and exposes a stable API to the UI, providers, and entry point.
+
+| Module | Sole responsibility |
+|--------|---------------------|
+| `critique-validation.js` | Validate core containers, character entries, and JSON-compatible values for both LLM and import data |
+| `critique-parser.js` | Extract balanced JSON from Markdown/noisy output, remove trailing commas, and invoke validation |
+| `critique-repository.js` | Maintain one active record, basedOn revert, pruning, and persistence rollback |
+| `critique-execution.js` | Share the run lock, call the LLM, and clear the quiet prompt after success or failure |
+| `critique-auto-coordinator.js` | Compute first-enable, interval, and rollback actions and persist checkpoints transactionally |
+| `ui/sections/critique.js` | DOM state and feedback; edited results must pass through the system facade |
+
+A generation captures its starting chat and metadata references. If the chat changes before completion, it rejects with `StaleExecutionError` and cannot write into the new chat. Export/import reuses the same validator, and CRUD restores in-memory state when persistence fails.
+
+On a failed save, repository add/update/revert/reset/prune compensates only its own writes by entry identity and field revision; an older rollback must not overwrite a newer concurrent edit. The auto counter uses a checkpoint revision for the same reason. Auto execution checks chat identity after `beforeExecute`, generation, and counter save; generation and regeneration check again after result save. A successful save followed by a chat switch reports stale without undoing the result already stored in the old chat. Result and counter saves are separate steps.
+
+Imported critiques are stored independently of the live critique history. A failed add removes its own entry by identity, a failed update compensates only fields still owned by that write, and a failed delete restores order relative to surviving neighbors. Mutations check metadata identity after saving and report `StaleExecutionError` on a chat switch without writing to the new chat. Export releases its temporary anchor and Blob URL on success or failure; UI handlers report failed imports, deletes, toggles, and downloads without showing success.
+
 ---
 
 ## 14. Custom Agent — User-Defined LLM Agent
@@ -843,13 +931,17 @@ User-defined lightweight LLM Agents that auto-trigger every N rounds or execute 
 
 ### 14.1 Design Highlights
 
-- **No custom orchestration** — Each instance runs on GROUP_WRAPPER_FINISHED, independent of other systems
+- **Thin entry orchestration** — `index.js` only consumes pure scheduling actions; execution, counters, and persistence stay in the system layer
 - **Shared API config** — `agentConfigs['custom-agent']`, not split per instance
 - **Independent per-instance counters** — `_autoCAG_{id}` in chat_metadata, no cross-interference
 - **Ordering** — User fills in an order number; execute serially in ascending order
 - **Dynamic Provider registration** — `providerName` field → `{{providerName}}` → DSL queries
 - **Disabled = Provider deactivated** — enabled=false returns '' from render()
 - **No proactive data cleanup** — Deleting an instance unregisters the Provider; data silently remains in chat_metadata
+- **Single write boundary** — The UI never mutates settings or chat results directly; CRUD, imports, and result edits use `customAgentSystem`, and the UI waits for persistence before refreshing or reporting success
+- **Configuration transactions** — CRUD and imports commit serially and await `saveSettings`; failures compensate this operation's list and Provider changes without erasing unrelated edits made while saving
+- **Execution isolation** — Concurrent calls for one instance are deduplicated and all jobs are serialized; chat changes, deletions, or config changes invalidate old results, including changes during a pending chat save
+- **Transactional commit** — Auto-run result and `_autoCAG_{id}` checkpoint are saved together; on failure, result and counter revisions roll back only writes still owned by that transaction, preserving newer edits
 
 ### 14.2 Data Model
 
@@ -884,11 +976,23 @@ chat_metadata[EXT_KEY]._caData = {
 
 ### 14.3 Auto-Trigger
 
-Executes within GROUP_WRAPPER_FINISHED, after Critique. Sorted by order, each instance checks `chat.length - checkpoint >= interval`, and if met, calls `customAgentSystem.execute()`.
+Executes within GROUP_WRAPPER_FINISHED, after Critique. `custom-agent-auto-coordinator.js` is a pure policy that sorts by order and emits `execute`, `checkpoint`, or `reset` actions; the entry point only consumes those actions.
 
 Each instance's independent checkpoint is stored as `chat_metadata[EXT_KEY]._autoCAG_{id}`, with a three-way branch (first-enable / deletion / normal) following the same pattern as Summary/Critique.
 
-### 14.4 Provider Rendering
+### 14.4 Module Boundaries
+
+| Module | Sole responsibility |
+|--------|---------------------|
+| `custom-agent-validation.js` | Fields, Schema, ID/providerName uniqueness, and safe disabled imports |
+| `custom-agent-system.js` | Validate-then-commit CRUD, Provider rollback, import conflicts, and result editing |
+| `custom-agent-execution.js` | Request snapshots, serial queue, same-ID deduplication, stale checks, and chat-save transaction |
+| `custom-agent-auto-coordinator.js` | Compute auto-trigger actions without side effects |
+| `ui/sections/customAgents.js` | DOM rendering, event collection, and user feedback without owning business state |
+
+Config Profile imports reuse the same validator, replace external IDs, and disable imported agents. Profile apply validates Provider conflicts on a detached copy and restores settings and registrations on failure.
+
+### 14.5 Provider Rendering
 
 The Provider render closure captures the instance's `id`. Each call checks `settings.customAgents.find(a => a.id === capturedId && a.enabled)` to confirm the instance still exists and is enabled. Returns `''` when not found or disabled.
 
@@ -904,13 +1008,25 @@ Group World provides full export/import capability for five data types:
 | Format | `.json` | `.json` | `.json` | `.json` | `.zip` |
 | Storage | chat_metadata | chat_metadata | Independent key | chat_metadata | extension_settings |
 
+### Summary export/import boundary
+
+Imported files validate the root object, version, summary object, and content fields, not just the envelope; malformed legacy entries are skipped by list and Provider rendering. Updates to an imported summary accept only `name`, `content`, and `enabled`; callers cannot replace internal IDs. Add, update, and delete await chat persistence. On failure, compensation uses entry identity, field revisions, and surviving neighbors to preserve newer edits made while saving. A chat-reference switch detected after persistence reports a stale operation without writing to the new chat or undoing an already saved result in the old one. Download failures still release the temporary node and Blob URL, and the UI reports asynchronous failures rather than success.
+
+### Chat Summary persistence transaction boundary
+
+Chat Summary bodies use a different collection from the imported summaries above. Generation, regeneration, content edits, revert, reset, pruning, and clearing are serialized by `chat-summary-system.js` and remain bound to the `chat_metadata` captured when each operation begins. The UI may call only the system facade; it must not mutate the summary array or save chat state directly. Scan numbering is valid only for its current view: while pruning or clearing waits for persistence, index-based editing stays locked. Whether the operation succeeds, definitely fails and rolls back, or ends with `persistenceUnknown` while retaining current memory, the UI must rebuild the scan text and indexes from the live repository before releasing editing controls, so old numbers cannot target a compacted array. Because the host's `saveChatConditional()` swallows internal save failures, the production entry point uses `chat-metadata-save-confirmation.js` to read back the original group or character chat header and confirms success only when it contains either the submitted Summary state or the current concurrent state included by that host save. A definite mismatch triggers compensation by entry identity or applied field values, undoing only changes still owned by that operation while preserving concurrent additions, edits, and ordering; an unsafe partial compensation is reported through `rollbackIncomplete`. A failed verification request is `persistenceUnknown`, so possibly persisted memory is retained without destructive compensation. A chat switch after a successful save raises `StaleExecutionError` without undoing the old chat's persisted state. Public reads are detached snapshots, so callers cannot bypass the transaction boundary through query APIs.
+
 ### Global Config Export/Import (Config Profile System)
 
 **Storage**: `settings.configProfiles = [{ id, name, description, drawers, settings }]`
 
 **Export format**: `.zip` = `manifest.json` + optional `user-providers/*.js` + `user-capabilities/*.js`
 
+**Import and apply boundary**: JSON, ZIP, and built-in presets share `config-profile-validation.js`, which validates the root object, version, settings/drawers/variables shapes, and every Prompt, Provider, and Capability array entry. JSON imports strip `agentConfigs` and name-only Provider/Capability stubs; ZIP imports may restore source from matching `.js` files. Applying a profile first prepares default merging and Prompt conflict handling on a detached settings copy, then imports variables and commits once. Unrelated settings edits made while variable persistence is pending are replayed at commit. If the later settings commit fails, the variable import transaction performs a three-way compensation that preserves concurrent updates to the same variable. Save, delete, JSON/ZIP import, and preset loading retain list changes only after persistence succeeds; failures are reported by the UI without success refreshes. The Tools-drawer apply handler retains the Prompt merge mode across the entire asynchronous success path so the post-refresh `keep`/`skip` result message remains safe to build.
+
 **JSZip loading**: Uses `ensureJSZip()` with script tag fallback — tries `import()` first, then injects `<script>` tag on failure, compatible with non-module environments.
+
+**Variable transaction chat boundary**: Import and later compensation retain the original chat and variable-store references and cannot write into a newly selected chat. Only a genuine save failure rolls back memory. A chat switch detected after a successful save reports stale but retains the saved old-chat value, preventing memory/persistence divergence.
 
 **UI location**:
 - Dashboard: Config profile dropdown (built-in + user, optgroup) + Apply button + Import button
@@ -926,6 +1042,14 @@ Three libraries provide "reusable packages" that share the export/import lineage
 | NPC Library | Characters drawer -> NPC Generation card | `npcLibraries` | No |
 | Story Blueprint Library | Continuity drawer -> Story Blueprint card | `storyBlueprintLibraries` | No |
 
+NPC Library save, delete, and file import await the injected settings persistence adapter. On failure, compensation uses entry identity or surviving neighbors to retain unrelated library edits made while saving. The production adapter calls the host's direct `saveSettings()` and requires the `SETTINGS_UPDATED` event emitted after a successful save; the debounced wrapper exposes no completion result, while the direct host function swallows request errors, so awaiting its Promise alone is insufficient. The event has no request ID, leaving an extreme concurrent-host-save attribution limit. Malformed legacy entries do not block valid entries from rendering; invalid export data is rejected, and failed downloads still release the temporary node and Blob URL. Both the dedicated card and dashboard deletion await the operation, refresh after rollback, and avoid false success feedback. Library application and direct file import share `npc-export-system.applyImport()`.
+
+Profile and Story Blueprint Libraries use the same confirmed settings adapter and serialized-write rule. Profile auto-load toggles are system-owned field transactions, `getAutoLoadSettings()` returns a snapshot, and the UI never mutates the live settings object. Story Blueprint application gives the Story Blueprint System sole ownership of chat persistence and concurrency-safe compensation, avoiding an unawaited inner save followed by a redundant outer save.
+
+**NPC import application transaction:** The NPC list is updated first, then `saveChatConditional()` is awaited. On failure, three-way compensation touches only entries added or overwritten by this import, preserving unrelated NPCs and concurrent field edits to the same NPC. If the chat changes after a successful save, the operation reports stale without undoing the saved old chat or applying the global prompt. An optional prompt is applied only after chat persistence, and the observable result of `saveSettings()` is awaited. If it rejects, the prompt is restored only while still owned by this operation, and a compensating NPC save is attempted. Chat metadata and plugin settings are not an atomic store: failed compensation, a chat switch, or a concurrent edit to a newly imported NPC is reported as potentially incomplete. In production `saveSettings()` merely schedules a debounced save, so awaiting it cannot prove that a later disk write succeeded.
+
+**NPC System mutation boundary:** Generation, manual edit, and deletion update the original chat's NPC list and await `saveChatConditional()` before reporting success. On failure, generation removes only its still-unedited additions, edit compensates owned fields using per-instance revisions, and delete restores position relative to surviving neighbors. Other NPCs and later same-value edits are preserved; incomplete compensation is reported explicitly. A chat switch after a successful save is stale but does not undo the saved old chat. Generation returns NPCs actually added, not the raw model output rejected by deduplication or capacity. The NPC edit/delete UI awaits these operations and reports failures without success feedback or dashboard refresh. Remote character-card creation and its tracking receipt remain a separate boundary.
+
 Library entries are content data, explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles. See section 3.6 for details.
 
 ---
@@ -934,11 +1058,13 @@ Library entries are content data, explicitly excluded by `INTENTIONALLY_UNCOVERE
 
 Users create custom placeholders, auto-registered as `{{name}}` Providers.
 
-**Storage**: `settings.customPrompts = [{ id, name, content, enabled }]`
+**Storage**: `settings.customPrompts = [{ id, name, content, dataJson, scope, enabled }]`
 
 **Naming rules**: Only `\w+` allowed; auto-detects naming conflicts with built-in Providers.
 
 **Two-level control**: Master switch `customPromptsEnabled` + per-item `enabled`.
+
+**Boundary and transactions**: `custom-prompt-validation.js` is the shared structural contract for CRUD, standalone imports, and config-profile imports. Batch import checks every name for Provider/placeholder conflicts before mutating the list, so an invalid later entry cannot leave a partial import. Every mutation is serialized in the system layer and awaits `saveSettings`; failure compensates only fields that have not since been changed concurrently. Providers are registered with a stable owner/entry ID, and hot reload reconciles a managed ledger so removed placeholders are cleaned up without replacing or deleting another subsystem's Provider.
 
 ---
 
@@ -950,7 +1076,7 @@ Unified loading of extension modules under `assets/`. Each subdirectory has a `m
 
 ### User Import System
 
-Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupDirector` global.
+Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupDirector` global. Module evaluation and asynchronous `register()` each have a 10-second lifecycle bound. The operation token closes on success, failure, or timeout, rejecting late Provider/Capability writes while rolling back registrations already made by that owner.
 
 ---
 
@@ -962,6 +1088,15 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 - `type` is `quiet` / `impersonate` / `continue` → no interception
 - Takeover mid-failure → `takeoverFailed = true`, retry reuse next time
 - JSZip load failure → `import()` fails → script tag injection → 10s timeout error
+
+### 18.1 Asynchronous Generation Consistency
+
+Asynchronous results from Summary, Critique, Memory, NPC, Profile, Story Blueprint, and Custom Agent must follow capture → await → validate → commit in the system layer. UI sections never own the commit.
+
+- `systems/execution-snapshot.js` captures the active `chat_metadata` reference, chat-array reference, serialized chat contents, and a business-resource snapshot.
+- After any LLM/render await that can yield control, and before persistence, the system calls `assertExecutionSnapshot()`. Chat switches, in-place message appends/edits, manual result edits, reverts, and resets invalidate the older request with `StaleExecutionError`.
+- Resource snapshots serialize only fields that affect the request input or result ownership. Persistence rollback is conditional so it cannot overwrite a newer revision.
+- Irreversible external side effects do not use ordinary stale rollback. NPC character-card import performs its final snapshot check before POST, then reconciles a successful create by stable `importId`. If the card exists but tracking persistence fails, `NpcImportTrackingError` carries the `avatarName`; the UI reports partial success and retains an in-memory receipt for a later save.
 
 ---
 
@@ -985,7 +1120,20 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | Modify script executor UI | `ui/sections/scriptExecutors.js` |
 | Add new Capability | `assets/capabilities/xxx.js` + one line in manifest |
 | User import extension | Tools → User Extensions → select `.js` file |
-| Modify interceptor behavior | `index.js` → `groupDirector_Interceptor` |
+| Modify interceptor event wiring | `index.js` → `groupDirector_Interceptor` / wrapper event listeners |
+| Modify takeover state rules | Prefer `round-state.js` / `takeover-scheduler.js` / `round-finalization.js`, composed by `round-orchestrator.js` |
+| Add a static checker | Create `tools/gd-test/checks/*.check.mjs` plus its unit test; no CLI/runner edits |
+| Add a behavior test | Place it under `tests/{unit,regression,integration,contract}` by business ownership; follow `tests/README.md`; no CLI/runner edits |
+
+### 19.1 GD Test Lab Module Boundaries
+
+- `core/project-index.mjs` only builds facts such as files, sources, JSON, the import graph, and reachability; it produces no rule verdicts.
+- `checks/*.check.mjs` owns one rule domain per file, is auto-discovered, and never calls another checker.
+- `core/check-runner.mjs` only validates contracts, orders deterministically, provides hard Worker isolation, and aggregates results; checker loading and execution stay off the main thread, and timeouts await `worker.terminate()` before advancing.
+- `core/test-runner.mjs` only invokes Node `node:test`; behavior tests remain auto-discovered from `tests/**/*.test.js` / `tests/**/*.test.mjs`.
+- `reporters/*` only consume structured results; the CLI only wires components and sets the exit code.
+- The complete Checker v1 standard lives in `tools/gd-test/checks/README.md`.
+- The Behavior Test v1 standard for suite ownership, naming, concurrent isolation, regression contracts, and size thresholds lives in `tests/README.md`.
 
 ---
 
@@ -1031,6 +1179,11 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | `cp` doesn't overwrite existing files | In some environments `cp` silently skips same-content files | `rm -f` then `cp` |
 | JSZip `import()` fails | Non-module JS files can't be loaded via `import()` | Script tag injection fallback |
 | Config profile dropdowns out of sync | Dashboard and card share the same ID; two codebases overwrite each other | Separate IDs, `refreshPresetSelector()` updates both |
+| A factory captures the `characters` array | SillyTavern may replace the entire array, leaving the closure on a stale reference | Inject `getCharacters()` and resolve the live value at use time |
+| An editor reuses a display summary | Tags, motivation, and HTML enter the stored source value | Keep the editor value separate from the display formatter |
+| Import validation checks only the array container | Malformed values such as `entries: [null]` throw during later field access | Validate both the container and every element at the parse boundary |
+| Only the chat-array reference is compared | SillyTavern appends or edits messages in place, so the reference stays stable while prompt input changes | Snapshot both the array reference and serialized contents |
+| Ordinary stale rollback runs after remote success | The POST already created a character card, so a later local stale error misreports real success as failure | Validate before the side effect, reconcile by stable ID, and explicitly report partial success |
 
 ---
 
@@ -1048,11 +1201,16 @@ Group World allows users to import and write custom code (User Providers, User C
 |------|------|------|
 | User Provider/Capability import | Static scan `DANGEROUS_PATTERNS` | Detects `eval`, `Function`, `fetch`, `XMLHttpRequest`, `WebSocket`, `import(`, and other dangerous APIs; displays red security warning on match |
 | User Provider/Capability import | GUI security warning banner | Displays detected dangerous APIs prominently above the file list during import |
+| User Provider/Capability lifecycle | Ownership isolation | Imported entries are owned by file name; ID replacement across built-ins or other imports is rejected, and delete/failure rollback can remove only registrations owned by that entry |
+| User Provider/Capability lifecycle | Async transactions and restore reconciliation | Async `register()` and settings persistence are awaited and compensated on failure. Startup/hot reload refreshes actual IDs and removes registrations omitted from current settings |
 | Script Executor import | GUI security warning banner | Similarly displays detected dangerous APIs |
 | Config profile import | Confirmation popup | Importing config profiles also imports userProviders/userCapabilities; ST native confirmation popup reminds users to check when clicking import |
 | Config profile export | API Key stripping | `apiKey` in `agentConfigs` is automatically cleared on export |
 | Config profile import | API Key stripping | `agentConfigs` is discarded on import to prevent endpoint hijacking |
-| Script Executor | Execution timeout | Each script has a 10-second timeout; skipped on timeout, continues execution |
+| Custom Agent import | Field allowlist and ID normalization | Ignores external IDs, bounds numeric fields, imports disabled, and avoids interpolating IDs into jQuery selectors |
+| Memory import | Nested structure validation | Validates character objects, names, the `entries` array, and every entry; malformed data returns a structured error |
+| Execution Trace | Output escaping | Escapes stage summaries and object keys before inserting them into the DOM |
+| Script Executor | Execution timeout | Decision scripts time out after 10 seconds; message/round scripts after 5 seconds. Execution continues, but the script's own asynchronous side effects are not cancelled. |
 | Script Executor | Exception isolation | Individual script exceptions don't affect other scripts or the Director flow |
 
 ### 22.3 Destructive Operation Confirmations

@@ -40,6 +40,7 @@ export function createProfileLibrarySystem({
     let _idCounter = 0;
     let autoLoadBusy = false;
     let lastAutoLoadKey = '';
+    let mutationQueue = Promise.resolve();
 
     function genId() {
         return `plib_${Date.now()}_${++_idCounter}`;
@@ -50,7 +51,7 @@ export function createProfileLibrarySystem({
         return settings.profileLibraries;
     }
 
-    function getAutoLoadSettings() {
+    function ensureAutoLoadSettings() {
         if (!settings.profileLibraryAutoLoad || typeof settings.profileLibraryAutoLoad !== 'object') {
             settings.profileLibraryAutoLoad = {};
         }
@@ -72,9 +73,19 @@ export function createProfileLibrarySystem({
         return settings.profileLibraryAutoLoad;
     }
 
-    function saveAll() {
+    function getAutoLoadSettings() {
+        return clone(ensureAutoLoadSettings());
+    }
+
+    async function saveAll() {
         extension_settings[EXT_KEY] = settings;
-        saveSettings();
+        await saveSettings();
+    }
+
+    function enqueueMutation(work) {
+        const task = mutationQueue.then(work, work);
+        mutationQueue = task.catch(() => {});
+        return task;
     }
 
     function readyProfileEntries() {
@@ -120,7 +131,7 @@ export function createProfileLibrarySystem({
         };
     }
 
-    function saveCurrentAsLibrary(name, description = '') {
+    async function saveCurrentAsLibrary(name, description = '') {
         const title = String(name || '').trim();
         if (!title) throw new Error('Library name is required');
         const exportData = buildExportJson(title, description);
@@ -136,25 +147,69 @@ export function createProfileLibrarySystem({
             profileCount: exportData.profiles.length,
             exportData,
         };
-        getLibraries().push(entry);
-        saveAll();
-        log(`[GroupDirector] Profile library saved: "${title}" (${entry.profileCount})`);
-        return entry;
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            list.push(entry);
+            try { await saveAll(); }
+            catch (error) {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+                throw error;
+            }
+            log(`[GroupDirector] Profile library saved: "${title}" (${entry.profileCount})`);
+            return entry;
+        });
     }
 
-    function deleteLibrary(id) {
-        const list = getLibraries();
-        const idx = list.findIndex(x => x.id === id);
-        if (idx < 0) return false;
-        list.splice(idx, 1);
-        const auto = getAutoLoadSettings();
-        if (auto.fixedId === id) {
-            auto.fixedId = '';
-            auto.mode = 'best';
-            auto.enabled = false;
-        }
-        saveAll();
-        return true;
+    async function deleteLibrary(id) {
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            const idx = list.findIndex(x => x.id === id);
+            if (idx < 0) return false;
+            const before = list[idx - 1];
+            const after = list[idx + 1];
+            const [removed] = list.splice(idx, 1);
+            const auto = ensureAutoLoadSettings();
+            const autoBefore = {};
+            const autoApplied = {};
+            if (auto.fixedId === id) {
+                Object.assign(autoBefore, { fixedId: auto.fixedId, mode: auto.mode, enabled: auto.enabled });
+                Object.assign(autoApplied, { fixedId: '', mode: 'best', enabled: false });
+                Object.assign(auto, autoApplied);
+            }
+            try { await saveAll(); }
+            catch (error) {
+                if (!list.includes(removed)) {
+                    const afterIndex = after ? list.indexOf(after) : -1;
+                    const beforeIndex = before ? list.indexOf(before) : -1;
+                    const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(idx, list.length);
+                    list.splice(restoreIndex, 0, removed);
+                }
+                for (const [key, value] of Object.entries(autoApplied)) {
+                    if (Object.is(auto[key], value)) auto[key] = autoBefore[key];
+                }
+                throw error;
+            }
+            return true;
+        });
+    }
+
+    async function updateAutoLoadSettings(patch = {}) {
+        return enqueueMutation(async () => {
+            const auto = ensureAutoLoadSettings();
+            const keys = Object.keys(patch).filter(key => Object.hasOwn(auto, key));
+            const previous = Object.fromEntries(keys.map(key => [key, auto[key]]));
+            const applied = Object.fromEntries(keys.map(key => [key, patch[key]]));
+            Object.assign(auto, applied);
+            try { await saveAll(); }
+            catch (error) {
+                for (const key of keys) {
+                    if (Object.is(auto[key], applied[key])) auto[key] = previous[key];
+                }
+                throw error;
+            }
+            return auto;
+        });
     }
 
     function getLibrary(id) {
@@ -257,7 +312,7 @@ export function createProfileLibrarySystem({
     async function applyLibrary(id, options = {}) {
         const entry = getLibrary(id);
         if (!entry) throw new Error('Profile library not found');
-        const auto = getAutoLoadSettings();
+        const auto = ensureAutoLoadSettings();
         const opts = {
             matchHash: auto.matchHash,
             matchAvatarName: auto.matchAvatarName,
@@ -277,7 +332,6 @@ export function createProfileLibrarySystem({
         const selected = data.profiles.map(p => p.avatar);
         const result = await applyImport(parsed.data, selected, { importTemplate: !!opts.importTemplate });
         refreshProfileManagementUI?.();
-        await saveChatConditional?.();
         return { ...result, preview };
     }
 
@@ -285,15 +339,22 @@ export function createProfileLibrarySystem({
         const entry = getLibrary(id);
         if (!entry) throw new Error('Profile library not found');
         const data = normalizeLibraryEntry(entry);
+        if (!data) throw new Error('Invalid profile library data');
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `profiles-${escFileName(entry.name)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        let a;
+        let appended = false;
+        try {
+            a = document.createElement('a');
+            a.href = url;
+            a.download = `profiles-${escFileName(entry.name)}.json`;
+            document.body.appendChild(a);
+            appended = true;
+            a.click();
+        } finally {
+            try { if (appended) document.body.removeChild(a); }
+            finally { URL.revokeObjectURL(url); }
+        }
         return data;
     }
 
@@ -313,13 +374,21 @@ export function createProfileLibrarySystem({
             profileCount: Array.isArray(data.profiles) ? data.profiles.length : 0,
             exportData: data,
         };
-        getLibraries().push(entry);
-        saveAll();
-        return entry;
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            list.push(entry);
+            try { await saveAll(); }
+            catch (error) {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+                throw error;
+            }
+            return entry;
+        });
     }
 
     function findBestLibrary(options = {}) {
-        const auto = getAutoLoadSettings();
+        const auto = ensureAutoLoadSettings();
         const members = Array.isArray(options.members) ? options.members : currentMembers();
         const opts = {
             matchHash: auto.matchHash,
@@ -344,7 +413,7 @@ export function createProfileLibrarySystem({
     }
 
     async function autoLoadForCurrentGroup(reason = 'auto') {
-        const auto = getAutoLoadSettings();
+        const auto = ensureAutoLoadSettings();
         if (!auto.enabled || autoLoadBusy) return { applied: 0, reason: 'disabled' };
         const group = getCurrentGroup?.();
         if (!group) return { applied: 0, reason: 'no-group' };
@@ -376,6 +445,7 @@ export function createProfileLibrarySystem({
     return {
         getLibraries,
         getAutoLoadSettings,
+        updateAutoLoadSettings,
         saveCurrentAsLibrary,
         deleteLibrary,
         getLibrary,

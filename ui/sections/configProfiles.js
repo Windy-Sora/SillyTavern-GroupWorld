@@ -77,9 +77,11 @@ registerSection('configProfiles', function (ctx) {
                 ? `应用配置档「${profileName}」？当前设置将被覆盖。`
                 : `Apply config profile "${profileName}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
+            let result;
+            let mergeMode = 'keep';
+            try {
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
-            let mergeMode = 'keep';
             if (incoming && Array.isArray(incoming) && incoming.length > 0) {
                 const existing = (settings.customPrompts || []);
                 const existingNames = new Set(existing.map(e => e.name));
@@ -96,12 +98,20 @@ registerSection('configProfiles', function (ctx) {
                 }
             }
 
-            const result = sys.applyProfile(id, mergeMode);
+            result = await sys.applyProfile(id, mergeMode);
+            } catch (e) {
+                toastr.error((isZh() ? '应用失败: ' : 'Apply failed: ') + e.message);
+                return;
+            }
             try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[configProfiles] reload after apply failed:', e); }
-            window.__gdRefreshDashboard?.();
-            window.__gdRefreshProfileLibrary?.();
-            window.__gdRefreshStoryBlueprint?.();
-            window.__gdRefreshSummaryStatus?.();
+            for (const refresh of [
+                () => window.__gdRefreshDashboard?.(),
+                () => window.__gdRefreshProfileLibrary?.(),
+                () => window.__gdRefreshStoryBlueprint?.(),
+                () => window.__gdRefreshSummaryStatus?.(),
+            ]) {
+                try { refresh(); } catch (e) { console.error('[configProfiles] refresh after apply failed:', e); }
+            }
             let msg = isZh()
                 ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
                 : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;
@@ -135,7 +145,12 @@ registerSection('configProfiles', function (ctx) {
             if (!profile) return;
             const profileName = escHtml(profile.name);
             if (!await callGenericPopup(isZh() ? `删除配置档「${profileName}」？` : `Delete config profile "${profileName}"?`, POPUP_TYPE.CONFIRM)) return;
-            sys.deleteProfile(id);
+            try {
+                sys.deleteProfile(id);
+            } catch (e) {
+                toastr.error((isZh() ? '删除失败: ' : 'Delete failed: ') + e.message);
+                return;
+            }
             renderList();
             populatePresetDropdown();
             window.__gdRefreshDashboard?.();
@@ -157,7 +172,12 @@ registerSection('configProfiles', function (ctx) {
             toastr.warning(isZh() ? '请至少选择一个抽屉' : 'Select at least one drawer');
             return;
         }
-        sys.saveCurrentAsProfile(name, desc, drawers);
+        try {
+            sys.saveCurrentAsProfile(name, desc, drawers);
+        } catch (e) {
+            toastr.error((isZh() ? '保存失败: ' : 'Save failed: ') + e.message);
+            return;
+        }
         $c('cfg-save-name').val('');
         $c('cfg-save-desc').val('');
         renderList();

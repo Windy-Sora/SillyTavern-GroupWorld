@@ -41,6 +41,123 @@ function clone(value) {
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
 }
 
+function sameJsonValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function findMatchingArrayValues(left, right) {
+    const leftKeys = left.map(value => JSON.stringify(value));
+    const rightKeys = right.map(value => JSON.stringify(value));
+    const table = Array.from({ length: left.length + 1 }, () => new Uint32Array(right.length + 1));
+    for (let i = left.length - 1; i >= 0; i--) {
+        for (let j = right.length - 1; j >= 0; j--) {
+            table[i][j] = leftKeys[i] === rightKeys[j]
+                ? table[i + 1][j + 1] + 1
+                : Math.max(table[i + 1][j], table[i][j + 1]);
+        }
+    }
+    const matches = [];
+    for (let i = 0, j = 0; i < left.length && j < right.length;) {
+        if (leftKeys[i] === rightKeys[j]) {
+            matches.push([i++, j++]);
+        } else if (table[i + 1][j] >= table[i][j + 1]) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+    return matches;
+}
+
+function rollbackJsonArray(previous = [], applied = [], current = []) {
+    const appliedToPrevious = new Map(findMatchingArrayValues(previous, applied).map(([before, after]) => [after, before]));
+    const matches = [[-1, -1], ...findMatchingArrayValues(applied, current), [applied.length, current.length]];
+    const result = clone(previous);
+    for (let gap = matches.length - 2; gap >= 0; gap--) {
+        const [leftApplied, leftCurrent] = matches[gap];
+        const [rightApplied, rightCurrent] = matches[gap + 1];
+        const removedIndexes = [];
+        for (let index = leftApplied + 1; index < rightApplied; index++) {
+            if (appliedToPrevious.has(index)) removedIndexes.push(appliedToPrevious.get(index));
+        }
+        const inserted = current.slice(leftCurrent + 1, rightCurrent);
+        if (!removedIndexes.length && !inserted.length) continue;
+
+        let insertAt;
+        if (removedIndexes.length) {
+            insertAt = Math.min(...removedIndexes);
+            for (const index of removedIndexes.sort((a, b) => b - a)) result.splice(index, 1);
+        } else {
+            let anchor = leftApplied;
+            while (anchor >= 0 && !appliedToPrevious.has(anchor)) anchor--;
+            if (anchor >= 0) {
+                insertAt = appliedToPrevious.get(anchor) + 1;
+            } else {
+                anchor = rightApplied;
+                while (anchor < applied.length && !appliedToPrevious.has(anchor)) anchor++;
+                insertAt = anchor < applied.length ? appliedToPrevious.get(anchor) : result.length;
+            }
+        }
+        result.splice(insertAt, 0, ...clone(inserted));
+    }
+    return result;
+}
+
+function isJsonObject(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function rollbackJsonValue(previous, applied, current) {
+    if (sameJsonValue(current, applied)) return clone(previous);
+    if (sameJsonValue(previous, applied)) return clone(current);
+    if (Array.isArray(applied) && Array.isArray(current)) {
+        return rollbackJsonArray(Array.isArray(previous) ? previous : [], applied, current);
+    }
+    if (!isJsonObject(applied) || !isJsonObject(current)) return clone(current);
+
+    const result = {};
+    const keys = new Set([
+        ...Object.keys(isJsonObject(previous) ? previous : {}),
+        ...Object.keys(applied),
+        ...Object.keys(current),
+    ]);
+    for (const key of keys) {
+        const value = rollbackJsonValue(previous?.[key], applied[key], current[key]);
+        if (value !== undefined) result[key] = value;
+    }
+    return result;
+}
+
+function rollbackDefinitions(previous = [], applied = [], current = []) {
+    const previousById = new Map(previous.map(def => [def.id, def]));
+    const appliedById = new Map(applied.map(def => [def.id, def]));
+    const currentById = new Map(current.map(def => [def.id, def]));
+    const order = [...previousById.keys(), ...[...currentById.keys()].filter(id => !previousById.has(id))];
+    const result = [];
+    for (const id of order) {
+        const before = previousById.get(id);
+        const imported = appliedById.get(id);
+        const now = currentById.get(id);
+        if (before === undefined && imported !== undefined && !sameJsonValue(now, imported)) {
+            if (now !== undefined) result.push(clone(now));
+            continue;
+        }
+        const rolledBack = rollbackJsonValue(before, imported, now);
+        if (rolledBack !== undefined) result.push(rolledBack);
+    }
+    return result;
+}
+
+function rollbackLog(previous = [], applied = [], current = []) {
+    if (sameJsonValue(current, applied)) return clone(previous);
+    let overlap = Math.min(applied.length, current.length);
+    while (overlap > 0 && !sameJsonValue(applied.slice(-overlap), current.slice(0, overlap))) overlap--;
+    if (overlap > 0 || applied.length === 0) {
+        return [...clone(previous), ...clone(current.slice(overlap))].slice(-DEFAULT_LOG_LIMIT);
+    }
+    return clone(current);
+}
+
 function validateImportData(obj) {
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not a valid JSON object' };
     if (obj.type && obj.type !== 'group-director-variables') return { ok: false, error: 'Not a variables export file' };
@@ -186,6 +303,14 @@ function simpleHash(input) {
 }
 
 export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, saveChatConditional, getCharacters, getCurrentGroup, getChat, getLang, log = console.log }) {
+    const importContexts = new WeakMap();
+    function currentMetadata() { return getChatMetadata ? getChatMetadata() : chat_metadata; }
+    function assertImportContext(metadata, vars) {
+        if (currentMetadata() === metadata && metadata[EXT_KEY]?.variables === vars) return;
+        const error = new Error('Variable import became stale after the chat or store changed');
+        error.name = 'StaleExecutionError';
+        throw error;
+    }
     function store() { return ensureStore(getChatMetadata ? getChatMetadata() : chat_metadata, EXT_KEY); }
     function characters() { return getCharacters?.() || []; }
     function activeCharacters() {
@@ -491,12 +616,14 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         };
     }
 
-    function applyImportData(data, options = {}) {
+    async function applyImportData(data, options = {}) {
         const valid = validateImportData(data);
         if (!valid.ok) return valid;
         const incoming = valid.variables;
         const mode = options.mode || 'merge';
+        const metadata = currentMetadata();
         const vars = store();
+        const previous = clone(vars);
 
         if (mode === 'replace') {
             vars.defs = clone(incoming.defs || []);
@@ -519,8 +646,60 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                 while (vars.log.length > DEFAULT_LOG_LIMIT) vars.log.shift();
             }
         }
-        saveChatConditional?.();
-        return { ok: true, count: (incoming.defs || []).length };
+        const applied = clone(vars);
+        try {
+            await saveChatConditional?.();
+        }
+        catch (error) {
+            const rolledBack = {
+                defs: rollbackDefinitions(previous.defs, applied.defs, vars.defs),
+                values: rollbackJsonValue(previous.values, applied.values, vars.values),
+                log: rollbackLog(previous.log, applied.log, vars.log),
+            };
+            for (const key of Object.keys(vars)) delete vars[key];
+            Object.assign(vars, rolledBack);
+            throw error;
+        }
+        assertImportContext(metadata, vars);
+        const result = { ok: true, count: (incoming.defs || []).length };
+        if (options.returnTransaction) {
+            result.transaction = { previous, applied };
+            importContexts.set(result.transaction, { metadata, vars });
+        }
+        return result;
+    }
+
+    async function rollbackImportTransaction(transaction) {
+        const context = importContexts.get(transaction);
+        if (!transaction?.previous || !transaction?.applied || !context) {
+            throw new Error('Invalid variable import transaction');
+        }
+        const { metadata, vars } = context;
+        assertImportContext(metadata, vars);
+        const current = clone(vars);
+        const rolledBack = {
+            defs: rollbackDefinitions(transaction.previous.defs, transaction.applied.defs, vars.defs),
+            values: rollbackJsonValue(transaction.previous.values, transaction.applied.values, vars.values),
+            log: rollbackLog(transaction.previous.log, transaction.applied.log, vars.log),
+        };
+        for (const key of Object.keys(vars)) delete vars[key];
+        Object.assign(vars, rolledBack);
+        const appliedRollback = clone(vars);
+        try {
+            await saveChatConditional?.();
+        }
+        catch (error) {
+            const restored = {
+                defs: rollbackDefinitions(current.defs, appliedRollback.defs, vars.defs),
+                values: rollbackJsonValue(current.values, appliedRollback.values, vars.values),
+                log: rollbackLog(current.log, appliedRollback.log, vars.log),
+            };
+            for (const key of Object.keys(vars)) delete vars[key];
+            Object.assign(vars, restored);
+            throw error;
+        }
+        assertImportContext(metadata, vars);
+        return { ok: true };
     }
 
     function exportToFile(options = {}) {
@@ -544,7 +723,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         try { json = JSON.parse(text); } catch (e) {
             return { ok: false, error: `Invalid JSON: ${e.message}` };
         }
-        return applyImportData(json, options);
+        return await applyImportData(json, options);
     }
 
     function renderGlobalVars() {
@@ -614,6 +793,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         getExportData,
         buildExportFile,
         applyImportData,
+        rollbackImportTransaction,
         exportToFile,
         importFromFile,
         getSnapshot,

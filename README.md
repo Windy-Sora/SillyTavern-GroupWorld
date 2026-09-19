@@ -87,6 +87,7 @@ public/scripts/extensions/third-party/SillyTavern-GroupWorld
 项目为原生 ES Module 扩展，运行插件本身不需要构建步骤。自动化测试需要 Node.js 22 或更高版本：
 
 ```bash
+npm ci
 npm test
 ```
 

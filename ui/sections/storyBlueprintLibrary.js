@@ -81,7 +81,7 @@ registerSection('storyBlueprintLibrary', function (ctx) {
         if (!name || !String(name).trim()) return;
         try {
             const includeProgress = $('#gd-story-blueprint-library-include-progress').prop('checked') !== false;
-            const entry = storyBlueprintLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group?.name || '', { includeProgress });
+            const entry = await storyBlueprintLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group?.name || '', { includeProgress });
             refreshLinkedUi();
             toastr.success(L(`蓝图包“${entry.name}”已保存`, `Story Blueprint "${entry.name}" saved`));
         } catch (e) {
@@ -134,8 +134,12 @@ registerSection('storyBlueprintLibrary', function (ctx) {
         const libName = esc(lib.name);
         const ok = await callGenericPopup(L(`删除蓝图包“${libName}”？`, `Delete Story Blueprint "${libName}"?`), POPUP_TYPE.CONFIRM);
         if (!ok) return;
-        storyBlueprintLibrarySystem.deleteLibrary(id);
-        refreshLinkedUi();
+        try {
+            await storyBlueprintLibrarySystem.deleteLibrary(id);
+            refreshLinkedUi();
+        } catch (e) {
+            toastr.error((L('删除失败：', 'Delete failed: ')) + e.message);
+        }
     });
 
     window.__gdRefreshStoryBlueprintLibrary = renderList;

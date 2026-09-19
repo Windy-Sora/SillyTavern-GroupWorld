@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    snapshotValue,
+} from './execution-snapshot.js';
+
 /**
  * Character Memory System — per-character memory extraction and management.
  *
@@ -26,8 +32,8 @@ export function createMemorySystem({
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
-    function getStore() {
-        const cm = getChatMetadata();
+    function getStore(metadata = getChatMetadata()) {
+        const cm = metadata;
         if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
         if (!cm[EXT_KEY].charMemories) cm[EXT_KEY].charMemories = {};
         return cm[EXT_KEY].charMemories;
@@ -37,12 +43,51 @@ export function createMemorySystem({
         await saveChatConditional();
     }
 
-    function getMemories(avatar) {
-        return getStore()[avatar] || [];
+    function getMemories(avatar, metadata = getChatMetadata()) {
+        return getStore(metadata)[avatar] || [];
     }
 
-    function setMemories(avatar, memories) {
-        getStore()[avatar] = memories;
+    function setMemories(avatar, memories, metadata = getChatMetadata()) {
+        getStore(metadata)[avatar] = memories;
+    }
+
+    function executionResource(metadata, chat, avatar) {
+        const character = getCharacters().find(candidate => candidate.avatar === avatar);
+        return {
+            memories: getMemories(avatar, metadata),
+            chat: chat.map(message => [message.name, message.mes, message.is_user, message.is_system, message.avatar]),
+            character: character
+                ? [character.name, character.description, character.personality, character.scenario]
+                : null,
+        };
+    }
+
+    async function replaceMemories(avatar, memories, metadata = getChatMetadata()) {
+        const store = getStore(metadata);
+        const hadPrevious = Object.prototype.hasOwnProperty.call(store, avatar);
+        const previous = store[avatar];
+        store[avatar] = memories;
+        const appliedState = snapshotValue(memories);
+        try { await saveStore(); }
+        catch (error) {
+            if (snapshotValue(store[avatar]) === appliedState) {
+                if (hadPrevious) store[avatar] = previous;
+                else delete store[avatar];
+            }
+            throw error;
+        }
+    }
+
+    async function removeMemories(avatar, metadata = getChatMetadata()) {
+        const store = getStore(metadata);
+        if (!Object.prototype.hasOwnProperty.call(store, avatar)) return;
+        const previous = store[avatar];
+        delete store[avatar];
+        try { await saveStore(); }
+        catch (error) {
+            if (!Object.prototype.hasOwnProperty.call(store, avatar)) store[avatar] = previous;
+            throw error;
+        }
     }
 
     // ─── CRUD ──────────────────────────────────────────────────────────
@@ -57,7 +102,12 @@ export function createMemorySystem({
         const char = getCharacters().find(c => c.avatar === avatar);
         if (!char) throw new Error(`Character not found: ${avatar}`);
 
-        const existing = getMemories(avatar);
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => executionResource(metadata, chat, avatar),
+        });
+        const existing = structuredClone(getMemories(avatar, executionSnapshot.metadata));
         const agentConfig = settings.agentConfigs?.['memory'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
         const caller = createCaller(
@@ -85,13 +135,19 @@ export function createMemorySystem({
             throw error;
         }
 
+        assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => executionResource(metadata, chat, avatar),
+            message: 'Memory generation became stale',
+        });
+
         // Re-read current memories to avoid overwriting concurrent changes
-        const current = getMemories(avatar);
-        current.push(...result);
+        const current = getMemories(avatar, executionSnapshot.metadata);
+        const next = [...current, ...result];
         const max = settings.memoryMaxEntries ?? 200;
-        while (current.length > max) current.shift();
-        setMemories(avatar, current);
-        await saveStore();
+        while (next.length > max) next.shift();
+        await replaceMemories(avatar, next, executionSnapshot.metadata);
 
         return result;
     }
@@ -122,38 +178,50 @@ export function createMemorySystem({
     async function updateEntry(avatar, index, updates) {
         const memories = getMemories(avatar);
         if (index < 0 || index >= memories.length) throw new Error('Invalid index');
-        Object.assign(memories[index], updates);
-        await saveStore();
+        const next = structuredClone(memories);
+        Object.assign(next[index], updates);
+        await replaceMemories(avatar, next);
     }
 
     /** Delete a single memory entry. */
     async function deleteEntry(avatar, index) {
         const memories = getMemories(avatar);
         if (index < 0 || index >= memories.length) throw new Error('Invalid index');
-        memories.splice(index, 1);
-        await saveStore();
+        const next = [...memories];
+        next.splice(index, 1);
+        await replaceMemories(avatar, next);
     }
 
     /** Delete ALL memories for a character. */
     async function deleteCharacterMemories(avatar) {
-        const store = getStore();
-        delete store[avatar];
-        await saveStore();
+        await removeMemories(avatar);
     }
 
     /** Revert last N memories for a character. */
     async function revertLast(avatar, count = 1) {
         const memories = getMemories(avatar);
-        const removed = memories.splice(-count, count);
-        await saveStore();
+        const next = [...memories];
+        const removed = next.splice(-count, count);
+        await replaceMemories(avatar, next);
         return removed;
     }
 
     /** Reset all memories for all characters. */
     async function resetAll() {
         const cm = getChatMetadata();
-        if (cm[EXT_KEY]) cm[EXT_KEY].charMemories = {};
-        await saveStore();
+        const meta = cm[EXT_KEY];
+        if (!meta) {
+            await saveStore();
+            return;
+        }
+        const previous = meta.charMemories;
+        const applied = {};
+        meta.charMemories = applied;
+        try { await saveStore(); }
+        catch (error) {
+            if (meta.charMemories === applied) meta.charMemories = previous;
+            throw error;
+        }
     }
 
     let _pruning = false;
@@ -166,13 +234,26 @@ export function createMemorySystem({
             const max = settings.memoryMaxEntries ?? 200;
             const store = getStore();
             let changed = false;
+            const changes = [];
             for (const [avatar, memories] of Object.entries(store)) {
                 if (memories.length > max) {
+                    const previous = structuredClone(memories);
                     while (memories.length > max) memories.shift();
+                    changes.push({ avatar, previous, appliedState: snapshotValue(memories) });
                     changed = true;
                 }
             }
-            if (changed) await saveStore();
+            if (changed) {
+                try { await saveStore(); }
+                catch (error) {
+                    for (const change of changes) {
+                        if (snapshotValue(store[change.avatar]) === change.appliedState) {
+                            store[change.avatar] = change.previous;
+                        }
+                    }
+                    throw error;
+                }
+            }
         } finally {
             _pruning = false;
         }
@@ -192,7 +273,12 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
     /** Compress old memories into an LLM-generated summary, keeping recent ones. */
     async function compressOldMemories(avatar, keepRecent = 5) {
         if (keepRecent <= 0) return null; // slice(0, -0) === slice(0, 0) === []
-        const memories = getMemories(avatar);
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => executionResource(metadata, chat, avatar),
+        });
+        const memories = structuredClone(getMemories(avatar, executionSnapshot.metadata));
         if (memories.length <= keepRecent) return null;
 
         const char = getCharacters().find(c => c.avatar === avatar);
@@ -240,8 +326,13 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         }];
 
         const newMemories = [...compressed, ...recentOnes];
-        setMemories(avatar, newMemories);
-        await saveStore();
+        assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => executionResource(metadata, chat, avatar),
+            message: 'Memory compression became stale',
+        });
+        await replaceMemories(avatar, newMemories, executionSnapshot.metadata);
 
         return { removed: oldOnes.length, kept: recentOnes.length, compressed: 1 };
     }
@@ -303,7 +394,7 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         getStats, detectOrphans, listMemories, totalCount,
         getMemories, pruneAfter,
         // Internal helpers for auto-migration
-        _setMemories: async (avatar, mems) => { setMemories(avatar, mems); await saveStore(); },
-        _deleteKey: async (avatar) => { delete getStore()[avatar]; await saveStore(); },
+        _setMemories: (avatar, mems) => replaceMemories(avatar, mems),
+        _deleteKey: avatar => removeMemories(avatar),
     };
 }

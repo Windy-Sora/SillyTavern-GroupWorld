@@ -65,6 +65,48 @@ function classifyImportNpc(name, existingNpcs) {
     return exists ? 'overwrite' : 'new';
 }
 
+function sameValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function rollbackNpcEntries(metadata, extKey, changes) {
+    const npcs = metadata[extKey]?.npcs;
+    if (!Array.isArray(npcs)) return changes.length > 0;
+    let conflict = false;
+    for (const { previous, applied } of [...changes].reverse()) {
+        const index = npcs.findIndex(npc => npc?.name?.toLowerCase() === applied.name.toLowerCase());
+        if (index < 0) {
+            // A concurrent delete or rename owns the current state.
+            conflict = true;
+            continue;
+        }
+        const current = npcs[index];
+        if (!previous) {
+            if (sameValue(current, applied)) npcs.splice(index, 1);
+            else conflict = true; // Preserve a concurrent edit to a newly imported NPC.
+            continue;
+        }
+        const restored = { ...current };
+        for (const key of new Set([...Object.keys(previous), ...Object.keys(applied), ...Object.keys(current)])) {
+            if (!sameValue(current[key], applied[key])) {
+                if (!sameValue(previous[key], applied[key])) conflict = true;
+                continue;
+            }
+            if (Object.hasOwn(previous, key)) restored[key] = structuredClone(previous[key]);
+            else delete restored[key];
+        }
+        npcs[index] = restored;
+    }
+    return conflict;
+}
+
+function importFailure(error, details = []) {
+    if (!details.length) return error;
+    const failure = new Error(`${error.message}; ${details.join('; ')}`, { cause: error });
+    failure.rollbackIncomplete = true;
+    return failure;
+}
+
 export function createNpcExportSystem(deps) {
     const {
         settings, saveSettings, getCurrentGroup, getChatMetadata,
@@ -80,15 +122,14 @@ export function createNpcExportSystem(deps) {
         return deps.defaultNpcPrompt || '';
     }
 
-    function getNpcs() {
-        const cm = getChatMetadata();
+    function getNpcs(cm = getChatMetadata()) {
         if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
         if (!cm[EXT_KEY].npcs) cm[EXT_KEY].npcs = [];
         return cm[EXT_KEY].npcs;
     }
 
-    async function saveNpcs() {
-        await saveChatConditional();
+    async function saveNpcs(metadata = getChatMetadata()) {
+        await saveChatConditional(metadata);
     }
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
@@ -145,9 +186,12 @@ export function createNpcExportSystem(deps) {
     async function applyImport(importData, selectedNames, options = {}) {
         const selectedSet = new Set(selectedNames.map(s => s.toLowerCase()));
         const importNpcs = importData.npcs.filter(n => selectedSet.has(n.name.toLowerCase()));
-        if (!importNpcs.length && !options.importTemplate) return { applied: 0, skipped: 0, templateImported: false };
+        const importPrompt = options.importTemplate && importData.template?.npcPrompt !== undefined;
+        if (!importNpcs.length && !importPrompt) return { applied: 0, skipped: 0, templateImported: false };
 
-        const existingNpcs = getNpcs();
+        const metadata = getChatMetadata();
+        const existingNpcs = importNpcs.length ? getNpcs(metadata) : null;
+        const changes = [];
         let applied = 0;
 
         for (const imp of importNpcs) {
@@ -163,6 +207,7 @@ export function createNpcExportSystem(deps) {
                 createdAt: Date.now(),
             };
 
+            const previous = existingIdx >= 0 ? structuredClone(existingNpcs[existingIdx]) : null;
             if (existingIdx >= 0) {
                 // Preserve import tracking, overwrite content
                 entry.imported = existingNpcs[existingIdx].imported;
@@ -171,21 +216,61 @@ export function createNpcExportSystem(deps) {
             } else {
                 existingNpcs.push(entry);
             }
+            changes.push({ previous, applied: structuredClone(entry) });
             applied++;
         }
 
-        let templateImported = false;
-        if (options.importTemplate && importData.template?.npcPrompt !== undefined) {
-            settings.npcPrompt = importData.template.npcPrompt;
-            saveSettings();
-            templateImported = true;
+        if (changes.length) {
+            try {
+                await saveNpcs(metadata);
+            } catch (error) {
+                if (error.persistenceUnknown) throw error;
+                const conflict = rollbackNpcEntries(metadata, EXT_KEY, changes);
+                throw importFailure(error, conflict ? ['concurrent NPC edits may retain imported data'] : []);
+            }
+            if (getChatMetadata() !== metadata) {
+                throw new Error('NPC import became stale after the chat changed; the original chat was saved');
+            }
+        }
+
+        if (importPrompt) {
+            const hadPrompt = Object.hasOwn(settings, 'npcPrompt');
+            const previousPrompt = settings.npcPrompt;
+            const appliedPrompt = importData.template.npcPrompt;
+            settings.npcPrompt = appliedPrompt;
+            try {
+                // The production callback queues a debounced settings save. Awaiting
+                // it handles observable failures, not eventual disk-write failures.
+                await saveSettings();
+            } catch (error) {
+                const details = [];
+                if (settings.npcPrompt === appliedPrompt) {
+                    if (hadPrompt) settings.npcPrompt = previousPrompt;
+                    else delete settings.npcPrompt;
+                    try { await saveSettings(); }
+                    catch (restoreError) { details.push(`prompt compensation failed: ${restoreError.message}`); }
+                } else {
+                    details.push('concurrent prompt edit preserved');
+                }
+                if (changes.length) {
+                    if (rollbackNpcEntries(metadata, EXT_KEY, changes)) {
+                        details.push('concurrent NPC edits may retain imported data');
+                    }
+                    if (getChatMetadata() === metadata) {
+                        try { await saveNpcs(metadata); }
+                        catch (restoreError) { details.push(`NPC compensation save failed: ${restoreError.message}`); }
+                    } else {
+                        details.push('chat changed before NPC compensation could be saved');
+                    }
+                }
+                throw importFailure(error, details);
+            }
             log('NPC prompt imported');
         }
 
-        await saveNpcs();
         const skipped = Math.max(0, selectedSet.size - applied); // selections not found in file
-        log(`Imported ${applied} NPC(s), ${skipped} skipped${templateImported ? ' + prompt' : ''}`);
-        return { applied, skipped, templateImported };
+        log(`Imported ${applied} NPC(s), ${skipped} skipped${importPrompt ? ' + prompt' : ''}`);
+        return { applied, skipped, templateImported: !!importPrompt };
     }
 
     async function loadPreset(name) {

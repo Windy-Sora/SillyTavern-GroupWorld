@@ -1,8 +1,9 @@
 import { registerSection } from './registry.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
+import { matchesDataId, toBoundedInt } from './custom-agent-helpers.js';
 
 registerSection('customAgents', function (ctx) {
-    const { settings, $c, saveSettings, saveChatConditional, toastr, customAgentSystem } = ctx;
+    const { settings, $c, toastr, customAgentSystem } = ctx;
     if (!customAgentSystem) return;
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
@@ -11,11 +12,7 @@ registerSection('customAgents', function (ctx) {
     const $list = $('#gd-ca-list');
 
     function getList() {
-        return settings.customAgents || [];
-    }
-
-    function save() {
-        saveSettings();
+        return customAgentSystem.getList();
     }
 
     function escHtml(s) {
@@ -25,6 +22,9 @@ registerSection('customAgents', function (ctx) {
     function escAttr(s) {
         if (s === null || s === undefined) return '';
         return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
+    }
+    function $byId(selector, id) {
+        return $list.find(selector).filter((_, element) => matchesDataId($(element).attr('data-id'), id));
     }
 
     function renderList() {
@@ -37,6 +37,8 @@ registerSection('customAgents', function (ctx) {
         let html = '';
         list.forEach(inst => {
             const data = customAgentSystem.getData(inst.id);
+            const order = toBoundedInt(inst.order, 0, 0, 999);
+            const autoInterval = toBoundedInt(inst.autoInterval, 10, 1, 200);
             const statusText = data
                 ? L(`已覆盖 ${data.rangeEnd} 条消息`, `Covered ${data.rangeEnd} msgs`)
                 : L('未执行', 'Not executed');
@@ -46,7 +48,7 @@ registerSection('customAgents', function (ctx) {
                     <div style="flex:1;min-width:0;">
                         <b>${escHtml(inst.name || '(unnamed)')}</b>
                         <span style="font-size:0.75em;color:#64b5f6;margin-left:4px;">{{${escHtml(inst.providerName || '?')}}}</span>
-                        <span style="font-size:0.7em;color:var(--grey70a);margin-left:4px;">${L('顺序', 'order')}:${inst.order ?? 0}</span>
+                        <span style="font-size:0.7em;color:var(--grey70a);margin-left:4px;">${L('顺序', 'order')}:${order}</span>
                         ${inst.enabled ? '' : `<span style="color:var(--grey70a);font-size:0.8em;"> (${L('关闭', 'off')})</span>`}
                         <div style="font-size:0.8em;color:var(--grey70a);">${statusText}</div>
                     </div>
@@ -62,7 +64,7 @@ registerSection('customAgents', function (ctx) {
                         <span style="font-size:0.85em;">{{</span>
                         <input type="text" class="gd-ca-edit-pn text_pole" data-id="${escAttr(inst.id)}" value="${escAttr(inst.providerName)}" style="width:100px;" placeholder="${L('providerName', 'providerName')}">
                         <span style="font-size:0.85em;">}}</span>
-                        <label style="font-size:0.8em;margin:0;">${L('顺序', 'Order')}:<input type="number" class="gd-ca-edit-order text_pole" data-id="${escAttr(inst.id)}" value="${inst.order ?? 0}" min="0" max="999" style="width:50px;margin-left:2px;"></label>
+                        <label style="font-size:0.8em;margin:0;">${L('顺序', 'Order')}:<input type="number" class="gd-ca-edit-order text_pole" data-id="${escAttr(inst.id)}" value="${order}" min="0" max="999" style="width:50px;margin-left:2px;"></label>
                     </div>
                     <label for="gd-ca-edit-prompt-${escAttr(inst.id)}" style="font-size:0.85em;display:block;margin-top:2px;">${L('Prompt', 'Prompt')}</label>
                     <textarea class="gd-ca-edit-prompt text_pole textarea_compact" data-id="${escAttr(inst.id)}" rows="4" style="width:100%;font-size:0.85em;">${escHtml(inst.prompt)}</textarea>
@@ -74,7 +76,7 @@ registerSection('customAgents', function (ctx) {
                             ${L('自动触发', 'Auto')}
                         </label>
                         <label style="font-size:0.82em;margin:0;">${L('每', 'Every')}
-                            <input type="number" class="gd-ca-edit-interval text_pole" data-id="${escAttr(inst.id)}" value="${inst.autoInterval || 10}" min="1" max="200" step="1" style="width:50px;margin-left:2px;">
+                            <input type="number" class="gd-ca-edit-interval text_pole" data-id="${escAttr(inst.id)}" value="${autoInterval}" min="1" max="200" step="1" style="width:50px;margin-left:2px;">
                             ${L('条新消息', 'msgs')}
                         </label>
                     </div>
@@ -99,7 +101,7 @@ registerSection('customAgents', function (ctx) {
         // Toggle edit panel on card header click — prompt if unsaved
         $list.find('.gd-ca-header').off('click').on('click', async function () {
             const id = $(this).data('id');
-            const $edit = $(`.gd-ca-edit[data-id="${id}"]`);
+            const $edit = $byId('.gd-ca-edit', id);
             if ($edit.is(':visible')) {
                 if (isEditDirty(id)) {
                     const ok = await callGenericPopup(
@@ -107,8 +109,11 @@ registerSection('customAgents', function (ctx) {
                         POPUP_TYPE.CONFIRM,
                     );
                     if (ok) {
-                        const saved = saveFromEditPanel(id, true);
-                        if (!saved) toastr.warning(L('保存失败，请检查配置', 'Save failed, check config'));
+                        const saved = await saveFromEditPanel(id, true);
+                        if (!saved) {
+                            toastr.warning(L('保存失败，请检查配置', 'Save failed, check config'));
+                            return;
+                        }
                     }
                 }
                 $edit.hide();
@@ -125,19 +130,14 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Toggle enable
-        $list.find('.gd-ca-toggle-btn').off('click').on('click', function () {
+        $list.find('.gd-ca-toggle-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            const list = getList();
-            const inst = list.find(a => a.id === id);
-            if (!inst) return;
-            inst.enabled = !inst.enabled;
-            // Auto-disable auto when disabling
-            if (!inst.enabled) {
-                inst.autoEnabled = false;
+            try {
+                await customAgentSystem.toggle(id);
+                renderList();
+            } catch (error) {
+                toastr.error(L(`切换失败: ${error.message}`, `Toggle failed: ${error.message}`));
             }
-            save();
-            customAgentSystem.refreshProviders();
-            renderList();
         });
 
         // ─── Unsaved changes tracking ─────────────────────
@@ -145,51 +145,54 @@ registerSection('customAgents', function (ctx) {
 
         function snapshotEditState(id) {
             _editSnapshots[id] = {
-                name: $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim(),
-                providerName: $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim(),
-                prompt: $(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '',
-                schema: $(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '',
-                order: $(`.gd-ca-edit-order[data-id="${id}"]`).val() || '0',
-                autoEnabled: $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked'),
-                autoInterval: $(`.gd-ca-edit-interval[data-id="${id}"]`).val() || '10',
+                name: $byId('.gd-ca-edit-name', id).val()?.trim(),
+                providerName: $byId('.gd-ca-edit-pn', id).val()?.trim(),
+                prompt: $byId('.gd-ca-edit-prompt', id).val() || '',
+                schema: $byId('.gd-ca-edit-schema', id).val() || '',
+                order: $byId('.gd-ca-edit-order', id).val() || '0',
+                autoEnabled: $byId('.gd-ca-edit-auto', id).prop('checked'),
+                autoInterval: $byId('.gd-ca-edit-interval', id).val() || '10',
             };
         }
 
         function isEditDirty(id) {
             const snap = _editSnapshots[id];
             if (!snap) return false;
-            return snap.name !== $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim()
-                || snap.providerName !== $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim()
-                || snap.prompt !== ($(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '')
-                || snap.schema !== ($(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '')
-                || snap.order !== ($(`.gd-ca-edit-order[data-id="${id}"]`).val() || '0')
-                || snap.autoEnabled !== $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked')
-                || snap.autoInterval !== ($(`.gd-ca-edit-interval[data-id="${id}"]`).val() || '10');
+            return snap.name !== $byId('.gd-ca-edit-name', id).val()?.trim()
+                || snap.providerName !== $byId('.gd-ca-edit-pn', id).val()?.trim()
+                || snap.prompt !== ($byId('.gd-ca-edit-prompt', id).val() || '')
+                || snap.schema !== ($byId('.gd-ca-edit-schema', id).val() || '')
+                || snap.order !== ($byId('.gd-ca-edit-order', id).val() || '0')
+                || snap.autoEnabled !== $byId('.gd-ca-edit-auto', id).prop('checked')
+                || snap.autoInterval !== ($byId('.gd-ca-edit-interval', id).val() || '10');
         }
 
-        function saveFromEditPanel(id, showToast = false) {
+        async function saveFromEditPanel(id, showToast = false) {
             const list = getList();
             const inst = list.find(a => a.id === id);
             if (!inst) return false;
 
-            const name = $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim();
-            const providerName = $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim();
+            const name = $byId('.gd-ca-edit-name', id).val()?.trim();
+            const providerName = $byId('.gd-ca-edit-pn', id).val()?.trim();
             if (!name || !providerName) return false;
 
             const otherWithSamePN = list.find(a => a.id !== id && a.providerName === providerName);
             if (otherWithSamePN) return false;
 
-            const wasPNChanged = inst.providerName !== providerName;
-            inst.name = name;
-            inst.providerName = providerName;
-            inst.prompt = $(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '';
-            inst.schema = $(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '';
-            inst.order = parseInt($(`.gd-ca-edit-order[data-id="${id}"]`).val()) || 0;
-            inst.autoInterval = parseInt($(`.gd-ca-edit-interval[data-id="${id}"]`).val()) || 10;
-            inst.autoEnabled = inst.enabled && $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked');
-
-            save();
-            if (wasPNChanged) customAgentSystem.refreshProviders();
+            try {
+                await customAgentSystem.update(id, {
+                    name,
+                    providerName,
+                    prompt: $byId('.gd-ca-edit-prompt', id).val() || '',
+                    schema: $byId('.gd-ca-edit-schema', id).val() || '',
+                    order: toBoundedInt($byId('.gd-ca-edit-order', id).val(), 0, 0, 999),
+                    autoInterval: toBoundedInt($byId('.gd-ca-edit-interval', id).val(), 10, 1, 200),
+                    autoEnabled: inst.enabled && $byId('.gd-ca-edit-auto', id).prop('checked'),
+                });
+            } catch (error) {
+                toastr.error(L(`保存失败: ${error.message}`, `Save failed: ${error.message}`));
+                return false;
+            }
             renderList();
             if (showToast) toastr.success(L(`"${name}" 已保存`, `"${name}" saved`));
             return true;
@@ -200,7 +203,7 @@ registerSection('customAgents', function (ctx) {
             e.stopPropagation();
             const id = $(this).data('id');
             const store = customAgentSystem.getData(id);
-            const $ta = $(`.gd-ca-edit-result[data-id="${id}"]`);
+            const $ta = $byId('.gd-ca-edit-result', id);
             if (store && $ta.length) {
                 $ta.val(typeof store.data === 'object' ? JSON.stringify(store.data, null, 2) : String(store.content || ''));
             }
@@ -210,31 +213,29 @@ registerSection('customAgents', function (ctx) {
         $list.find('.gd-ca-result-save').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
-            const store = customAgentSystem.getData(id);
-            if (!store) return;
-            const newContent = $(`.gd-ca-edit-result[data-id="${id}"]`).val() || '';
-            let newData;
-            try { newData = JSON.parse(newContent); } catch (_) { newData = newContent; }
-            store.content = newContent;
-            store.data = newData;
-            await saveChatConditional();
-            toastr.success(L('结果已保存', 'Result saved'));
+            const newContent = $byId('.gd-ca-edit-result', id).val() || '';
+            try {
+                if (!await customAgentSystem.updateResult(id, newContent)) return;
+                toastr.success(L('结果已保存', 'Result saved'));
+            } catch (error) {
+                toastr.error(L(`结果保存失败: ${error.message}`, `Result save failed: ${error.message}`));
+            }
         });
 
         // Save button
-        $list.find('.gd-ca-save-btn').off('click').on('click', function () {
+        $list.find('.gd-ca-save-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            const ok = saveFromEditPanel(id, true);
+            const ok = await saveFromEditPanel(id, true);
             if (!ok) {
                 toastr.warning(L('保存失败：名称或 providerName 无效或已被占用', 'Save failed: name or providerName invalid or taken'));
             }
-            $(`.gd-ca-edit[data-id="${id}"]`).show();
+            $byId('.gd-ca-edit', id).show();
         });
 
         // Cancel
         $list.find('.gd-ca-cancel-btn').off('click').on('click', function () {
             const id = $(this).data('id');
-            $(`.gd-ca-edit[data-id="${id}"]`).hide();
+            $byId('.gd-ca-edit', id).hide();
         });
 
         // Delete
@@ -251,13 +252,13 @@ registerSection('customAgents', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             )) return;
 
-            const idx = list.findIndex(a => a.id === id);
-            if (idx === -1) return;
-            list.splice(idx, 1);
-            save();
-            customAgentSystem.refreshProviders();
-            renderList();
-            toastr.success(L(`"${name}" 已删除`, `"${name}" deleted`));
+            try {
+                await customAgentSystem.remove(id);
+                renderList();
+                toastr.success(L(`"${name}" 已删除`, `"${name}" deleted`));
+            } catch (error) {
+                toastr.error(L(`删除失败: ${error.message}`, `Delete failed: ${error.message}`));
+            }
         });
 
         // Execute
@@ -294,11 +295,7 @@ registerSection('customAgents', function (ctx) {
     $c('ca-export-btn').on('click', function () {
         const list = getList();
         if (!list.length) { toastr.info(L('无自定义 Agent 可导出', 'No agents to export')); return; }
-        const data = list.map(a => ({
-            name: a.name, providerName: a.providerName, prompt: a.prompt, schema: a.schema,
-            enabled: a.enabled, autoEnabled: a.autoEnabled, autoInterval: a.autoInterval, order: a.order,
-        }));
-        const blob = new Blob([JSON.stringify({ version: 1, type: 'custom-agent-export', agents: data, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(customAgentSystem.createExportData(), null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'custom-agents.json'; a.click();
@@ -315,37 +312,14 @@ registerSection('customAgents', function (ctx) {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            if (data.type !== 'custom-agent-export') throw new Error('Invalid file type');
-            if (!Array.isArray(data.agents)) throw new Error('No agents array');
-
-            const list = getList();
-            let imported = 0;
-            for (const a of data.agents) {
-                if (!a.name || !a.providerName) continue;
-                const conflict = list.find(x => x.providerName === a.providerName);
-                if (conflict) {
-                    const providerName = escHtml(a.providerName);
-                    if (!await callGenericPopup(
-                        L(`providerName "${providerName}" 已存在，是否覆盖？`, `Provider "${providerName}" exists. Overwrite?`),
-                        POPUP_TYPE.CONFIRM,
-                    )) continue;
-                    const old = list.find(x => x.id === conflict.id);
-                    if (old) Object.assign(old, a);
-                    imported++;
-                    continue;
-                }
-                list.push({
-                    id: `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-                    ...a,
-                    enabled: false,
-                    autoEnabled: false,
-                });
-                imported++;
-            }
-            save();
-            customAgentSystem.refreshProviders();
+            const result = await customAgentSystem.importAgents(data, {
+                resolveConflict: async ({ incoming }) => await callGenericPopup(
+                    L(`providerName "${escHtml(incoming.providerName)}" 已存在，是否覆盖？`, `Provider "${escHtml(incoming.providerName)}" exists. Overwrite?`),
+                    POPUP_TYPE.CONFIRM,
+                ) ? 'overwrite' : 'skip',
+            });
             renderList();
-            toastr.success(L(`已导入 ${imported} 个自定义 Agent`, `Imported ${imported} agents`));
+            toastr.success(L(`已导入 ${result.imported} 个自定义 Agent`, `Imported ${result.imported} agents`));
         } catch (e) {
             toastr.error(L(`导入失败: ${e.message}`, `Import failed: ${e.message}`));
         } finally {
@@ -353,26 +327,21 @@ registerSection('customAgents', function (ctx) {
         }
     });
 
-    $c('ca-add-btn').on('click', function () {
+    $c('ca-add-btn').on('click', async function () {
         const list = getList();
-        const id = `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        const providerName = customAgentSystem.suggestProviderName();
         const name = L('新 Agent', 'New Agent');
-        list.push({
-            id,
-            name,
-            providerName: '',
-            prompt: '',
-            schema: '',
-            enabled: false,
-            autoEnabled: false,
-            autoInterval: 10,
-            order: list.length + 1,
-        });
-        save();
-        renderList();
-        // Auto-open edit for new entry
-        $(`.gd-ca-edit[data-id="${id}"]`).show();
-        toastr.info(L(`已创建 "${name}"，请编辑配置`, `"${name}" created, edit config`));
+        try {
+            const created = await customAgentSystem.add({
+                name, providerName, prompt: '', schema: '', enabled: false,
+                autoEnabled: false, autoInterval: 10, order: Math.min(list.length + 1, 999),
+            });
+            renderList();
+            $byId('.gd-ca-edit', created.id).show();
+            toastr.info(L(`已创建 "${name}"，请编辑配置`, `"${name}" created, edit config`));
+        } catch (error) {
+            toastr.error(L(`创建失败: ${error.message}`, `Create failed: ${error.message}`));
+        }
     });
 
     renderList();

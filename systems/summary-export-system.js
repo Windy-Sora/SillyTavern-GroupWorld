@@ -12,12 +12,22 @@
 
 const SUMMARY_EXPORT_VERSION = 1;
 
+function isPlainObject(value) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
 function validateExportFormat(obj) {
-    if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not a valid JSON object' };
+    if (!isPlainObject(obj)) return { ok: false, error: 'Not a valid JSON object' };
     if (obj.type !== 'summary-export') return { ok: false, error: 'Not a summary export file (missing "type":"summary-export")' };
-    if (!obj.version || obj.version < 1) return { ok: false, error: `Unsupported version: ${obj.version}` };
-    if (!obj.summary || typeof obj.summary !== 'object') return { ok: false, error: 'Missing or invalid "summary" object' };
-    if (!obj.summary.content && obj.summary.content !== '') return { ok: false, error: 'Missing "summary.content"' };
+    if (!Number.isInteger(obj.version) || obj.version < 1) return { ok: false, error: `Unsupported version: ${obj.version}` };
+    if (!isPlainObject(obj.summary)) return { ok: false, error: 'Missing or invalid "summary" object' };
+    if (typeof obj.summary.content !== 'string') return { ok: false, error: 'Missing or invalid "summary.content"' };
+    if (obj.source !== undefined && !isPlainObject(obj.source)) return { ok: false, error: 'Invalid "source" object' };
+    if (obj.source && ['groupName', 'groupNote'].some(key => obj.source[key] !== undefined && typeof obj.source[key] !== 'string')) return { ok: false, error: 'Invalid source name' };
+    if (obj.template !== undefined && !isPlainObject(obj.template)) return { ok: false, error: 'Invalid "template" object' };
+    if (obj.template?.summaryPrompt !== undefined && typeof obj.template.summaryPrompt !== 'string') return { ok: false, error: 'Invalid "template.summaryPrompt"' };
     return { ok: true };
 }
 
@@ -54,12 +64,30 @@ export function createSummaryExportSystem(deps) {
     } = deps;
 
     const chatSummarySystem = deps.chatSummarySystem;
+    const fieldRevisions = new WeakMap();
 
-    function getImportedSummaries() {
-        const cm = getChatMetadata();
-        if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
-        if (!cm[EXT_KEY].importedSummaries) cm[EXT_KEY].importedSummaries = [];
+    function getImportedSummaries(cm = getChatMetadata()) {
+        if (!isPlainObject(cm[EXT_KEY])) cm[EXT_KEY] = {};
+        if (!Array.isArray(cm[EXT_KEY].importedSummaries)) cm[EXT_KEY].importedSummaries = [];
         return cm[EXT_KEY].importedSummaries;
+    }
+
+    function bumpFieldRevision(entry, key) {
+        let fields = fieldRevisions.get(entry);
+        if (!fields) {
+            fields = new Map();
+            fieldRevisions.set(entry, fields);
+        }
+        const revision = (fields.get(key) || 0) + 1;
+        fields.set(key, revision);
+        return revision;
+    }
+
+    function assertCurrentChat(metadata) {
+        if (getChatMetadata() === metadata) return;
+        const error = new Error('Imported summary became stale after the chat changed');
+        error.name = 'StaleExecutionError';
+        throw error;
     }
 
     async function save() {
@@ -88,16 +116,22 @@ export function createSummaryExportSystem(deps) {
         });
         const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const dateStr = new Date().toISOString().slice(0, 10);
-        const sourceName = json.source.groupNote || json.source.groupName || 'summary';
-        const safeName = sourceName.replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
-        a.download = `summary-${safeName}-${dateStr}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        let a;
+        let appended = false;
+        try {
+            a = document.createElement('a');
+            a.href = url;
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const sourceName = json.source.groupNote || json.source.groupName || 'summary';
+            const safeName = sourceName.replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
+            a.download = `summary-${safeName}-${dateStr}.json`;
+            document.body.appendChild(a);
+            appended = true;
+            a.click();
+        } finally {
+            try { if (appended) document.body.removeChild(a); }
+            finally { URL.revokeObjectURL(url); }
+        }
         log(`Exported active summary`);
         return json;
     }
@@ -115,6 +149,9 @@ export function createSummaryExportSystem(deps) {
     }
 
     async function addImportedSummary(data, name) {
+        const validation = validateExportFormat(data);
+        if (!validation.ok) throw new TypeError(validation.error);
+        if (name !== undefined && typeof name !== 'string') throw new TypeError('Imported summary name must be a string');
         const entry = {
             id: generateId(),
             name: name || data.source?.groupNote || data.source?.groupName || `Import ${new Date().toLocaleString()}`,
@@ -123,26 +160,68 @@ export function createSummaryExportSystem(deps) {
             sourcePrompt: data.template?.summaryPrompt || '',
             createdAt: Date.now(),
         };
-        getImportedSummaries().push(entry);
-        await save();
+        const metadata = getChatMetadata();
+        const list = getImportedSummaries(metadata);
+        list.push(entry);
+        try { await save(); }
+        catch (error) {
+            const index = list.indexOf(entry);
+            if (index >= 0) list.splice(index, 1);
+            throw error;
+        }
+        assertCurrentChat(metadata);
         log(`Added imported summary: "${entry.name}"`);
         return entry;
     }
 
     async function updateImportedSummary(id, updates) {
-        const list = getImportedSummaries();
-        const entry = list.find(s => s.id === id);
+        if (!isPlainObject(updates)) throw new TypeError('Imported summary updates must be an object');
+        const metadata = getChatMetadata();
+        const list = getImportedSummaries(metadata);
+        const entry = list.find(s => s?.id === id);
         if (!entry) return;
-        Object.assign(entry, updates);
-        await save();
+        const allowed = {};
+        if (Object.hasOwn(updates, 'name')) allowed.name = String(updates.name || '').trim() || entry.name;
+        if (Object.hasOwn(updates, 'content')) {
+            if (typeof updates.content !== 'string') throw new TypeError('Imported summary content must be a string');
+            allowed.content = updates.content;
+        }
+        if (Object.hasOwn(updates, 'enabled')) allowed.enabled = !!updates.enabled;
+        const previous = new Map(Object.keys(allowed).map(key => [key, { value: entry[key], present: Object.hasOwn(entry, key) }]));
+        const revisions = new Map(Object.keys(allowed).map(key => [key, bumpFieldRevision(entry, key)]));
+        Object.assign(entry, allowed);
+        try { await save(); }
+        catch (error) {
+            for (const [key, before] of previous) {
+                if (fieldRevisions.get(entry)?.get(key) !== revisions.get(key) || !Object.is(entry[key], allowed[key])) continue;
+                if (before.present) entry[key] = before.value;
+                else delete entry[key];
+                bumpFieldRevision(entry, key);
+            }
+            throw error;
+        }
+        assertCurrentChat(metadata);
     }
 
     async function deleteImportedSummary(id) {
-        const list = getImportedSummaries();
-        const idx = list.findIndex(s => s.id === id);
+        const metadata = getChatMetadata();
+        const list = getImportedSummaries(metadata);
+        const idx = list.findIndex(s => s?.id === id);
         if (idx < 0) return;
-        list.splice(idx, 1);
-        await save();
+        const before = list[idx - 1];
+        const after = list[idx + 1];
+        const [removed] = list.splice(idx, 1);
+        try { await save(); }
+        catch (error) {
+            if (!list.includes(removed)) {
+                const afterIndex = after ? list.indexOf(after) : -1;
+                const beforeIndex = before ? list.indexOf(before) : -1;
+                const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(idx, list.length);
+                list.splice(restoreIndex, 0, removed);
+            }
+            throw error;
+        }
+        assertCurrentChat(metadata);
     }
 
     async function setEnabled(id, enabled) {
@@ -152,7 +231,7 @@ export function createSummaryExportSystem(deps) {
     /** Returns the rendered text of all enabled imported summaries, for the Provider. */
     function renderEnabledSummaries() {
         const list = getImportedSummaries();
-        const enabled = list.filter(s => s.enabled !== false && s.content);
+        const enabled = list.filter(s => s && typeof s === 'object' && s.enabled !== false && typeof s.content === 'string' && s.content);
         if (!enabled.length) return { content: '', data: { all: [], count: 0 } };
         const content = enabled.map(s =>
             `[${isZh() ? '导入摘要' : 'Imported Summary'}: ${s.name}]\n${s.content}`

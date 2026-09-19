@@ -15,11 +15,23 @@
 const capabilities = new Map();
 let capabilityRevision = 0;
 
+function hasSameOwner(current, replacement) {
+    return Boolean(
+        current?._gdOwner
+        && current._gdOwner === replacement?._gdOwner
+        && current._gdOwnerId === replacement?._gdOwnerId
+    );
+}
+
 export const CapabilityRegistry = {
     register(cap) {
         if (!cap || !cap.id) throw new Error('Capability must have an id');
         if (!cap.executor || typeof cap.executor !== 'function') {
             throw new Error(`Capability "${cap.id}" must have an executor function`);
+        }
+        const current = capabilities.get(cap.id);
+        if (current && (current._gdOwner || cap._gdOwner) && !hasSameOwner(current, cap)) {
+            throw new Error(`Capability "${cap.id}" is already registered`);
         }
         capabilities.set(cap.id, {
             id: cap.id,
@@ -38,13 +50,21 @@ export const CapabilityRegistry = {
             // Constraints: { maxPerMessage, requires, cooldown }
             constraints: Object.assign({ maxPerMessage: 1, cooldown: 0 }, cap.constraints),
             enabled: cap.enabled !== false,
+            _gdOwner: cap._gdOwner,
+            _gdOwnerId: cap._gdOwnerId,
             scope: Object.prototype.hasOwnProperty.call(CapabilityRegistry._scopeOverrides, cap.id)
                 ? CapabilityRegistry._scopeOverrides[cap.id]
                 : (cap.scope || 'both'),  // 'message' | 'round' | 'both' | 'off'
         });
     },
 
-    unregister(id) {
+    unregister(id, owner = null) {
+        const current = capabilities.get(id);
+        if (!current) return false;
+        if (owner && (
+            current._gdOwner !== owner.owner
+            || current._gdOwnerId !== owner.ownerId
+        )) return false;
         return capabilities.delete(id);
     },
 

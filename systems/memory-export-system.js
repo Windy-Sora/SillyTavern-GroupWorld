@@ -14,6 +14,71 @@ import { djb2Hash } from '../utils/string-utils.js';
 
 const MEMORY_EXPORT_VERSION = 1;
 
+function sameJsonValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function findMatchingEntries(left, right) {
+    const leftKeys = left.map(entry => JSON.stringify(entry));
+    const rightKeys = right.map(entry => JSON.stringify(entry));
+    const table = Array.from({ length: left.length + 1 }, () => new Uint16Array(right.length + 1));
+    for (let i = left.length - 1; i >= 0; i--) {
+        for (let j = right.length - 1; j >= 0; j--) {
+            table[i][j] = leftKeys[i] === rightKeys[j]
+                ? table[i + 1][j + 1] + 1
+                : Math.max(table[i + 1][j], table[i][j + 1]);
+        }
+    }
+    const matches = [];
+    for (let i = 0, j = 0; i < left.length && j < right.length;) {
+        if (leftKeys[i] === rightKeys[j]) {
+            matches.push([i++, j++]);
+        } else if (table[i + 1][j] >= table[i][j + 1]) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+    return matches;
+}
+
+function rollbackMemoryEntries(previous = [], applied = [], current = [], maxEntries = 200) {
+    if (sameJsonValue(current, applied)) return structuredClone(previous);
+    const appliedToPrevious = new Map(findMatchingEntries(previous, applied).map(([before, after]) => [after, before]));
+    const matches = [[-1, -1], ...findMatchingEntries(applied, current), [applied.length, current.length]];
+    const result = structuredClone(previous);
+    for (let gap = matches.length - 2; gap >= 0; gap--) {
+        const [leftApplied, leftCurrent] = matches[gap];
+        const [rightApplied, rightCurrent] = matches[gap + 1];
+        const removedIndexes = [];
+        for (let index = leftApplied + 1; index < rightApplied; index++) {
+            if (appliedToPrevious.has(index)) removedIndexes.push(appliedToPrevious.get(index));
+        }
+        const inserted = current.slice(leftCurrent + 1, rightCurrent);
+        if (!removedIndexes.length && !inserted.length) continue;
+
+        let insertAt;
+        if (removedIndexes.length) {
+            insertAt = Math.min(...removedIndexes);
+            for (const index of removedIndexes.sort((a, b) => b - a)) result.splice(index, 1);
+        } else {
+            let anchor = leftApplied;
+            while (anchor >= 0 && !appliedToPrevious.has(anchor)) anchor--;
+            if (anchor >= 0) {
+                insertAt = appliedToPrevious.get(anchor) + 1;
+            } else {
+                anchor = rightApplied;
+                while (anchor < applied.length && !appliedToPrevious.has(anchor)) anchor++;
+                insertAt = anchor < applied.length ? appliedToPrevious.get(anchor) : result.length;
+            }
+        }
+        result.splice(insertAt, 0, ...structuredClone(inserted));
+    }
+
+    while (result.length > maxEntries) result.shift();
+    return result;
+}
+
 // ── Validation ──────────────────────────────────────────────────────
 
 function validateExportFormat(obj) {
@@ -118,6 +183,8 @@ async function applyImport(importData, decisions, options, deps) {
     const maxEntries = settings.memoryMaxEntries ?? 200;
     let totalApplied = 0;
     let totalSkipped = 0;
+    const memoryStore = store();
+    const rollback = new Map();
 
     for (const [importedAvatar, decision] of Object.entries(decisions)) {
         if (!decision.enabled) { totalSkipped++; continue; }
@@ -141,7 +208,14 @@ async function applyImport(importData, decisions, options, deps) {
         }));
 
         const targetAvatar = decision.targetAvatar;
-        const existing = store()[targetAvatar] || [];
+        const existing = memoryStore[targetAvatar] || [];
+        if (!rollback.has(targetAvatar)) {
+            rollback.set(targetAvatar, {
+                existed: Object.prototype.hasOwnProperty.call(memoryStore, targetAvatar),
+                previous: structuredClone(memoryStore[targetAvatar]),
+                applied: null,
+            });
+        }
 
         let merged;
         let appliedHere = 0;
@@ -153,9 +227,13 @@ async function applyImport(importData, decisions, options, deps) {
             const existingEvents = new Set(
                 existing.map(e => (e.event || '').toLowerCase().trim())
             );
-            const newEntries = entries.filter(e =>
-                !existingEvents.has((e.event || '').toLowerCase().trim())
-            );
+            const newEntries = [];
+            for (const entry of entries) {
+                const eventKey = (entry.event || '').toLowerCase().trim();
+                if (existingEvents.has(eventKey)) continue;
+                existingEvents.add(eventKey);
+                newEntries.push(entry);
+            }
             merged = [...existing, ...newEntries];
             appliedHere = newEntries.length;
         }
@@ -165,11 +243,21 @@ async function applyImport(importData, decisions, options, deps) {
             merged.shift();
         }
 
-        store()[targetAvatar] = merged;
+        memoryStore[targetAvatar] = merged;
+        rollback.get(targetAvatar).applied = structuredClone(merged);
         totalApplied += appliedHere;
     }
 
-    await saveChatConditional();
+    try {
+        await saveChatConditional();
+    } catch (error) {
+        for (const [avatar, state] of rollback) {
+            const restored = rollbackMemoryEntries(state.previous || [], state.applied || [], memoryStore[avatar] || [], maxEntries);
+            if (state.existed || restored.length) memoryStore[avatar] = restored;
+            else delete memoryStore[avatar];
+        }
+        throw error;
+    }
 
     // Optionally import template
     let templateImported = false;
@@ -285,7 +373,19 @@ export function createMemoryExportSystem(deps) {
 
         const matchResults = {};
         for (const [avatar, data] of Object.entries(obj.memories)) {
-            if (!data || typeof data !== 'object') continue;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                return { ok: false, error: `Invalid memory entry for "${avatar}"` };
+            }
+            if (typeof data.name !== 'string' || !data.name.trim()) {
+                return { ok: false, error: `Missing or invalid name for "${avatar}"` };
+            }
+            if (!Array.isArray(data.entries)) {
+                return { ok: false, error: `Missing or invalid entries for "${avatar}"` };
+            }
+            const invalidEntryIndex = data.entries.findIndex(entry => !entry || typeof entry !== 'object' || Array.isArray(entry));
+            if (invalidEntryIndex !== -1) {
+                return { ok: false, error: `Invalid memory entry at index ${invalidEntryIndex} for "${avatar}"` };
+            }
             const match = findMatchingCharacter(avatar, data.name, members, chars);
             matchResults[avatar] = {
                 importedName: data.name,

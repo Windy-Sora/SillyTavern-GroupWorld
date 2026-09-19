@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      - name: Install test dependencies
+        run: npm ci
+
       - name: Run full test platform
         run: >-
           node tools/gd-test/cli.mjs full

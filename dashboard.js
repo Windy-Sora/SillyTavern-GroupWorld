@@ -455,7 +455,7 @@ registerSection('dashboard', function (ctx) {
             if (rawValue.startsWith(PROF_PREFIX)) {
                 // User profile — apply directly by ID
                 const id = rawValue.slice(PROF_PREFIX.length);
-                ctx.configProfileSystem?.applyProfile(id);
+                await ctx.configProfileSystem?.applyProfile(id);
                 const p = ctx.configProfileSystem?.getProfiles?.().find(p => p.id === id);
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${p?.name || id}」，请刷新页面以完全生效`
@@ -463,7 +463,7 @@ registerSection('dashboard', function (ctx) {
             } else {
                 // System preset — load then apply
                 const profile = await loadConfigPreset(rawValue);
-                ctx.configProfileSystem?.applyProfile(profile.id);
+                await ctx.configProfileSystem?.applyProfile(profile.id);
                 toastr?.success?.(lang === 'zh'
                     ? `已应用「${profile.name}」，请刷新页面以完全生效`
                     : `"${profile.name}" applied. Refresh page for full effect.`);

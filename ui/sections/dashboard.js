@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { formatProfileSummary, getProfileSummaryEditValue } from './profile-summary-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('dashboard', function (ctx) {
@@ -336,22 +337,29 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            profileLibrarySystem.deleteLibrary(id);
-            $('#gd-profile-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? '档案包已删除' : 'Profile library deleted');
-            window.__gdRefreshProfileLibrary?.();
-            refreshAll();
-            renderPanelProfiles();
+            try {
+                await profileLibrarySystem.deleteLibrary(id);
+                $('#gd-profile-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? '档案包已删除' : 'Profile library deleted');
+                window.__gdRefreshProfileLibrary?.();
+                refreshAll();
+                renderPanelProfiles();
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+            }
         });
-        $bar.find('#gd-dash-panel-profile-library-auto').on('change', function () {
+        $bar.find('#gd-dash-panel-profile-library-auto').on('change', async function () {
             const enabled = !!$(this).prop('checked');
             const next = profileLibrarySystem.getAutoLoadSettings();
-            next.enabled = enabled;
-            if (!next.mode) next.mode = 'best';
-            profileLibrarySystem.saveAll();
-            $('#gd-profile-library-auto-enabled').prop('checked', enabled);
-            window.__gdRefreshProfileLibrary?.();
-            refreshDashboardAndOpenPanel('profiles');
+            try {
+                await profileLibrarySystem.updateAutoLoadSettings({ enabled, mode: next.mode || 'best' });
+                $('#gd-profile-library-auto-enabled').prop('checked', enabled);
+                window.__gdRefreshProfileLibrary?.();
+                refreshDashboardAndOpenPanel('profiles');
+            } catch (e) {
+                $(this).prop('checked', !!profileLibrarySystem.getAutoLoadSettings().enabled);
+                toastr?.error?.((lang === 'zh' ? '保存失败: ' : 'Save failed: ') + e.message);
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('profile'));
         $list.append($bar);
@@ -459,11 +467,11 @@ registerSection('dashboard', function (ctx) {
             const state = p.state || 'unknown';
             const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
             const profile = p.profile || {};
-            const summarize = () => [esc(profile.summary), profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + esc([].concat(profile.tags).join(', ')), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + esc(profile.motivation)].filter(Boolean).join('<br>');
+            const summarize = () => formatProfileSummary(profile, lang, esc);
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
             makeEditable($detail, 'profile-summary',
-                () => summarize(),
+                () => getProfileSummaryEditValue(profile),
                 (v) => { profile.summary = v; },
                 () => saveChatConditional(),
                 () => summarize()
@@ -577,7 +585,15 @@ registerSection('dashboard', function (ctx) {
                 window.__gdRefreshNpcLibrary?.();
                 refreshDashboardAndOpenPanel('npcs');
             } catch (e) {
-                toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+                if (e.persistenceUnknown) {
+                    ctx.renderNpcList?.();
+                    refreshDashboardAndOpenPanel('npcs');
+                    toastr?.warning?.(lang === 'zh'
+                        ? 'NPC 应用保存状态未确认，更改暂留当前页面。请勿直接刷新或重复应用；恢复连接后先导出 NPC 备份再核对。'
+                        : 'NPC apply save status is unknown; changes remain on this page. Do not reload or reapply yet; export an NPC backup before checking after reconnecting.');
+                } else {
+                    toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+                }
             }
         });
         $bar.find('.gd-dash-panel-npc-library-save').on('click', () => $('#gd-npc-library-save').trigger('click'));
@@ -592,11 +608,17 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            npcLibrarySystem.deleteLibrary(id);
-            $('#gd-npc-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? 'NPC 包已删除' : 'NPC library deleted');
-            window.__gdRefreshNpcLibrary?.();
-            refreshDashboardAndOpenPanel('npcs');
+            try {
+                await npcLibrarySystem.deleteLibrary(id);
+                $('#gd-npc-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? 'NPC 包已删除' : 'NPC library deleted');
+                window.__gdRefreshNpcLibrary?.();
+                refreshDashboardAndOpenPanel('npcs');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+                window.__gdRefreshNpcLibrary?.();
+                refreshDashboardAndOpenPanel('npcs');
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('npc'));
         $list.append($bar);
@@ -752,11 +774,15 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            storyBlueprintLibrarySystem.deleteLibrary(id);
-            $('#gd-story-blueprint-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? '蓝图包已删除' : 'Story Blueprint library deleted');
-            window.__gdRefreshStoryBlueprintLibrary?.();
-            refreshDashboardAndOpenPanel('storyBlueprint');
+            try {
+                await storyBlueprintLibrarySystem.deleteLibrary(id);
+                $('#gd-story-blueprint-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? '蓝图包已删除' : 'Story Blueprint library deleted');
+                window.__gdRefreshStoryBlueprintLibrary?.();
+                refreshDashboardAndOpenPanel('storyBlueprint');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('storyBlueprint'));
         $list.append($bar);
@@ -946,7 +972,7 @@ registerSection('dashboard', function (ctx) {
             if (rawValue.startsWith(PROF_PREFIX)) {
                 // User profile — apply directly by ID
                 const id = rawValue.slice(PROF_PREFIX.length);
-                ctx.configProfileSystem?.applyProfile(id);
+                await ctx.configProfileSystem?.applyProfile(id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 window.__gdRefreshProfileLibrary?.();
                 window.__gdRefreshStoryBlueprint?.();
@@ -958,7 +984,7 @@ registerSection('dashboard', function (ctx) {
             } else {
                 // System preset — load then apply
                 const profile = await loadConfigPreset(rawValue);
-                ctx.configProfileSystem?.applyProfile(profile.id);
+                await ctx.configProfileSystem?.applyProfile(profile.id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 window.__gdRefreshProfileLibrary?.();
                 window.__gdRefreshStoryBlueprint?.();

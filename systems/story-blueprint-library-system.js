@@ -31,6 +31,7 @@ export function createStoryBlueprintLibrarySystem({
     log = console.log,
 }) {
     let _idCounter = 0;
+    let mutationQueue = Promise.resolve();
     const genId = () => `sblib_${Date.now()}_${++_idCounter}`;
 
     function getLibraries() {
@@ -38,9 +39,15 @@ export function createStoryBlueprintLibrarySystem({
         return settings.storyBlueprintLibraries;
     }
 
-    function saveAll() {
+    async function saveAll() {
         extension_settings[EXT_KEY] = settings;
-        saveSettings();
+        await saveSettings();
+    }
+
+    function enqueueMutation(work) {
+        const task = mutationQueue.then(work, work);
+        mutationQueue = task.catch(() => {});
+        return task;
     }
 
     function normalize(entryOrData) {
@@ -79,25 +86,46 @@ export function createStoryBlueprintLibrarySystem({
         };
     }
 
-    function saveCurrentAsLibrary(name, description = '', options = {}) {
+    async function saveCurrentAsLibrary(name, description = '', options = {}) {
         const entry = buildEntry(name, description, options.includeProgress !== false);
-        getLibraries().push(entry);
-        saveAll();
-        log(`[GroupDirector] Story Blueprint library saved: "${entry.name}"`);
-        return entry;
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            list.push(entry);
+            try { await saveAll(); }
+            catch (error) {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+                throw error;
+            }
+            log(`[GroupDirector] Story Blueprint library saved: "${entry.name}"`);
+            return entry;
+        });
     }
 
     function getLibrary(id) {
         return getLibraries().find(x => x.id === id) || null;
     }
 
-    function deleteLibrary(id) {
-        const list = getLibraries();
-        const idx = list.findIndex(x => x.id === id);
-        if (idx < 0) return false;
-        list.splice(idx, 1);
-        saveAll();
-        return true;
+    async function deleteLibrary(id) {
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            const idx = list.findIndex(x => x.id === id);
+            if (idx < 0) return false;
+            const before = list[idx - 1];
+            const after = list[idx + 1];
+            const [removed] = list.splice(idx, 1);
+            try { await saveAll(); }
+            catch (error) {
+                if (!list.includes(removed)) {
+                    const afterIndex = after ? list.indexOf(after) : -1;
+                    const beforeIndex = before ? list.indexOf(before) : -1;
+                    const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(idx, list.length);
+                    list.splice(restoreIndex, 0, removed);
+                }
+                throw error;
+            }
+            return true;
+        });
     }
 
     async function applyLibrary(id, options = {}) {
@@ -105,11 +133,10 @@ export function createStoryBlueprintLibrarySystem({
         if (!entry) throw new Error('Story Blueprint library not found');
         const data = normalize(entry);
         if (!data) throw new Error('Invalid Story Blueprint library data');
-        const result = storyBlueprintSystem.applyImportText(JSON.stringify(data), {
+        const result = await storyBlueprintSystem.applyImportTextAndSave(JSON.stringify(data), {
             includeProgress: options.includeProgress !== false,
         });
         if (!result.ok) throw new Error(result.error || 'Story Blueprint import failed');
-        await saveChatConditional?.();
         return result;
     }
 
@@ -117,15 +144,22 @@ export function createStoryBlueprintLibrarySystem({
         const entry = getLibrary(id);
         if (!entry) throw new Error('Story Blueprint library not found');
         const data = normalize(entry);
+        if (!data) throw new Error('Invalid Story Blueprint library data');
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `story-blueprint-${safeFileName(entry.name)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        let a;
+        let appended = false;
+        try {
+            a = document.createElement('a');
+            a.href = url;
+            a.download = `story-blueprint-${safeFileName(entry.name)}.json`;
+            document.body.appendChild(a);
+            appended = true;
+            a.click();
+        } finally {
+            try { if (appended) document.body.removeChild(a); }
+            finally { URL.revokeObjectURL(url); }
+        }
         return data;
     }
 
@@ -164,9 +198,17 @@ export function createStoryBlueprintLibrarySystem({
             includeProgress: Array.isArray(exportData.storyBlueprint?.doneSignals),
             exportData,
         };
-        getLibraries().push(entry);
-        saveAll();
-        return entry;
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            list.push(entry);
+            try { await saveAll(); }
+            catch (error) {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+                throw error;
+            }
+            return entry;
+        });
     }
 
     return {

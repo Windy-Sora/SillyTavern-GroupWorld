@@ -123,7 +123,7 @@ registerSection('profileLibrary', function (ctx) {
         );
         if (!name || !String(name).trim()) return;
         try {
-            const entry = profileLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group.name || '');
+            const entry = await profileLibrarySystem.saveCurrentAsLibrary(String(name).trim(), group.name || '');
             refreshLinkedUi();
             toastr.success(L(`档案包“${entry.name}”已保存`, `Profile library "${entry.name}" saved`));
         } catch (e) {
@@ -170,15 +170,16 @@ registerSection('profileLibrary', function (ctx) {
         applySelected($(this).data('id'));
     });
 
-    $('#gd-profile-library-list').off('click', '.gd-plib-auto').on('click', '.gd-plib-auto', function () {
+    $('#gd-profile-library-list').off('click', '.gd-plib-auto').on('click', '.gd-plib-auto', async function () {
         const id = $(this).data('id');
-        const a = auto();
-        a.enabled = true;
-        a.mode = 'fixed';
-        a.fixedId = id;
-        profileLibrarySystem.saveAll();
-        refreshLinkedUi();
-        toastr.success(L('已设为自动补缺档案包', 'Set as auto-load library'));
+        try {
+            await profileLibrarySystem.updateAutoLoadSettings({ enabled: true, mode: 'fixed', fixedId: id });
+            refreshLinkedUi();
+            toastr.success(L('已设为自动补缺档案包', 'Set as auto-load library'));
+        } catch (e) {
+            syncControls();
+            toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
+        }
     });
 
     $('#gd-profile-library-list').off('click', '.gd-plib-export').on('click', '.gd-plib-export', function () {
@@ -196,35 +197,53 @@ registerSection('profileLibrary', function (ctx) {
             POPUP_TYPE.CONFIRM,
         );
         if (!ok) return;
-        profileLibrarySystem.deleteLibrary(id);
-        refreshLinkedUi();
+        try {
+            await profileLibrarySystem.deleteLibrary(id);
+            refreshLinkedUi();
+        } catch (e) {
+            toastr.error((L('删除失败：', 'Delete failed: ')) + e.message);
+        }
     });
 
-    $('#gd-profile-library-auto-enabled').off('change').on('change', function () {
+    $('#gd-profile-library-auto-enabled').off('change').on('change', async function () {
         const enabled = !!$(this).prop('checked');
-        const a = auto();
-        a.enabled = enabled;
-        if (!a.mode) a.mode = 'best';
-        profileLibrarySystem.saveAll();
-        refreshLinkedUi();
+        try {
+            await profileLibrarySystem.updateAutoLoadSettings({ enabled, mode: auto().mode || 'best' });
+            refreshLinkedUi();
+        } catch (e) {
+            syncControls();
+            toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
+        }
     });
 
-    $('#gd-profile-library-overwrite').off('change').on('change', function () {
-        auto().overwriteExisting = !!$(this).prop('checked');
-        profileLibrarySystem.saveAll();
-        refreshLinkedUi();
+    $('#gd-profile-library-overwrite').off('change').on('change', async function () {
+        try {
+            await profileLibrarySystem.updateAutoLoadSettings({ overwriteExisting: !!$(this).prop('checked') });
+            refreshLinkedUi();
+        } catch (e) {
+            syncControls();
+            toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
+        }
     });
 
-    $('#gd-profile-library-name-only').off('change').on('change', function () {
-        auto().matchNameOnly = !!$(this).prop('checked');
-        profileLibrarySystem.saveAll();
-        refreshLinkedUi();
+    $('#gd-profile-library-name-only').off('change').on('change', async function () {
+        try {
+            await profileLibrarySystem.updateAutoLoadSettings({ matchNameOnly: !!$(this).prop('checked') });
+            refreshLinkedUi();
+        } catch (e) {
+            syncControls();
+            toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
+        }
     });
 
-    $('#gd-profile-library-import-template').off('change').on('change', function () {
-        auto().importTemplate = !!$(this).prop('checked');
-        profileLibrarySystem.saveAll();
-        refreshLinkedUi();
+    $('#gd-profile-library-import-template').off('change').on('change', async function () {
+        try {
+            await profileLibrarySystem.updateAutoLoadSettings({ importTemplate: !!$(this).prop('checked') });
+            refreshLinkedUi();
+        } catch (e) {
+            syncControls();
+            toastr.error((L('保存失败：', 'Save failed: ')) + e.message);
+        }
     });
 
     $('#gd-profile-library-select').off('change').on('change', function () {

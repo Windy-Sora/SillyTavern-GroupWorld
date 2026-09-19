@@ -65,8 +65,10 @@ registerSection('userProviders', function (ctx) {
             } catch (e) {
                 toastr.error(L('导入出错: ' + e.message, 'Import error: ' + e.message));
             }
-            btn.prop('disabled', false);
-            $(this).val('');
+            finally {
+                btn.prop('disabled', false);
+                $(this).val('');
+            }
         };
     }
 
@@ -140,9 +142,17 @@ registerSection('userProviders', function (ctx) {
             const t = $(this).attr('data-type');
             const popupName = esc(name);
             if (await callGenericPopup(L(`删除 "${popupName}"？重启后生效。`, `Delete "${popupName}"? Takes effect after reload.`), POPUP_TYPE.CONFIRM)) {
-                await userProviderLoader.deleteAsset(name, t);
-                renderList(t, type === 'provider' ? $pList : $cList);
-                toastr.info(L(`已删除 "${name}"`, `Deleted "${name}"`));
+                const btn = $(this);
+                btn.prop('disabled', true);
+                try {
+                    await userProviderLoader.deleteAsset(name, t);
+                    renderList(t, type === 'provider' ? $pList : $cList);
+                    toastr.info(L(`已删除 "${name}"`, `Deleted "${name}"`));
+                } catch (e) {
+                    toastr.error(L('删除失败: ' + e.message, 'Delete failed: ' + e.message));
+                } finally {
+                    btn.prop('disabled', false);
+                }
             }
         });
     }

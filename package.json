@@ -3,7 +3,7 @@
   "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "Group World extension and its zero-dependency automated test platform.",
+  "description": "Group World extension and its automated test platform.",
   "scripts": {
     "test": "node tools/gd-test/cli.mjs quick",
     "test:static": "node tools/gd-test/cli.mjs static",
@@ -15,5 +15,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "acorn": "^8.15.0"
   }
 }

@@ -161,26 +161,14 @@ registerSection('critique', function (ctx) {
     $c('critique-result-save').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
         const text = $c('critique-result').val();
-        const active = cs.getLatestActive();
-        if (active) {
-            active.content = text;
-            // Try to re-parse JSON
-            try {
-                const firstBrace = text.indexOf('{');
-                if (firstBrace >= 0) {
-                    const raw = text.slice(firstBrace);
-                    let s = raw;
-                    s = s.replace(/,(\s*[}\]])/g, '$1');
-                    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
-                    const parsed = JSON.parse(s);
-                    active.data = parsed;
-                }
-            } catch (_) { /* keep old data */ }
-            const { saveChatConditional } = ctx;
-            if (saveChatConditional) await saveChatConditional();
-            toastr.info(settings.lang === 'zh' ? '批判已更新' : 'Critique updated');
+        try {
+            const active = await cs.updateActiveContent(text);
+            if (active) toastr.info(settings.lang === 'zh' ? '批判已更新' : 'Critique updated');
+        } catch (error) {
+            toastr.error(error.message || (settings.lang === 'zh' ? '批判更新失败' : 'Critique update failed'));
+        } finally {
+            refreshStatus();
         }
-        refreshStatus();
     });
 
     // Execute

@@ -67,7 +67,7 @@ Output ONLY a JSON object, no other text:
     return {
         id: 'critique',
         displayName: 'Chat Critique',
-        contextAccess: ['chat', 'settings'],
+        contextAccess: ['chat', 'settings', 'critiqueLatest'],
         pipelineOrder: ['context', 'prompt', 'call'],
         pipeline: {
             async context(_input, _ctx, pool, settings) {

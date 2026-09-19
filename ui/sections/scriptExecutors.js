@@ -2,7 +2,7 @@ import { registerSection } from './registry.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('scriptExecutors', function (ctx) {
-    const { settings, $c, saveSettings, toastr } = ctx;
+    const { settings, $c, toastr } = ctx;
     const sys = ctx.scriptExecutorSystem;
     if (!sys) return;
 
@@ -121,7 +121,9 @@ registerSection('scriptExecutors', function (ctx) {
     }
 
     function parseDefault(raw, type) {
-        if (raw === undefined || raw === null || raw === '') return '';
+        if (raw === undefined || raw === null || raw === '') {
+            return type === 'number' ? 0 : type === 'boolean' ? false : '';
+        }
         if (type === 'boolean') {
             if (raw === 'true' || raw === true) return true;
             if (raw === 'false' || raw === false) return false;
@@ -137,11 +139,15 @@ registerSection('scriptExecutors', function (ctx) {
 
     function bindEvents() {
         // Toggle
-        $list.find('.gd-se-toggle-btn').off('click').on('click', function () {
+        $list.find('.gd-se-toggle-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            flushEditToModel();
-            sys.toggle(id);
-            renderList();
+            if (!await flushEditToModel()) return;
+            try {
+                await sys.toggle(id);
+                renderList();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Edit toggle
@@ -155,7 +161,7 @@ registerSection('scriptExecutors', function (ctx) {
         });
 
         // Save
-        $list.find('.gd-se-save-btn').off('click').on('click', function () {
+        $list.find('.gd-se-save-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const name = $(`.gd-se-edit-name[data-id="${id}"]`).val()?.trim();
             if (!name) { toastr.warning(L('名称不能为空', 'Name required')); return; }
@@ -168,8 +174,12 @@ registerSection('scriptExecutors', function (ctx) {
                 returnMode: $(`.gd-se-edit-return[data-id="${id}"]`).val(),
                 params: collectParams(id),
             };
-            sys.update(id, updates);
-            renderList();
+            try {
+                await sys.update(id, updates);
+                renderList();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Cancel
@@ -182,93 +192,110 @@ registerSection('scriptExecutors', function (ctx) {
         $list.find('.gd-se-del-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             if (!await callGenericPopup(L('确定删除此脚本执行器？', 'Delete this script executor?'), POPUP_TYPE.CONFIRM)) return;
-            flushEditToModel();
-            sys.remove(id);
-            renderList();
+            if (!await flushEditToModel()) return;
+            try {
+                await sys.remove(id);
+                renderList();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Param add
-        $list.find('.gd-se-param-add').off('click').on('click', function (e) {
+        $list.find('.gd-se-param-add').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
-            const list = sys.getList();
-            const se = list.find(e => e.id === id);
+            if (!await flushEditToModel()) return;
+            const se = sys.getList().find(e => e.id === id);
             if (!se) return;
-            flushEditToModel();
-            if (!se.params) se.params = [];
-            se.params.push({ key: '', label: '', type: 'string', default: '' });
-            saveSettings();
-            renderList();
-            $(`.gd-se-edit[data-id="${id}"]`).show();
+            const usedKeys = new Set((se.params || []).map(param => param.key));
+            let key = 'param';
+            let suffix = 2;
+            while (usedKeys.has(key)) key = `param${suffix++}`;
+            try {
+                await sys.update(id, { params: [...(se.params || []), { key, label: key, type: 'string', default: '' }] });
+                renderList();
+                $(`.gd-se-edit[data-id="${id}"]`).show();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Param delete
-        $list.find('.gd-se-param-del').off('click').on('click', function (e) {
+        $list.find('.gd-se-param-del').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
             const pi = parseInt($(this).data('pi'));
-            const list = sys.getList();
-            const se = list.find(e => e.id === id);
+            if (!await flushEditToModel()) return;
+            const se = sys.getList().find(e => e.id === id);
             if (!se || !se.params) return;
-            flushEditToModel();
-            se.params.splice(pi, 1);
-            saveSettings();
-            renderList();
-            $(`.gd-se-edit[data-id="${id}"]`).show();
+            try {
+                await sys.update(id, { params: se.params.filter((_, index) => index !== pi) });
+                renderList();
+                $(`.gd-se-edit[data-id="${id}"]`).show();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
     }
 
-    function flushEditToModel() {
+    async function flushEditToModel() {
         // Commit all open edit panel values to model before re-render
-        $('.gd-se-edit:visible').each(function () {
-            const eid = $(this).data('id');
-            const entry = sys.getList().find(e => e.id === eid);
-            if (!entry) return;
-            const eName = $(`.gd-se-edit-name[data-id="${eid}"]`).val()?.trim();
-            if (eName) entry.name = eName;
-            entry.triggerOn = $(`.gd-se-edit-trigger[data-id="${eid}"]`).val() || entry.triggerOn;
-            const pv = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val(), 10);
-            entry.priority = Number.isFinite(pv) ? pv : entry.priority;
-            entry.code = $(`.gd-se-edit-code[data-id="${eid}"]`).val() || entry.code;
-            entry.renderParams = $(`.gd-se-edit-render-params[data-id="${eid}"]`).prop('checked');
-            entry.returnMode = $(`.gd-se-edit-return[data-id="${eid}"]`).val() || entry.returnMode;
-            entry.params = collectParams(eid);
-        });
-        saveSettings();
+        try {
+            for (const element of $('.gd-se-edit:visible').toArray()) {
+                const item = $(element);
+                const eid = item.data('id');
+                const entry = sys.getList().find(e => e.id === eid);
+                if (!entry) continue;
+                const eName = $(`.gd-se-edit-name[data-id="${eid}"]`).val()?.trim();
+                const pv = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val(), 10);
+                await sys.update(eid, {
+                    name: eName || entry.name,
+                    triggerOn: $(`.gd-se-edit-trigger[data-id="${eid}"]`).val() || entry.triggerOn,
+                    priority: Number.isFinite(pv) ? pv : entry.priority,
+                    code: $(`.gd-se-edit-code[data-id="${eid}"]`).val() ?? entry.code,
+                    renderParams: $(`.gd-se-edit-render-params[data-id="${eid}"]`).prop('checked'),
+                    returnMode: $(`.gd-se-edit-return[data-id="${eid}"]`).val() || entry.returnMode,
+                    params: collectParams(eid),
+                });
+            }
+            return true;
+        } catch (error) {
+            toastr.warning(error.message || String(error));
+            return false;
+        }
     }
 
     // ── Add new ──
-    $c('se-add-btn').on('click', function () {
-        flushEditToModel();
+    $c('se-add-btn').on('click', async function () {
+        if (!await flushEditToModel()) return;
         // Close all edit panels first
         $('.gd-se-edit').hide();
         const name = L('新脚本', 'New Script');
-        const entry = sys.add({ name, triggerOn: 'both', code: '// ctx.params / ctx.shared / ctx.message' });
-        renderList();
-        // Auto-open edit for new entry
-        $(`.gd-se-edit[data-id="${escAttr(entry.id)}"]`).show();
+        try {
+            const entry = await sys.add({ name, triggerOn: 'both', code: '// ctx.params / ctx.shared / ctx.message' });
+            renderList();
+            // Auto-open edit for new entry
+            $(`.gd-se-edit[data-id="${escAttr(entry.id)}"]`).show();
+        } catch (error) {
+            toastr.warning(error.message || String(error));
+        }
     });
 
     // ── Export ──
     $c('se-export-btn').on('click', function () {
         const list = sys.getList();
         if (!list.length) { toastr.info(L('无脚本执行器可导出', 'No script executors to export')); return; }
-        const data = {
-            version: 1,
-            type: 'script-executor-export',
-            exportedAt: new Date().toISOString(),
-            executors: list.map(e => ({
-                name: e.name, triggerOn: e.triggerOn, priority: e.priority,
-                code: e.code, enabled: e.enabled, params: e.params,
-                renderParams: e.renderParams, returnMode: e.returnMode,
-            })),
-            migrations: [],
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'script-executors.json'; a.click();
-        URL.revokeObjectURL(url);
+        try {
+            const data = sys.createExportData();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'script-executors.json'; a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            toastr.error(L(`导出失败: ${error.message}`, `Export failed: ${error.message}`));
+        }
     });
 
     // ── Import ──
@@ -289,23 +316,14 @@ registerSection('scriptExecutors', function (ctx) {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            if (data.type !== 'script-executor-export') throw new Error('Invalid file type');
-            if (!Array.isArray(data.executors)) throw new Error('No executors array');
-
-            let imported = 0;
-            for (const e of data.executors) {
-                const existing = sys.getList(); // fresh each iteration
-                const conflict = existing.find(x => x.name === e.name);
-                if (conflict) {
-                    const scriptName = escHtml(e.name);
-                    if (!await callGenericPopup(L(`脚本「${scriptName}」已存在，是否覆盖？`, `Script "${scriptName}" already exists. Overwrite?`), POPUP_TYPE.CONFIRM)) continue;
-                    sys.remove(conflict.id);
-                }
-                sys.add(e);
-                imported++;
-            }
-            toastr.success(L(`已导入 ${imported} 个脚本执行器`, `Imported ${imported} script executors`));
-            flushEditToModel();
+            const result = await sys.importExecutors(data, {
+                resolveConflict: async ({ incoming }) => {
+                    const scriptName = escHtml(incoming.name);
+                    const overwrite = await callGenericPopup(L(`脚本「${scriptName}」已存在，是否覆盖？`, `Script "${scriptName}" already exists. Overwrite?`), POPUP_TYPE.CONFIRM);
+                    return overwrite ? 'overwrite' : 'skip';
+                },
+            });
+            toastr.success(L(`已导入 ${result.imported} 个脚本执行器`, `Imported ${result.imported} script executors`));
             renderList();
         } catch (e) {
             toastr.error(L(`导入失败: ${e.message}`, `Import failed: ${e.message}`));

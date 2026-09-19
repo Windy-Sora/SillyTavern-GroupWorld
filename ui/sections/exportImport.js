@@ -16,6 +16,9 @@ registerSection('exportImport', function (ctx) {
         btn.prop('disabled', true);
         try {
             await ctx.exportGroup();
+        } catch (error) {
+            console.error('[GroupDirector] Group export failed:', error);
+            toastr.error(settings.lang === 'zh' ? '群组导出失败' : 'Group export failed');
         } finally {
             btn.prop('disabled', false);
         }
@@ -33,6 +36,9 @@ registerSection('exportImport', function (ctx) {
         btn.prop('disabled', true);
         try {
             await ctx.importGroup(file);
+        } catch (error) {
+            console.error('[GroupDirector] Group import failed:', error);
+            toastr.error(settings.lang === 'zh' ? '群组导入失败' : 'Group import failed');
         } finally {
             btn.prop('disabled', false);
             // Reset so the same file can be re-selected

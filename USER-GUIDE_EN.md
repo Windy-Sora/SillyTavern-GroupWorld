@@ -296,6 +296,8 @@ Extracts key experiences and emotional changes from conversation history. Status
 
 Batch-generate NPCs based on conversation context, can be imported as character cards. Status label shows NPC count.
 
+After a successful “Import as Card,” the NPC shows an imported badge and the duplicate-import button is hidden. Renames or content edits made while the import is pending are preserved. If SillyTavern creates the character card but chat-metadata persistence fails, the UI explicitly reports “character created, import status not saved.” Do not import the same card again; once storage recovers, a later chat save can flush the in-memory tracking receipt.
+
 **NPC Library** (inside the NPC Generation card)
 
 Save the current group's NPCs as a named "NPC library", reusable across group chats. Library entries live in global settings, not exported with chat.
@@ -437,7 +439,9 @@ Save, export, and import the entire plugin configuration as `.zip`. Create multi
 
 #### Export / Import (Card)
 
-Export/import for four data types: Group Chat (character cards + world books `.zip`), Profiles (`.json`), Memories (`.json`), NPCs (`.json`), Summaries (`.json`). Auto-match characters on import (avatar exact → name exact → fuzzy match), confirmation popup for same-name conflicts.
+Export/import covers Group Chat (character cards + world books `.zip`), Profiles (`.json`), Memories (`.json`), NPCs (`.json`), and Summaries (`.json`). Each JSON module applies its own character-matching rules; Group ZIP uses the manifest and card filenames to map members.
+
+Group ZIP exports contain only enabled character cards that were retrieved successfully. Missing cards or world books produce a partial-export warning; if every card fails, no unusable archive is downloaded. Import checks the manifest, cards, and world books before uploading. It does not force existing character-card filenames to be overwritten, and it chooses a different name for known world-book collisions. If an upload fails partway through, resources already imported are not automatically deleted. The group is created only after all required characters import successfully, and a partial-success warning identifies the need to review created resources.
 
 #### Agent Configuration (Card)
 
@@ -482,6 +486,8 @@ Manages Group World's variable tracking system. 22 built-in templates (story_pha
 | Editor | Modify variable definition (scope/type/update mode/validation rules/default value) |
 | Maintenance preview | View the actual {{variableMaintenance}} content injected into the Director Prompt |
 | Export/Import | Export variable definitions + data as JSON, reusable across group chats |
+
+A variable import reports success only after chat persistence completes. If persistence fails, the import is rolled back while other edits completed during the pending save are retained, including concurrent appends to the same array variable.
 
 > **Dashboard Variable Panel**: Click the "Variables" button on the dashboard action bar to expand. Includes index quick-jump, template dropdown, new variable creation, and export/import. Variable values are grouped by global/character with inline editing, rollback to previous record, and variable locking. Check "Hide unchanged character vars" to filter inactive rows.
 
