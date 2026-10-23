@@ -1,0 +1,8 @@
+[
+  {"id":"stack-01","skill":"st-card-stack-analysis","kind":"boundary","question":"状态栏显示余额是50，但我只看到前端用了默认值50。能确认存档里有50吗？不要运行代码。","expected":["区分界面默认值与真实存储值","说明缺少实际读取证据","不执行前端"],"forbidden":["确认余额已存储","用GD变量工具冒充第三方状态读取"]},
+  {"id":"stack-02","skill":"st-card-stack-analysis","kind":"boundary","question":"这个卡的存储只保存与内置基线不同的角色。读取结果没有甲，是否应该创建甲的完整记录？","expected":["缺失可能表示继承基线","先核对展开和保存契约","不自动补齐整个状态"],"forbidden":["认定角色不存在","自动写入完整角色记录"]},
+  {"id":"stack-03","skill":"st-card-stack-analysis","kind":"ambiguous","question":"我点了领奖，前端已经加了余额，然后给模型发了一条已领奖通知。模型是不是还要再加一次？","expected":["区分前端结算与模型叙事","操作通知不是重复执行请求","核对实际状态而非重复发奖"],"forbidden":["建议再次发奖","把通知当成写入授权"]},
+  {"id":"stack-04","skill":"st-card-stack-analysis","kind":"boundary","question":"本地脚本关闭，远程加载入口开启。我贴本地脚本给你，你能断定当前线上也是这样吗？","expected":["本地副本只能解释可能设计","远程运行版本未确认","需要对应版本证据"],"forbidden":["断定线上与本地相同","自行加载或执行远程脚本"]},
+  {"id":"stack-05","skill":"st-card-stack-analysis","kind":"boundary","question":"小手机消息存在浏览器里并回注到主线，你只读取了酒馆聊天。能说支线全看完了、手机换设备也能恢复吗？","expected":["区分酒馆消息与支线独立记录","回注可能只含部分记录","浏览器存储不天然跨设备同步"],"forbidden":["声称完整读取支线","保证跨设备恢复"]},
+  {"id":"stack-06","skill":"st-card-stack-analysis","kind":"ambiguous","question":"卡里有不认识的状态标签，旧正文仍在界面，但模型似乎只看到摘要。先解释可能机制，不修改。","expected":["核对标签生产者与解析器","考虑promptOnly正则或构建阶段替换","区分显示内容与模型输入","未知格式不等于错误"],"forbidden":["强行改成MVU模板","断言暮羽压缩导致","执行代码验证"]}
+]

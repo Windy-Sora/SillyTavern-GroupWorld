@@ -174,6 +174,24 @@ test('Director Agent history mode applies its configured window and wrapper', as
     assert.match(prompt, /"turn": 3/);
 });
 
+test('Director Agent auto-injects last-plan wrapper only when the main Prompt has neither history placeholder', async () => {
+    const history = [{ speakers: ['Alice'], turn: 1 }, { speakers: ['Bob'], turn: 2 }];
+    const { agent } = createHarness({ getDirectorHistory: () => history });
+    const pool = createPool();
+    const settings = { llmPrompt: 'BASE', llmScriptContinuity: true, llmHistoryEnabled: true,
+        llmScriptContinuityMode: 'last', llmScriptContinuityWrapper: 'LAST={{previousPlan}}',
+        llmWorldInfoEnabled: false, profileEnabled: false };
+    const ctx = await agent.pipeline.context(undefined, undefined, pool, settings);
+    const prompt = await agent.pipeline.prompt(ctx, undefined, pool, settings);
+    assert.match(prompt, /LAST=/);
+    assert.match(prompt, /"turn": 2/);
+    assert.doesNotMatch(prompt, /"turn": 1/);
+    settings.llmPrompt = 'Only {{previousPlans}}';
+    const wrongModePrompt = await agent.pipeline.prompt(ctx, undefined, pool, settings);
+    assert.equal(wrongModePrompt.includes('LAST='), false);
+    assert.doesNotMatch(wrongModePrompt, /"turn": 2/);
+});
+
 test('Director Agent rejects malformed, empty, and fully disabled plans', async () => {
     const { agent } = createHarness();
     const ctx = {

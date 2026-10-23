@@ -1,7 +1,7 @@
 import { registerSection } from './registry.js';
 import { applyModeVisibility } from '../i18n.js';
 
-registerSection('modes', function ({ settings, $c, saveSettings }) {
+registerSection('modes', function ({ settings, $c, saveSettings, quickActions }) {
     $(`input[name="gd-mode"][value="${settings.mode}"]`).prop('checked', true);
     applyModeVisibility(settings.mode);
 
@@ -12,6 +12,13 @@ registerSection('modes', function ({ settings, $c, saveSettings }) {
     });
 
     $('input[name="gd-mode"]').on('change', function () {
+        if (quickActions) {
+            quickActions.setMode($(this).val());
+            $(`input[name="gd-mode"][value="${settings.mode}"]`).prop('checked', true);
+            applyModeVisibility(settings.mode);
+            window.__gdRefreshDashboard?.();
+            return;
+        }
         settings.mode = $(this).val();
         applyModeVisibility(settings.mode);
         saveSettings();

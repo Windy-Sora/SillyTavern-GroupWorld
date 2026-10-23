@@ -173,3 +173,16 @@ test('Anthropic caller distinguishes HTTP, empty, and transport test failures', 
     assert.deepEqual(await caller.test(), { ok: false, error: 'Empty response' });
     assert.deepEqual(await caller.test(), { ok: false, error: 'network down' });
 });
+
+test('official Anthropic browser requests opt in for both generate and connection test without changing proxies', async t => {
+    const requests = [];
+    installGlobals(t, async (url, options) => { requests.push({ url, options }); return response({ json: { content: [{ text: 'ok' }] } }); });
+    for (const endpoint of ['https://api.anthropic.com/', 'https://proxy.example', 'https://api.anthropic.com.evil.example']) {
+        const caller = createCaller({ useCustom: true, protocol: 'anthropic', endpoint, apiKey: 'test', model: 'test' });
+        await caller.generate('test');
+        await caller.test();
+    }
+    assert.equal(requests[0].options.headers['anthropic-dangerous-direct-browser-access'], 'true');
+    assert.equal(requests[1].options.headers['anthropic-dangerous-direct-browser-access'], 'true');
+    for (const request of requests.slice(2)) assert.equal('anthropic-dangerous-direct-browser-access' in request.options.headers, false);
+});

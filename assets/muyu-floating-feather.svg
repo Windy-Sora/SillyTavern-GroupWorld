@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="-88 -88 176 176">
+<title>暮羽 · 星羽</title>
+<defs>
+<radialGradient id="haloPurple" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#8f86ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#8f86ff" stop-opacity="0"/>
+    </radialGradient>
+<linearGradient id="muyuPlume" x1="21" y1="45" x2="49" y2="13" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8c83df"/><stop offset=".35" stop-color="#b5a3f1"/><stop offset=".7" stop-color="#d9baf4"/><stop offset="1" stop-color="#fff0dd"/>
+    </linearGradient>
+<linearGradient id="muyuMoon" x1="23" y1="44" x2="39" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b2a8f0"/><stop offset=".55" stop-color="#a8d7f4"/><stop offset="1" stop-color="#e7e9ff"/>
+    </linearGradient>
+<linearGradient id="muyuShaft" x1="14" y1="52" x2="49" y2="13" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c6d6ff"/><stop offset=".5" stop-color="#f2edff"/><stop offset="1" stop-color="#fff6e8"/>
+    </linearGradient>
+<filter id="blur4" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>
+<g id="feather">
+      <g transform="scale(2) rotate(-35) translate(-32 -32)">
+        <path d="M18 48c0-9 4-18 11-25l-1 7c6-5 11-10 12-16l1 8c5-4 8-9 8-13 7 12 5 22-5 29l3-7c-5 9-15 15-29 17Z" fill="url(#muyuPlume)" stroke="#f0dfff" stroke-opacity=".5" stroke-width=".65" stroke-linejoin="round"/>
+        <path d="M18 48c0-9 4-18 11-25l-1 7c6-5 11-10 12-16l1 8c-4 10-12 19-23 26Z" fill="url(#muyuMoon)"/>
+        <g stroke="#f5edff" stroke-opacity=".36" stroke-width=".65" stroke-linecap="round" fill="none">
+          <path d="M23 43c-1-5 1-10 4-14M29 36c0-4 2-8 5-12M28 39c5 0 10-2 14-5M34 32c5-1 9-3 12-7M40 24c4-2 7-5 9-9"/>
+        </g>
+        <path d="M14 52c12-11 27-25 35-39" stroke="url(#muyuShaft)" stroke-width="1.25" stroke-linecap="round" fill="none"/>
+        <path d="m33 23 .9 2.9 2.6.9-2.6.9-.9 2.9-.9-2.9-2.6-.9 2.6-.9.9-2.9Z" fill="#fff7ff" fill-opacity=".88"/>
+      </g>
+    </g>
+<g id="featherGlow">
+      <g transform="rotate(35) scale(0.85)" filter="url(#blur4)" opacity="0.7"><use href="#feather"/></g>
+      <g transform="rotate(35) scale(0.85)"><use href="#feather"/></g>
+    </g>
+</defs>
+<circle r="82" fill="url(#haloPurple)"/>
+<use href="#featherGlow"/>
+</svg>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createMemoryAgent } from '../../agents/memory.js';
+import { createMemoryAgent, DEFAULT_MEMORY_SCHEMA } from '../../agents/memory.js';
+import { inspectMemorySchema } from '../../agents/memory-schema.js';
 import { execute } from '../../systems/agent-runtime.js';
 
 function harness() {
@@ -64,4 +65,34 @@ test('Memory Agent handles array responses, empty context, and malformed JSON', 
     assert.equal(agent.pipeline.parse('broken', ctx, { chat: () => [] }), null);
     assert.equal(logs.some(line => line.includes('invalid JSON')), true);
     assert.equal(agent.pipeline.validate(null, ctx), null);
+});
+
+test('Custom memory Schema reaches the model and rejects nonconforming output before normalization', async () => {
+    const { agent, renders } = harness();
+    const schema = JSON.stringify({
+        type: 'object', properties: { memories: { type: 'array', items: {
+            type: 'object', properties: { event: { type: 'string', minLength: 2 }, mood: { type: 'string', enum: ['happy'] } },
+            required: ['event', 'mood'], additionalProperties: false,
+        } } }, required: ['memories'], additionalProperties: false,
+    });
+    const context = await agent.pipeline.context(null, null, {
+        memoryCharacter: () => ({ name: 'Alice' }), memoryExistingList: () => [], chat: () => [], recentMessages: () => [],
+    }, {});
+    await agent.pipeline.prompt(context, null, null, { memoryJsonSchema: schema });
+    assert.match(renders[0].prompt, /Output must follow this JSON Schema/);
+    assert.match(renders[0].prompt, /"minLength":2/);
+    assert.equal(agent.pipeline.parse('{"memories":[{"event":"OK","mood":"happy"}]}', context, { chat: () => [] }, { memoryJsonSchema: schema })[0].event, 'OK');
+    assert.throws(() => agent.pipeline.parse('{"memories":[{"event":"X","mood":"happy"}]}', context, { chat: () => [] }, { memoryJsonSchema: schema }), /MEMORY_SCHEMA_RESPONSE_MISMATCH/);
+    assert.throws(() => agent.pipeline.parse('[{"event":"OK","mood":"happy"}]', context, { chat: () => [] }, { memoryJsonSchema: schema }), /MEMORY_SCHEMA_RESPONSE_MISMATCH/);
+    assert.throws(() => agent.pipeline.parse('{"memories":[{"event":"OK","mood":"sad"}]}', context, { chat: () => [] }, { memoryJsonSchema: schema }), /MEMORY_SCHEMA_RESPONSE_MISMATCH/);
+});
+
+test('Memory Schema accepts its displayed default and rejects unsupported storage shapes', () => {
+    assert.equal(inspectMemorySchema(DEFAULT_MEMORY_SCHEMA).properties.memories.type, 'array');
+    assert.equal(inspectMemorySchema(''), null);
+    for (const schema of ['not JSON', '{}', '{"type":"array"}', JSON.stringify({
+        type: 'object', properties: { memories: { type: 'array', items: {
+            type: 'object', properties: { event: { type: 'string' }, location: { type: 'string' } }, required: ['event'],
+        } } }, required: ['memories'],
+    })]) assert.throws(() => inspectMemorySchema(schema), /INVALID_MEMORY_JSON_SCHEMA/);
 });

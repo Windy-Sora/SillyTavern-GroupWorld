@@ -12,6 +12,7 @@
 /**
  * @param {Object} options
  * @param {boolean} [options.blocking=true]   True = await each, false = fire-and-forget
+ * @param {Function} [options.getBlocking]     Read the current setting when a batch starts
  * @param {Function} [options.onExecuted]     Callback after each action: (capId, result)
  * @param {Function} [options.log]            Log function for debug output
  * @param {Function} [options.resolveCapability] Resolve a capability by id at
@@ -22,10 +23,14 @@
  * }}
  */
 export function createExecutor(options = {}) {
-    const blocking = options.blocking !== false;
+    const currentBlocking = () => (typeof options.getBlocking === 'function' ? options.getBlocking() : options.blocking) !== false;
     const onExecuted = options.onExecuted || (() => {});
     const log = options.log || (() => {});
     const resolveCapability = options.resolveCapability;
+    const MAX_POLICY_INTENTS = 8;
+    const MAX_POLICY_ACTIONS = 8;
+    const MAX_DELAY_MS = 30000;
+    const lastStarted = new Map();
 
     // ── resolve ──────────────────────────────────────────────────────
 
@@ -50,8 +55,10 @@ export function createExecutor(options = {}) {
         if (!Array.isArray(intents)) return [];
         const enabled = capabilities.filter(c => c.enabled !== false);
         const actions = [];
+        const counts = new Map();
 
-        for (const [intentIndex, intent] of intents.entries()) {
+        if (intents.length > MAX_POLICY_INTENTS) log(`[Executor] policy intents limited to ${MAX_POLICY_INTENTS}`);
+        for (const [intentIndex, intent] of intents.slice(0, MAX_POLICY_INTENTS).entries()) {
             if (typeof intent?.type !== 'string') continue;
             const intentType = intent.type.toLowerCase().trim();
             if (!intentType) continue;
@@ -71,6 +78,9 @@ export function createExecutor(options = {}) {
             }
 
             for (const cap of matches) {
+                const maxPerMessage = Number.isSafeInteger(cap.constraints?.maxPerMessage) && cap.constraints.maxPerMessage >= 0
+                    ? cap.constraints.maxPerMessage : 1;
+                if ((counts.get(cap.id) ?? 0) >= maxPerMessage) continue;
                 let params = cloneParamValue(intent.params || {});
 
                 // Schema validation: required params
@@ -90,7 +100,13 @@ export function createExecutor(options = {}) {
                     params,
                     executor: cap.executor,
                     capabilityRevision: cap.revision,
+                    constraints: cap.constraints,
                 });
+                counts.set(cap.id, (counts.get(cap.id) ?? 0) + 1);
+                if (actions.length >= MAX_POLICY_ACTIONS) {
+                    log(`[Executor] policy actions limited to ${MAX_POLICY_ACTIONS}`);
+                    return actions;
+                }
             }
         }
         return actions;
@@ -136,7 +152,8 @@ export function createExecutor(options = {}) {
         if (!actions.length) return [];
 
         const mode = timing.mode ?? 'immediate';
-        const delay = timing.delay || 0;
+        const requestedDelay = Number(timing.delay);
+        const delay = Number.isFinite(requestedDelay) ? Math.min(MAX_DELAY_MS, Math.max(0, requestedDelay)) : 0;
 
         if (mode === 'immediate') {
             // Array order = execution order — no delay between
@@ -145,12 +162,12 @@ export function createExecutor(options = {}) {
 
         if (mode === 'deferred') {
             // Stagger by 200ms between each
-            return actions.map((action, i) => ({ action, delay: delay + (i * 200) }));
+            return actions.map((action, i) => ({ action, delay: Math.min(MAX_DELAY_MS, delay + (i * 200)) }));
         }
 
         if (mode === 'round_end') {
             // Caller queues these for batch execution later.
-            return actions.map((action, i) => ({ action, delay: delay + (i * 200), roundEnd: true }));
+            return actions.map((action, i) => ({ action, delay: Math.min(MAX_DELAY_MS, delay + (i * 200)), roundEnd: true }));
         }
 
         log(`[Executor] Unknown timing mode "${mode}", falling back to immediate`);
@@ -180,6 +197,20 @@ export function createExecutor(options = {}) {
                 }
                 executor = current.executor;
             }
+            const cooldown = Number.isFinite(action.constraints?.cooldown) ? Math.max(0, action.constraints.cooldown) : 0;
+            const previous = lastStarted.get(action.capabilityId);
+            const now = Date.now();
+            if (cooldown && previous?.revision === action.capabilityRevision && now - previous.at < cooldown) {
+                return {
+                    capabilityId: action.capabilityId,
+                    intentIndex: action.intentIndex,
+                    intentType: action.intentType,
+                    success: false,
+                    cancelled: true,
+                    error: 'Capability cooldown active',
+                };
+            }
+            if (cooldown) lastStarted.set(action.capabilityId, { revision: action.capabilityRevision, at: now });
             await executor(action.params);
             return {
                 capabilityId: action.capabilityId,
@@ -210,7 +241,7 @@ export function createExecutor(options = {}) {
         }
     }
 
-    async function executeAll(scheduled) {
+    async function executeAll(scheduled, blocking) {
         if (blocking) {
             const results = [];
             for (const s of scheduled) {
@@ -243,6 +274,7 @@ export function createExecutor(options = {}) {
         executed,
         deferred,
         execution,
+        blocking,
     }) {
         return {
             resolved,
@@ -260,6 +292,7 @@ export function createExecutor(options = {}) {
 
     return {
         async run(policy, capabilities) {
+            const blocking = currentBlocking();
             const intents = policy?.intents || [];
             const timing = policy?.timing || {};
 
@@ -285,13 +318,14 @@ export function createExecutor(options = {}) {
 
             // 3. execute only work due now. round_end plans are caller-owned
             // and must be passed back through executeDeferred at the boundary.
-            const execution = await executeAll(executable);
+            const execution = await executeAll(executable, blocking);
             return buildResult({
                 resolved: actions.length,
                 scheduled: planned.length,
                 executed: executable.length,
                 deferred,
                 execution,
+                blocking,
             });
         },
 
@@ -301,14 +335,17 @@ export function createExecutor(options = {}) {
                 throw new TypeError('Deferred execution plans must be an array');
             }
 
-            const executable = deferred.map(plan => ({ ...plan, roundEnd: false }));
-            const execution = await executeAll(executable);
+            const blocking = currentBlocking();
+            const executable = deferred.slice(0, MAX_POLICY_ACTIONS).map(plan => ({ ...plan, roundEnd: false,
+                delay: Number.isFinite(plan.delay) ? Math.min(MAX_DELAY_MS, Math.max(0, plan.delay)) : 0 }));
+            const execution = await executeAll(executable, blocking);
             return buildResult({
                 resolved: executable.length,
                 scheduled: executable.length,
                 executed: executable.length,
                 deferred: [],
                 execution,
+                blocking,
             });
         },
     };

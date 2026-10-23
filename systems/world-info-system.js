@@ -1,3 +1,5 @@
+import { isInternalWorldBookName } from './internal-world-books.js';
+
 export function createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log }) {
 
     async function buildDirectorWorldInfo(enabledMembers) {
@@ -30,8 +32,9 @@ export function createWorldInfoSystem({ settings, getChat, getCharacters, checkW
                 creatorNotes: '',
             });
 
-            const entries = Array.from(activated?.allActivatedEntries || []);
-            const text = entries.length > 0
+            const originalEntries = Array.from(activated?.allActivatedEntries || []);
+            const entries = originalEntries.filter(entry => !isInternalWorldBookName(entry.world || entry.book));
+            const text = originalEntries.length > 0
                 ? entries.map(e => {
                     const label = e.comment || e.uid || 'entry';
                     const content = e.content || '';

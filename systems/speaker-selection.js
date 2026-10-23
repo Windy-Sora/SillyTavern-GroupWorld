@@ -1,4 +1,5 @@
 /** Pure formula-mode speaker selection; deliberately independent of SillyTavern. */
+import { messageMatchesCharacter } from '../utils/character-identity.js';
 function countMentions(name, recentMessages) {
     const text = recentMessages.map(message => message.mes || '').join(' ');
     if (!name) return 0;
@@ -15,33 +16,33 @@ function countMentions(name, recentMessages) {
     return (text.match(new RegExp(`\\b${escaped}\\b`, 'gi')) || []).length;
 }
 
-export function findLastSpokenIndex(character, recentMessages) {
+export function findLastSpokenIndex(character, recentMessages, nameAmbiguous = false) {
     for (let index = recentMessages.length - 1; index >= 0; index -= 1) {
         const message = recentMessages[index];
         if (message.is_user || message.is_system) continue;
-        if (message.avatar === character.avatar || message.name === character.name) {
+        if (messageMatchesCharacter(message, character, nameAmbiguous)) {
             return recentMessages.length - 1 - index;
         }
     }
     return -1;
 }
 
-export function countConsecutiveMessages(character, chat) {
+export function countConsecutiveMessages(character, chat, nameAmbiguous = false) {
     let count = 0;
     for (let index = chat.length - 1; index >= 0; index -= 1) {
         const message = chat[index];
         if (message.is_user || message.is_system) break;
-        if (message.avatar === character.avatar || message.name === character.name) count += 1;
+        if (messageMatchesCharacter(message, character, nameAmbiguous)) count += 1;
         else break;
     }
     return count;
 }
 
-export function scoreFormulaCharacter({ character, recentMessages, chat, scoreWeights, triggerScore, consecutivePenalty, triggered = false, initiative = 0 }) {
+export function scoreFormulaCharacter({ character, recentMessages, chat, scoreWeights, triggerScore, consecutivePenalty, triggered = false, initiative = 0, nameAmbiguous = false }) {
     if (!character) return { score: -Infinity, breakdown: null };
     const mentionCount = countMentions(character.name, recentMessages);
-    const lastSpokenIndex = findLastSpokenIndex(character, recentMessages);
-    const consecutiveCount = countConsecutiveMessages(character, chat);
+    const lastSpokenIndex = findLastSpokenIndex(character, recentMessages, nameAmbiguous);
+    const consecutiveCount = countConsecutiveMessages(character, chat, nameAmbiguous);
     const talkativeness = character.talkativeness === '' || Number.isNaN(Number(character.talkativeness)) ? 0.5 : Number(character.talkativeness);
     const recency = lastSpokenIndex === -1 ? scoreWeights.recency : scoreWeights.recency * (lastSpokenIndex / Math.max(recentMessages.length, 1));
     const score = (mentionCount * scoreWeights.mention) + (triggered ? triggerScore : 0) + recency - (consecutiveCount * consecutivePenalty) + (talkativeness * scoreWeights.talkativeness) + initiative;

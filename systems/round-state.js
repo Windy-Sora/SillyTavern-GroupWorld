@@ -4,14 +4,15 @@ import { selectTopCandidates } from './speaker-selection.js';
  * Pure state transitions for formula-mode rounds.
  * Side effects (logging, aborting SillyTavern generation) stay in index.js.
  */
-export function decideFormulaTurn({ scores, topN, avatar, speakerCount = 0 }) {
+export function decideFormulaTurn({ scores, topN, avatar, speakerCount = 0, generationType = 'normal' }) {
     const allowedAvatars = selectTopCandidates(scores, topN);
-    const allowed = allowedAvatars.includes(avatar);
+    const reroll = generationType === 'swipe' || generationType === 'regenerate';
+    const allowed = reroll || allowedAvatars.includes(avatar);
     return {
         allowed,
         score: scores[avatar] ?? -Infinity,
         allowedAvatars,
-        nextSpeakerCount: allowed ? speakerCount + 1 : speakerCount,
+        nextSpeakerCount: allowed && !reroll ? speakerCount + 1 : speakerCount,
     };
 }
 
@@ -49,8 +50,9 @@ export function decideTakeoverTurn({
 }
 
 /** Select the lifecycle branch for GROUP_WRAPPER_STARTED without side effects. */
-export function transitionWrapperStarted({ generationType = 'normal', manualRemaining = 0, takeoverFailed = false }) {
-    if (manualRemaining > 0) return { kind: 'preserve_nested' };
+export function transitionWrapperStarted({ generationType = 'normal', manualRemaining = 0, takeoverFailed = false, nestedTakeover = false }) {
+    if (nestedTakeover) return { kind: 'preserve_nested' };
+    if (manualRemaining > 0) return { kind: 'reset_new_round', generationType };
     if (takeoverFailed) return { kind: 'retry_failed' };
     if (generationType === 'swipe' || generationType === 'regenerate') {
         return { kind: 'reuse_or_restore_plan', generationType };

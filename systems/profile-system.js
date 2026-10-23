@@ -1,3 +1,5 @@
+import { peekProfiles } from './provider-read-data.js';
+import { createApprovedProfileGeneration } from './profile-generation.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -7,6 +9,7 @@ import {
 export function createProfileSystem(deps) {
     const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
+    let activeProfileTasks = 0;
 
     // Escape untrusted strings before embedding in HTML strings.
     // Character names and profile fields can contain user content from
@@ -52,7 +55,8 @@ function migrateProfileData(container) {
 }
 
 function getProfiles(metadata = cm()) {
-    return getProfileContainer(metadata).characterProfiles;
+    getProfileContainer(metadata);
+    return peekProfiles(metadata, EXT_KEY);
 }
 
 function getArchivedProfiles(metadata = cm()) {
@@ -151,7 +155,9 @@ Extract the following in JSON format ONLY (no prose, no code fences):
 Important:
 - Output ONLY valid JSON, no extra text.
 - summary must be under 200 characters.
-- tags must be an array of 3-6 single words or short phrases.
+- tags must be an array of up to 6 evidence-based single words or short phrases; use fewer (or none) when evidence is sparse.
+- Ground roles, traits, motives and relationships in the supplied information. Leave unsupported details unknown instead of filling gaps.
+- Keep the target character distinct from other speakers and environmental needs. Mentioning that a profession is needed does not establish that the speaker has that profession.
 - motivation must be under 300 characters.
 - relationships must be under 200 characters.`;
 }
@@ -187,7 +193,7 @@ function normalizeProfileFields(parsed) {
     };
 }
 
-async function generateSingleProfile(avatar) {
+async function generateSingleProfileInternal(avatar) {
     if (!settings.profileEnabled) return null;
     if (isRoundActive()) {
         console.warn('[GroupDirector] Profile generation skipped — director round is active, will retry later');
@@ -242,7 +248,7 @@ async function generateSingleProfile(avatar) {
     return normalizeProfileFields(parsed);
 }
 
-async function generateProfilesBatch(avatars) {
+async function generateProfilesBatchInternal(avatars) {
     if (!settings.profileEnabled) return;
     if (!avatars.length) return;
 
@@ -329,6 +335,23 @@ async function generateProfilesBatch(avatars) {
 
     refreshProfileManagementUI();
 }
+
+async function trackProfileTask(operation) {
+    if (approvedGeneration.isGenerating()) throw new Error('PROFILE_BUSY');
+    activeProfileTasks++;
+    try { return await operation(); }
+    finally { activeProfileTasks--; }
+}
+
+// Pure creation contract: no profile-container initialization or source body exposure.
+function inspectManualCreation() {
+    return { schemaHash: computeProfileSchemaHash(), characters: (getCharacters() || []).map(c => ({
+        avatar: c.avatar, name: c.name, hash: hashChar(c.description, c.personality, c.scenario),
+    })) };
+}
+
+const generateSingleProfile = avatar => trackProfileTask(() => generateSingleProfileInternal(avatar));
+const generateProfilesBatch = avatars => trackProfileTask(() => generateProfilesBatchInternal(avatars));
 
 // ─── Profile System: Renderer ──────────────────────────────────────────
 function renderSingleProfile(prof) {
@@ -417,7 +440,7 @@ function buildCharacterProfilesText() {
 }
 
 function validateTemplatePlaceholders(template, knownKeys) {
-    const found = template.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
+    const found = template.match(/\{\{[^{}]*\}\}/g) || [];
     const unknowns = [...new Set(found)].filter(p => !knownKeys.has(p));
     return unknowns;
 }
@@ -436,8 +459,12 @@ function validateAndWarnProfilePlaceholders(type) {
     if (unknowns.length > 0) {
         const lang = settings.lang || 'zh';
         $warn.text(lang === 'zh'
-            ? `警告：未知占位符 ${unknowns.join(', ')}，将渲染为空。`
-            : `Warning: unknown placeholders ${unknowns.join(', ')}. They will render as empty.`).show();
+            ? (type === 'generator'
+                ? `提示：未识别的角色字段 ${unknowns.join(', ')}；若是 Provider 占位符，请确认已注册。`
+                : `警告：未知占位符 ${unknowns.join(', ')} 将原样保留在注入文本中。`)
+            : (type === 'generator'
+                ? `Unrecognized character fields ${unknowns.join(', ')}; if these are Provider placeholders, ensure they are registered.`
+                : `Unknown placeholders ${unknowns.join(', ')} remain literal in the injected text.`)).show();
     } else {
         $warn.hide();
     }
@@ -690,7 +717,7 @@ function refreshProfileManagementUI() {
     const isZh = lang === 'zh';
 
     if (Object.keys(profiles).length === 0) {
-        $container.html(`<small><i>${isZh ? '暂无角色档案。点击上方「全部重新生成」按钮为当前群聊角色生成档案。' : 'No character profiles yet. Click "Regenerate All" above to generate profiles for current group members.'}</i></small>`);
+        $container.html(`<small><i>${isZh ? '暂无角色档案。使用「全部重新生成」为当前群聊角色生成档案。' : 'No character profiles yet. Use "Regenerate All" to generate profiles for current group members.'}</i></small>`);
         return;
     }
 
@@ -804,10 +831,17 @@ function bindProfileCardActions() {
     });
 }
 
+    const approvedGeneration = createApprovedProfileGeneration({ settings, EXT_KEY, getChatMetadata, getChat, getCharacters,
+        getCurrentGroup, getContext, hashChar, computeProfileSchemaHash, getDefaultProfileSchema,
+        getDefaultProfileGeneratorPrompt, renderPrompt, createCaller, extractJsonObject, sanitizeJson,
+        clearQuietPrompt: () => setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true),
+        isBusy: () => activeProfileTasks > 0 || isRoundActive() });
     return {
-        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
+        inspectManualCreation, computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
+        generateApproved: approvedGeneration.generateApproved, inspectGeneration: approvedGeneration.inspectGeneration,
+        isGenerating: () => activeProfileTasks > 0 || approvedGeneration.isGenerating(),
         buildCharacterProfilesText,
         validateAndWarnProfilePlaceholders,
         syncProfiles,

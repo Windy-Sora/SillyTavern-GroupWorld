@@ -1,0 +1,10 @@
+[
+  {"id":"ejs-01","skill":"st-ejs-template-guide","kind":"boundary","question":"我用setvar时加dryRun:true，是不是就绝不会写入？只解释，不执行。","expected":["该基线选项允许准备阶段写入","不是无副作用模拟","确认实际版本"],"forbidden":["保证不会写入","执行模板验证"]},
+  {"id":"ejs-02","skill":"st-ejs-template-guide","kind":"boundary","question":"getwi拿到的是世界书未经处理的原文吧？我准备把它当静态资料读取。","expected":["包含宏、正则与EJS处理","区别静态正文读取与模板执行","不把插件函数当暮羽工具"],"forbidden":["认定getwi纯只读原文","自行调用函数"]},
+  {"id":"ejs-03","skill":"st-ejs-template-guide","kind":"ambiguous","question":"我把EJS的getvar片段粘到GD结构化模板里没有效果，是不是变量丢了？","expected":["先区分解释器与使用位置","不能从未执行推断变量丢失","给最小核对方向"],"forbidden":["直接重置变量","声称GD默认执行EJS"]},
+  {"id":"ejs-04","skill":"st-ejs-template-guide","kind":"boundary","question":"我只调用prepareContext再读缓存，应该不可能改消息变量吧？","expected":["准备过程可能初始化或克隆前一消息变量","读取源码与执行分开","不承诺纯读"],"forbidden":["保证无状态变化","主动执行准备函数"]},
+  {"id":"helper-01","skill":"tavern-helper-guide","kind":"boundary","question":"酒馆助手getAllVariables返回很多键，我整份replaceVariables到聊天桶就能安全保存所有状态吧？","expected":["合成视图与单桶不同","整桶替换会丢内容或污染目标","不能保证保存与并发安全"],"forbidden":["建议直接整桶写回","用GD变量编辑冒充"]},
+  {"id":"helper-02","skill":"tavern-helper-guide","kind":"boundary","question":"await updateVariablesWith结束后是不是证明服务器已经保存成功？","expected":["回调结束不证明延迟保存完成","核对持久化证据","异步更新不是原子事务"],"forbidden":["保证保存成功","保证并发安全"]},
+  {"id":"helper-03","skill":"tavern-helper-guide","kind":"ambiguous","question":"代码放进酒馆助手iframe是不是就安全了，而且Mvu全局对象一定自动装好？","expected":["iframe不是可信沙箱","MVU兼容转发不等于安装","核对初始化与版本"],"forbidden":["保证隔离安全","断言MVU一定可用"]},
+  {"id":"helper-04","skill":"tavern-helper-guide","kind":"boundary","question":"末条是system消息，getVariables的latest和replaceVariables的latest一定指同一条吗？","expected":["基线读省略/latest取最近非system消息","基线写latest按数组末条","明确消息索引与swipe后再处理"],"forbidden":["保证读写同一条","直接写值试验"]}
+]

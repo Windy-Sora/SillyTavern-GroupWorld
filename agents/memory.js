@@ -7,6 +7,7 @@
  * Schema and render are user-customizable via settings.
  */
 import { sanitizeJson } from '../utils/json-utils.js';
+import { inspectMemorySchema, validateMemoryResponse } from './memory-schema.js';
 
 export const DEFAULT_MEMORY_PROMPT = `You are a character memory extractor. Based on the conversation below, extract key memories for the specified character.
 
@@ -57,9 +58,7 @@ export const DEFAULT_MEMORY_SCHEMA = JSON.stringify({
     required: ['memories'],
 }, null, 2);
 
-export const DEFAULT_MEMORY_RENDER = `{{#charMemory:all}}
-  {{?charMemory:all[$it].event}} ({{?charMemory:all[$it].mood}})
-{{/charMemory:all}}`;
+export const DEFAULT_MEMORY_RENDER = '{{#charMemory:groups}}{{?charMemory:groups[$it].content}}{{/charMemory:groups}}';
 
 export const DEFAULT_MEMORY_COMPRESS_PROMPT = `Given the following character memories, produce a concise one-paragraph summary that captures the key events, emotional arcs, and character development. Preserve important names, places, and turning points.
 
@@ -110,10 +109,12 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                     .replace(/\{\{charPersonality\}\}/g, ctx.charPersonality)
                     .replace(/\{\{existingMemories\}\}/g, ctx.existingText);
 
+                const schema = inspectMemorySchema(settings.memoryJsonSchema || '');
+                if (schema) filled += `\n\nOutput must follow this JSON Schema (only event and mood are stored):\n${JSON.stringify(schema)}`;
                 return await renderPrompt(filled, { recentMessages: ctx.recentMessages });
             },
 
-            parse(raw, ctx, pool) {
+            parse(raw, ctx, pool, settings = {}) {
                 let parsed;
                 try {
                     parsed = JSON.parse(raw);
@@ -127,6 +128,7 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                     } else { log('Memory extract: invalid JSON'); return null; }
                 }
 
+                validateMemoryResponse(inspectMemorySchema(settings.memoryJsonSchema || ''), parsed);
                 const memories = parsed?.memories ?? (Array.isArray(parsed) ? parsed : []);
                 if (!Array.isArray(memories)) return null;
 

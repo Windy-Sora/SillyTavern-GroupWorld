@@ -35,6 +35,7 @@ registerSection('npc', function (ctx) {
     $c('npc-max-count').val(settings.npcMaxCount ?? 10);
     $c('npc-batch-size').val(settings.npcBatchSize ?? 3);
     $c('npc-generate-firstmes').prop('checked', settings.npcGenerateFirstMes ?? false);
+    $c('npc-prompt').data('gdDefaultPrompt', DEFAULT_NPC_PROMPT);
     $c('npc-prompt').val(settings.npcPrompt || DEFAULT_NPC_PROMPT);
 
     // ── Events ──
@@ -301,4 +302,5 @@ registerSection('npc', function (ctx) {
 
     // Initial render
     if (settings.npcEnabled) renderNpcList();
+    ctx.refreshNpcList = renderNpcList;
 });

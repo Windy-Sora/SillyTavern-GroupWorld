@@ -16,3 +16,12 @@ test('trigger and initiative honor disabled settings and deterministic random in
     assert.equal(rollInitiative({ baseScore: 10, random: () => 0.25 }), 2.5);
     assert.equal(rollInitiative({ baseScore: -1, random: () => 0.5 }), 0);
 });
+
+test('Latin triggers use lexical boundaries and ignore English stop words while CJK retains substring matching', () => {
+    assert.deepEqual(extractTriggerKeywords({ description: 'he the she their detective' }), ['detective']);
+    const latin = { description: 'hero' };
+    for (const mes of ['superhero', 'heroine', 'hero_1', 'heróhero']) assert.equal(matchesTrigger(latin, [{ mes }]), false, mes);
+    for (const mes of ['A HERO!', 'hero-like', '遇到了hero。']) assert.equal(matchesTrigger(latin, [{ mes }]), true, mes);
+    assert.equal(matchesTrigger({ description: '魔法' }, [{ mes: '施展魔法术式' }]), true);
+    assert.equal(matchesTrigger({ description: 'he the' }, [{ mes: 'the hero is here' }]), false);
+});

@@ -1,5 +1,5 @@
 export function getForceSpeakAction({ roundInitialized = false, generationType = 'normal', lastMessageIsUser = false, hasGroup = false, mode = 'native' }) {
-    const forced = !roundInitialized && generationType !== 'swipe' && generationType !== 'regenerate' && !lastMessageIsUser && hasGroup;
+    const forced = !roundInitialized && generationType !== 'auto' && generationType !== 'swipe' && generationType !== 'regenerate' && !lastMessageIsUser && hasGroup;
     if (!forced) return 'pass';
     if (mode === 'block') return 'block';
     if (mode === 'llm') return 'llm';

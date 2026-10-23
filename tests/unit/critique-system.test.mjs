@@ -57,6 +57,18 @@ test('critique system generates validated history and reuses previous coverage',
     assert.equal(h.system.getLatestActive(), first);
 });
 
+test('generation remains busy through asynchronous persistence and clears after completion', async () => {
+    const h = harness(), gate = deferred();
+    h.chat = [{ name: 'User', mes: 'hello' }];
+    h.save = () => gate.promise;
+    const pending = h.system.generateCritique();
+    assert.equal(h.system.isGenerating(), true);
+    while (h.saves() === 0) await Promise.resolve();
+    assert.equal(h.system.isGenerating(), true);
+    gate.resolve(); await pending;
+    assert.equal(h.system.isGenerating(), false);
+});
+
 test('generation reports stale when chat switches during result save', async () => {
     const h = harness();
     const gate = deferred();
@@ -174,6 +186,22 @@ test('ordinary generation records and reuses the resolved default prompt', async
     assert.match(sentPrompts[0], /^You are an objective group-chat critique system\./);
     assert.match(entry.promptUsed, /^You are an objective group-chat critique system\./);
     assert.match(sentPrompts[1], /^You are an objective group-chat critique system\./);
+});
+
+test('critique output example applies to new generation and regeneration without rewriting saved data', async () => {
+    const h = harness(), prompts = [];
+    h.chat = [{ name: 'User', mes: 'one' }];
+    h.response = prompt => { prompts.push(prompt); return '{"directorCritique":{"pacing":"good"},"characterCritiques":{}}'; };
+    const first = await h.system.generateCritique();
+    const example = '{"directorCritique":{"pacing":"custom"},"characterCritiques":{}}';
+    h.settings.critiqueSchema = example;
+    assert.equal(first.data.directorCritique.pacing, 'good');
+    await h.system.regenerateLastCritique();
+    assert.match(prompts[0], /Output a JSON object following this example structure:/);
+    assert.ok(prompts[1].includes(example));
+    h.settings.critiqueSchema = '';
+    await h.system.regenerateLastCritique();
+    assert.ok(prompts[2].includes('"spotlight"'));
 });
 
 test('regeneration updates the active predecessor after a revert', async () => {

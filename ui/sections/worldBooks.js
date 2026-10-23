@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { visibleWorldBookNames } from '../../systems/internal-world-books.js';
 
 registerSection('worldBooks', async function (ctx) {
     const { settings, $c, saveSettings, world_names, worldBookScanner, toastr } = ctx;
@@ -28,7 +29,7 @@ registerSection('worldBooks', async function (ctx) {
     async function refreshBookList() {
         const list = $('#gd-world-book-list');
         list.empty();
-        const names = world_names || [];
+        const names = visibleWorldBookNames(world_names || []);
 
         if (names.length === 0) {
             list.append(`<small>${settings.lang === 'zh' ? '未找到任何世界书' : 'No world books found'}</small>`);

@@ -87,6 +87,9 @@ function validateExportFormat(obj) {
     if (!obj.version || obj.version < 1) return { ok: false, error: `Unsupported version: ${obj.version}` };
     if (!obj.memories || typeof obj.memories !== 'object') return { ok: false, error: 'Missing or invalid "memories" object' };
     if (!obj.template || typeof obj.template !== 'object') return { ok: false, error: 'Missing or invalid "template" object' };
+    for (const key of ['memoryPrompt', 'memoryJsonSchema', 'memoryRenderTemplate', 'memoryCompressPrompt']) {
+        if (obj.template[key] !== undefined && typeof obj.template[key] !== 'string') return { ok: false, error: `Invalid template field: ${key}` };
+    }
     return { ok: true };
 }
 
@@ -171,6 +174,9 @@ function buildExportJson(opts) {
  * @param {Object} options - { importTemplate?: boolean }
  */
 async function applyImport(importData, decisions, options, deps) {
+    for (const key of ['memoryPrompt', 'memoryJsonSchema', 'memoryRenderTemplate', 'memoryCompressPrompt']) {
+        if (importData.template?.[key] !== undefined && typeof importData.template[key] !== 'string') throw new Error(`Invalid template field: ${key}`);
+    }
     const { settings, getChatMetadata, getCharacters, saveChatConditional, saveSettings, EXT_KEY, log } = deps;
 
     const store = () => {

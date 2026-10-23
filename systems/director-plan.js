@@ -1,4 +1,5 @@
 /** Normalize an LLM Director response into an executable, ordered plan. */
+import { directorScriptKey } from '../utils/character-identity.js';
 export function normalizeDirectorPlan(parsed, { enabledMembers, maxSpeakers = 3, matchCharacterByName, log = () => {} }) {
     if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) return null;
     const avatars = [];
@@ -17,19 +18,23 @@ export function normalizeDirectorPlan(parsed, { enabledMembers, maxSpeakers = 3,
     return { ...extra, speakers: avatars.slice(0, limit), names: names.slice(0, limit), reason: parsed.reason ?? '', scripts: parsed.scripts ?? null, loreAssignments: parsed.loreAssignments ?? null };
 }
 
-export function normalizeDirectorScripts(scripts, { enabledMembers, matchCharacterByName }) {
+export function normalizeDirectorScripts(scripts, { enabledMembers, matchCharacterByName, characters }) {
     const normalized = {};
     if (!scripts || typeof scripts !== 'object') return normalized;
     for (const [name, script] of Object.entries(scripts)) {
         if (!script || typeof script !== 'string') continue;
         const character = matchCharacterByName(name, enabledMembers);
-        if (character) normalized[character.name] = script;
+        if (character) {
+            const unique = matchCharacterByName(character.name, enabledMembers)?.avatar === character.avatar;
+            normalized[characters ? directorScriptKey(character, characters) : unique ? character.name : character.avatar] = script;
+        }
     }
     return normalized;
 }
 
 export function recoverDirectorPlan(plan, options) {
-    const normalized = normalizeDirectorPlan(plan, options);
+    const normalized = normalizeDirectorPlan(Array.isArray(plan?.speakerAvatars)
+        ? { ...plan, speakers: plan.speakerAvatars } : plan, options);
     if (!normalized?.speakers?.length) return null;
     return { avatars: normalized.speakers, names: normalized.names, reason: normalized.reason, scripts: normalizeDirectorScripts(plan.scripts, options) };
 }

@@ -46,7 +46,7 @@ export const AgentTrace = {
     /** Get current ring buffer max size. */
     getMax: () => _maxTraces,
     /** Set ring buffer max size. */
-    setMax: (n) => { const v = Number(n); _maxTraces = Number.isFinite(v) ? Math.max(1, Math.floor(v)) : 50; if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
+    setMax: (n) => { const v = Number(n); _maxTraces = Number.isFinite(v) ? Math.min(200, Math.max(1, Math.floor(v))) : 50; if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
 };
 
 /**
@@ -90,24 +90,36 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
     const agentId = agent.id || 'unknown';
     const usedAccess = new Set();
 
-    const proxy = new Proxy(pool, {
+    // A separate extensible facade avoids Proxy invariants exposing frozen pool keys.
+    const proxy = new Proxy(Object.create(null), {
         get(_target, key) {
             usedAccess.add(key);
             if (!access.includes(key)) {
-                const msg = `[AgentAccessViolation] ${agentId} tried to access "${key}" — not in contextAccess. ` +
-                    `Declared: [${access.join(', ')}]`;
+                const msg = `[AgentAccessViolation] ${agentId} tried to access "${String(key)}" — not in contextAccess. ` +
+                    `Declared: [${access.map(String).join(', ')}]`;
                 if (strictMode) throw new Error(msg);
                 console.log(msg);
                 return undefined;
             }
-            const val = _target[key];
-            return typeof val === 'function' ? val.bind(_target) : val;
+            const val = pool[key];
+            return typeof val === 'function' ? val.bind(pool) : val;
         },
         set(_target, key) {
-            const msg = `[AgentAccessViolation] ${agentId} tried to set "${key}" — writes are not allowed`;
+            const msg = `[AgentAccessViolation] ${agentId} tried to set "${String(key)}" — writes are not allowed`;
             console.log(msg);
             return true; // prevent write, suppress error in non-strict mode
         },
+        ownKeys() { return Reflect.ownKeys(pool).filter(key => access.includes(key)); },
+        has(_target, key) { return access.includes(key) && Reflect.has(pool, key); },
+        getOwnPropertyDescriptor(_target, key) {
+            if (!access.includes(key) || !Object.hasOwn(pool, key)) return undefined;
+            return { configurable: true, enumerable: !!Object.getOwnPropertyDescriptor(pool, key).enumerable,
+                writable: false, value: proxy[key] };
+        },
+        defineProperty() { return false; },
+        deleteProperty() { return false; },
+        setPrototypeOf() { return false; },
+        preventExtensions() { return false; },
     });
 
     return {
@@ -118,10 +130,10 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
             const undeclared = [...usedAccess].filter(k => !access.includes(k));
             let msg = `[Agent] ${agentId} context access: ${usedAccess.size} keys used`;
             if (undeclared.length) {
-                msg += ` | UNDECLARED: [${undeclared.join(', ')}]`;
+                msg += ` | UNDECLARED: [${undeclared.map(String).join(', ')}]`;
             }
             if (verbose && unused.length) {
-                msg += ` | unused: [${unused.join(', ')}]`;
+                msg += ` | unused: [${unused.map(String).join(', ')}]`;
             }
             return msg;
         },

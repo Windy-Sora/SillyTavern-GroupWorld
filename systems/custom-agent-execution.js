@@ -62,17 +62,26 @@ export function createCustomAgentExecution({
         states.set(instance.id, 'running');
         const { metadata, chat, startEpoch, revision, resultRevision } = context;
         const rangeEnd = chat.length;
+        const check = () => {
+            if (options.signal?.aborted) throw staleExecutionError();
+            options.validate?.();
+            if (isStale(startEpoch, metadata, chat) || getRevision(instance.id) !== revision) throw staleExecutionError();
+        };
+        check();
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
         if (getRevision(instance.id) !== revision) throw staleExecutionError();
         const rawPrompt = instance.prompt + (instance.schema
             ? '\n\nOutput format must strictly follow this JSON schema:\n' + instance.schema
             : '');
         let prompt = rawPrompt;
+        options.onPhase?.('render');
         try { prompt = await renderPrompt(rawPrompt); }
-        catch (_) { log?.(`[CustomAgent] "${instance.name}" prompt render failed, using raw`); }
+        catch (error) { if (options.approved) throw error; log?.(`[CustomAgent] "${instance.name}" prompt render failed, using raw`); }
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
-
-        const response = await generate(prompt);
+        check();
+        options.onPhase?.('generate');
+        const response = await generate(prompt, { signal: options.signal });
+        check();
         if (!response) return null;
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
         const live = getList().find(agent => agent.id === instance.id);
@@ -85,6 +94,9 @@ export function createCustomAgentExecution({
             data: (instance.schema ? extractCustomAgentJson(response) : null) ?? response,
             timestamp: Date.now(),
         };
+        if (options.trial) return result;
+        check();
+        options.onPhase?.('save');
         const store = getStore(metadata);
         const hadPrevious = Object.prototype.hasOwnProperty.call(store, instance.id);
         const previous = store[instance.id];
@@ -155,6 +167,7 @@ export function createCustomAgentExecution({
             || getResultRevision(metadata, instance.id) !== committedResultRevision) {
             throw staleExecutionError();
         }
+        check();
         log?.(`[CustomAgent] "${instance.name}" executed, rangeEnd=${rangeEnd}`);
         return result;
     }
@@ -174,6 +187,8 @@ export function createCustomAgentExecution({
         };
         if (inFlight.has(live.id)) {
             const current = inFlight.get(live.id);
+            // An approved manual run must neither join nor absorb automatic work.
+            if (options.approved || current.options.approved) return Promise.reject(new Error('CUSTOM_AGENT_BUSY'));
             const sameContext = current.context.startEpoch === context.startEpoch
                 && current.context.metadata === context.metadata
                 && current.context.chat === context.chat
@@ -225,6 +240,10 @@ export function createCustomAgentExecution({
 
     return {
         execute,
+        executeApproved: (instance, options) => {
+            if (typeof options?.validate !== 'function' || !options.signal) throw new Error('INVALID_AGENT_EXECUTION');
+            return execute(instance, { ...options, approved: true });
+        },
         executeAuto,
         executeAll,
         extractJson: extractCustomAgentJson,

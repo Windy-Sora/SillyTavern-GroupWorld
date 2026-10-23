@@ -27,7 +27,7 @@ const BUILTIN_TEMPLATES = [
     { id: 'inventory', label: 'Inventory', labelZh: '随身物品', scope: 'character', type: 'array', value: [], rule: 'Track only items this character carries that matter to the story or current scene.', ruleZh: '只记录该角色随身携带且对剧情或当前场景有意义的物品。', updateMode: 'append', showInDashboard: false },
 ];
 
-function slugifyId(input) {
+export function slugifyId(input) {
     return String(input || '')
         .trim()
         .toLowerCase()
@@ -107,7 +107,7 @@ function isJsonObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function rollbackJsonValue(previous, applied, current) {
+export function rollbackJsonValue(previous, applied, current) {
     if (sameJsonValue(current, applied)) return clone(previous);
     if (sameJsonValue(previous, applied)) return clone(current);
     if (Array.isArray(applied) && Array.isArray(current)) {
@@ -181,7 +181,7 @@ function ensureStore(chatMetadata, EXT_KEY) {
     return vars;
 }
 
-function normalizeDefinition(def = {}) {
+export function normalizeDefinition(def = {}) {
     const id = slugifyId(def.id || def.label || 'unnamed_variable');
     const type = ['string', 'number', 'boolean', 'enum', 'object', 'array'].includes(def.type) ? def.type : 'string';
     const scope = def.scope === 'character' ? 'character' : 'global';
@@ -221,7 +221,7 @@ function defaultForType(type) {
     return '';
 }
 
-function coerceValue(def, incoming, oldValue) {
+export function coerceValue(def, incoming, oldValue) {
     let value = incoming;
     const mode = def.updateMode;
 
@@ -540,7 +540,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             if (!def) { ignored++; return; }
             if (!def.autoUpdate || def.locked) {
                 ignored++;
-                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: options.source || 'director', ignored: true });
+                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: options.source || 'director', ignored: true, outcomeCode: def.locked ? 'locked' : 'auto_update_disabled' });
                 return;
             }
             const value = raw && typeof raw === 'object' && 'value' in raw ? raw.value : raw;
@@ -562,7 +562,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                         ignored++;
                         const reason = raw && typeof raw === 'object' ? raw.reason || '' : '';
                         errors.push(`${id}: unknown character target "${target}"`);
-                        pushLog({ id, scope: 'character', target, oldValue: undefined, newValue: raw?.value ?? raw, reason, source: options.source || 'director', ignored: true });
+                        pushLog({ id, scope: 'character', target, oldValue: undefined, newValue: raw?.value ?? raw, reason, source: options.source || 'director', ignored: true, outcomeCode: 'unknown_character_target' });
                     }
                     continue;
                 }
@@ -619,14 +619,40 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
     async function applyImportData(data, options = {}) {
         const valid = validateImportData(data);
         if (!valid.ok) return valid;
-        const incoming = valid.variables;
+        const incoming = clone(valid.variables);
         const mode = options.mode || 'merge';
+        const definitions = new Map((mode === 'replace' ? [] : currentMetadata()?.[EXT_KEY]?.variables?.defs || []).map(def => [def.id, normalizeDefinition(def)]));
+        for (const def of incoming.defs || []) {
+            const normalized = normalizeDefinition(def);
+            definitions.set(normalized.id, normalized);
+        }
+        const normalizedValues = clone(incoming.values || { global: {}, character: {} });
+        for (const [scope, values] of Object.entries(normalizedValues)) {
+            for (const [id, value] of Object.entries(values || {})) {
+                const def = definitions.get(id);
+                if (!def) continue;
+                const normalize = input => coerceValue({ ...def, updateMode: 'replace' }, input);
+                if (scope === 'global') {
+                    const result = normalize(value);
+                    if (!result.ok) return { ok: false, error: `Invalid imported value for ${id}: ${result.error}` };
+                    values[id] = result.value;
+                } else {
+                    if (!isJsonObject(value)) return { ok: false, error: `Invalid imported character values for ${id}` };
+                    for (const [avatar, input] of Object.entries(value || {})) {
+                        const result = normalize(input);
+                        if (!result.ok) return { ok: false, error: `Invalid imported value for ${id}: ${result.error}` };
+                        value[avatar] = result.value;
+                    }
+                }
+            }
+        }
+        incoming.values = normalizedValues;
         const metadata = currentMetadata();
         const vars = store();
         const previous = clone(vars);
 
         if (mode === 'replace') {
-            vars.defs = clone(incoming.defs || []);
+            vars.defs = [...definitions.values()];
             vars.values = clone(incoming.values || { global: {}, character: {} });
             vars.log = Array.isArray(incoming.log) ? clone(incoming.log) : vars.log;
         } else {
@@ -646,6 +672,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                 while (vars.log.length > DEFAULT_LOG_LIMIT) vars.log.shift();
             }
         }
+        if (Array.isArray(vars.log) && vars.log.length > DEFAULT_LOG_LIMIT) vars.log.splice(0, vars.log.length - DEFAULT_LOG_LIMIT);
         const applied = clone(vars);
         try {
             await saveChatConditional?.();

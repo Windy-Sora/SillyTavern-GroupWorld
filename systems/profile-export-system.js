@@ -10,21 +10,35 @@
 
 import { djb2Hash } from '../utils/string-utils.js';
 import { profilePresets } from '../assets/profiles/manifest.js';
+import { rollbackJsonValue } from './variable-system.js';
 
 /** Current export file format version. */
 const PROFILE_EXPORT_VERSION = 1;
+
+function validateImportContents(obj) {
+    if (!Array.isArray(obj?.profiles)) return { ok: false, error: 'Missing or invalid "profiles" array' };
+    for (const [index, entry] of obj.profiles.entries()) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.avatar !== 'string' || !entry.avatar) return { ok: false, error: `Invalid profile at index ${index}` };
+        if (entry.profile !== undefined && (!entry.profile || typeof entry.profile !== 'object' || Array.isArray(entry.profile))) return { ok: false, error: `Invalid profile data at index ${index}` };
+        if (entry.profile?.tags != null && (!Array.isArray(entry.profile.tags) || entry.profile.tags.some(tag => typeof tag !== 'string'))) return { ok: false, error: `Invalid profile tags at index ${index}` };
+    }
+    for (const key of ['generatorPrompt', 'jsonSchema', 'renderTemplate']) {
+        if (obj.template?.[key] !== undefined && typeof obj.template[key] !== 'string') return { ok: false, error: `Invalid template field: ${key}` };
+    }
+    return { ok: true };
+}
 
 /**
  * Validate that a loaded object is a valid profile export file.
  * Returns { ok, error }.
  */
-function validateExportFormat(obj) {
+export function validateExportFormat(obj) {
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not a valid JSON object' };
     if (obj.type !== 'profile-export') return { ok: false, error: 'Not a profile export file (missing "type":"profile-export")' };
     if (!obj.version || obj.version < 1) return { ok: false, error: `Unsupported version: ${obj.version}` };
     if (!Array.isArray(obj.profiles)) return { ok: false, error: 'Missing or invalid "profiles" array' };
     if (!obj.template || typeof obj.template !== 'object') return { ok: false, error: 'Missing or invalid "template" object' };
-    return { ok: true };
+    return validateImportContents(obj);
 }
 
 /**
@@ -213,28 +227,46 @@ export function createProfileExportSystem(deps) {
      * @returns {{ applied: number, skipped: number, templateImported: boolean }}
      */
     async function applyImport(importData, selectedAvatars, options = {}) {
+        const valid = validateImportContents(importData);
+        if (!valid.ok) throw new Error(valid.error);
         const selectedSet = new Set(selectedAvatars);
         const profiles = importData.profiles.filter(p => selectedSet.has(p.avatar));
         if (!profiles.length && !options.importTemplate) return { applied: 0, skipped: 0, templateImported: false };
 
         let applied = 0;
         const existingProfiles = getProfiles();
+        const rollback = new Map();
 
         for (const p of profiles) {
             if (!p.avatar || p.avatar === '__proto__' || p.avatar === 'constructor') continue;
             const existing = existingProfiles[p.avatar];
+            if (!rollback.has(p.avatar)) rollback.set(p.avatar, { previous: structuredClone(existing) });
             existingProfiles[p.avatar] = {
                 avatar: p.avatar,
                 name: p.name,
                 hash: p.hash || '',
-                profile: { ...p.profile },
+                profile: structuredClone(p.profile || {}),
                 state: 'ready',
                 updatedAt: Date.now(),
                 // Preserve manualEdited flag if overwriting an existing profile
                 manualEdited: existing?.manualEdited || false,
             };
+            rollback.get(p.avatar).applied = structuredClone(existingProfiles[p.avatar]);
             applied++;
         }
+
+        try {
+            await saveChatConditional();
+        } catch (error) {
+            if (error.persistenceUnknown) throw error;
+            for (const [avatar, state] of rollback) {
+                const restored = rollbackJsonValue(state.previous, state.applied, existingProfiles[avatar]);
+                if (restored === undefined) delete existingProfiles[avatar];
+                else existingProfiles[avatar] = restored;
+            }
+            throw error;
+        }
+        if (getProfiles() !== existingProfiles) throw new Error('Profile import chat changed during save');
 
         let templateImported = false;
         if (options.importTemplate && importData.template) {
@@ -253,7 +285,6 @@ export function createProfileExportSystem(deps) {
             log('Profile templates imported');
         }
 
-        await saveChatConditional();
         log(`Imported ${applied} profile(s)${templateImported ? ' + templates' : ''}`);
         return { applied, skipped: profiles.length - applied, templateImported };
     }

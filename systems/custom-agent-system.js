@@ -119,8 +119,13 @@ export function createCustomAgentSystem({
     }
 
     function syncProviders(list = getList(), { strict = false } = {}) {
-        const entries = normalizeProviderEntries(list, { strict });
-        assertProviderAvailability(entries);
+        let entries = normalizeProviderEntries(list, { strict });
+        if (strict) assertProviderAvailability(entries);
+        else entries = entries.filter(entry => {
+            const conflict = getProviders().find(provider => provider.id === entry.providerName && provider._gdOwner !== PROVIDER_OWNER);
+            if (entry.enabled && conflict) { log?.(`[CustomAgent] Provider "${entry.providerName}" is already registered; skipping conflicting agent`); return false; }
+            return true;
+        });
         for (const provider of getProviders()) {
             if (provider._gdOwner === PROVIDER_OWNER) unregisterProvider(provider.id);
         }
@@ -278,6 +283,59 @@ export function createCustomAgentSystem({
         return entry;
     }
 
+    // Recheck the exact proposal after preceding GUI/import mutations have drained.
+    async function mutateApproved({ operation, id, definition, validate, expectedSettings = settings }) {
+        if (expectedSettings !== settings) throw new Error('STALE_AGENT_ASSET');
+        if (!['create', 'update', 'delete'].includes(operation)) throw new Error('INVALID_AGENT_DRAFT');
+        validate();
+        let entry;
+        try {
+            if (operation === 'create') entry = await add(definition);
+            else if (operation === 'update') entry = await update(id, definition);
+            else await remove(id);
+            const matches = operation === 'delete' ? !getList().some(row => row.id === id)
+                : !!entry && getList().filter(row => row.id === entry.id).length === 1
+                    && JSON.stringify(getList().find(row => row.id === entry.id)) === JSON.stringify(entry);
+            return { status: matches ? 'saved_unconfirmed' : 'outcome_unknown', persistence: matches ? 'unconfirmed' : 'unknown',
+                id: entry?.id || id || '', enabled: matches && entry?.enabled === true, autoEnabled: matches && entry?.autoEnabled === true };
+        } catch (_) {
+            // Existing commitList owns rollback. Its completion does not prove persistence.
+            return { status: 'outcome_unknown', persistence: 'unknown', id: entry?.id || id || '', enabled: false, autoEnabled: false };
+        }
+    }
+
+    async function mutateBatchApproved({ entries, validate, expectedSettings = settings }) {
+        if (expectedSettings !== settings) throw new Error('STALE_AGENT_ASSET');
+        validate();
+        if (!Array.isArray(entries) || !entries.length || entries.length > 6) throw new Error('INVALID_AGENT_BATCH');
+        const candidate = [...getList()], expected = [];
+        const seen = new Set();
+        for (const row of entries) {
+            if (!['create', 'update', 'delete'].includes(row.operation) || row.id && seen.has(row.id)) throw new Error('INVALID_AGENT_BATCH');
+            if (row.id) seen.add(row.id);
+            const id = row.operation === 'create' ? generateCustomAgentId() : row.id;
+            const index = candidate.findIndex(entry => entry.id === id);
+            if (row.operation !== 'create' && index < 0) throw new Error('STALE_AGENT_ASSET');
+            const next = row.operation === 'delete' ? null : normalizeCustomAgent(row.next, { id });
+            if (row.operation === 'create') candidate.push(next);
+            else if (row.operation === 'delete') candidate.splice(index, 1);
+            else candidate[index] = next;
+            expected.push({ id, next: next && structuredClone(next) });
+        }
+        validateList(candidate); // Reject the complete batch before registration or assignment.
+        try {
+            await commitList(candidate); // One settings save; no per-row interleaving or stale second-row revision.
+            const matches = expected.every(({ id, next }) => {
+                const actual = getList().filter(row => row.id === id);
+                return next ? actual.length === 1 && JSON.stringify(actual[0]) === JSON.stringify(next) : actual.length === 0;
+            });
+            return { status: matches ? 'saved_unconfirmed' : 'outcome_unknown', persistence: matches ? 'unconfirmed' : 'unknown',
+                ids: expected.map(row => row.id) };
+        } catch (_) {
+            return { status: 'outcome_unknown', persistence: 'unknown', ids: expected.map(row => row.id) };
+        }
+    }
+
     function createExportData() {
         return {
             version: CUSTOM_AGENT_EXPORT_VERSION,
@@ -368,10 +426,10 @@ export function createCustomAgentSystem({
         getCounterRevision,
         setCounterRevision,
         renderPrompt,
-        generate: prompt => createCaller(
+        generate: (prompt, options) => createCaller(
             settings.agentConfigs?.['custom-agent'] || {},
             opts => generateRaw(opts),
-        ).generate(prompt),
+        ).generate(prompt, options),
         saveChatConditional,
         EXT_KEY,
         log,
@@ -380,8 +438,11 @@ export function createCustomAgentSystem({
     return {
         getList,
         getData,
+        executionBaseline: id => JSON.stringify(getChatMetadata()?.[EXT_KEY]?._caData?.[id] ?? null),
         validateList,
         suggestProviderName,
+        mutateApproved: (...args) => enqueueMutation(() => mutateApproved(...args)),
+        mutateBatchApproved: (...args) => enqueueMutation(() => mutateBatchApproved(...args)),
         add: (...args) => enqueueMutation(() => add(...args)),
         update: (...args) => enqueueMutation(() => update(...args)),
         toggle: (...args) => enqueueMutation(() => toggle(...args)),

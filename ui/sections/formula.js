@@ -22,7 +22,10 @@ registerSection('formula', function (ctx) {
     $c('recency-weight').val(settings.scoreWeights.recency);
     $c('talkativeness-weight').val(settings.scoreWeights.talkativeness);
 
-    n('#gd-topn', v => settings.topN = v, 1, 1);
+    if (ctx.quickActions) $c('topn').on('input', () => {
+        if (!ctx.quickActions.setSpeakers($c('topn').val(), 'formula')) $c('topn').val(settings.topN);
+    });
+    else n('#gd-topn', v => settings.topN = v, 1, 1);
     n('#gd-recent-count', v => settings.recentMessageCount = v, 1, 10);
     n('#gd-consecutive-penalty', v => settings.consecutivePenalty = v, 0, 15);
     c('#gd-trigger-enabled', v => settings.triggerEnabled = v);

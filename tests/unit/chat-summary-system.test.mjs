@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createChatSummarySystem } from '../../systems/chat-summary-system.js';
+import { createConfigWriter } from '../../muyu/host/config-write.js';
 
 function deferred() {
     let resolve;
@@ -20,8 +21,9 @@ function fixture(overrides = {}) {
     let save = overrides.saveChatConditional || (async () => {});
     let response = overrides.response || 'generated';
     const calls = { saves: 0, prompts: [] };
+    const settings = { lang: 'en', summaryEnabled: true, summaryReusePrevious: false, agentConfigs: {}, ...overrides.settings };
     const system = createChatSummarySystem({
-        settings: { lang: 'en', summaryEnabled: true, summaryReusePrevious: false, agentConfigs: {}, ...overrides.settings },
+        settings,
         getChatMetadata: () => metadata,
         getChat: () => chat,
         EXT_KEY: 'gd',
@@ -35,13 +37,27 @@ function fixture(overrides = {}) {
         createCaller: () => ({ generate: async prompt => { calls.prompts.push(prompt); return await response; } }),
     });
     return {
-        system, chat, calls,
+        system, settings, chat, calls,
         get metadata() { return metadata; },
         set metadata(value) { metadata = value; },
         set save(value) { save = value; },
         set response(value) { response = value; },
     };
 }
+
+test('Summary generation state blocks config writes until generation settles', async () => {
+    const gate = deferred();
+    const h = fixture({ response: gate.promise });
+    const writer = createConfigWriter({ getSettings: () => h.settings, isBusy: h.system.isGenerating, saveSettings: async () => undefined });
+    const pending = h.system.generateSummary();
+    assert.equal(h.system.isGenerating(), true);
+    await assert.rejects(writer.apply({ baseline: { summaryEnabled: true }, changes: { summaryEnabled: false }, contractVersion: 2 }), /WRITE_UNAVAILABLE/);
+    assert.equal(h.settings.summaryEnabled, true);
+    gate.resolve('finished'); await pending;
+    assert.equal(h.system.isGenerating(), false);
+    assert.equal((await writer.apply({ baseline: { summaryEnabled: true }, changes: { summaryEnabled: false }, contractVersion: 2 })).status, 'applied_unconfirmed');
+    assert.equal(h.settings.summaryEnabled, false);
+});
 
 function summary(content, active = true, basedOn = null, rangeEnd = 1) {
     return { rangeEnd, content, active, basedOn, promptUsed: 'prompt', timestamp: 1 };

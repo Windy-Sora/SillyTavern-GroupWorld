@@ -274,7 +274,7 @@ registerSection('configProfiles', function (ctx) {
     // ── Initial ──────────────────────────────────────────────────────
 
     renderList();
-    window.__gdRefreshConfigList = renderList;
+    window.__gdRefreshConfigList = () => { renderList(); populatePresetDropdown(); };
 });
 
 function escHtml(s) {

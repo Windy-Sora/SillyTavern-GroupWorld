@@ -67,7 +67,7 @@ test('wrapper transitions preserve active takeover and restore failed plans for 
         takeoverCompleted: ['alice'],
     });
 
-    assert.deepEqual(round.startWrapper({ generationType: 'normal' }), { kind: 'preserve_nested' });
+    assert.deepEqual(round.startWrapper({ generationType: 'normal', nestedTakeover: true }), { kind: 'preserve_nested' });
     round.finishTakeover();
     assert.deepEqual(round.startWrapper({ generationType: 'normal' }), { kind: 'retry_failed' });
 

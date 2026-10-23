@@ -22,7 +22,7 @@ export function register(getDirectorHistory) {
             const assignments = latest?.loreAssignments;
             if (!assignments || typeof assignments !== 'object') return { content: '' };
 
-            const names = assignments[charName];
+            const names = assignments[ctx?.avatar] ?? (ctx?.characterNameAmbiguous ? undefined : assignments[charName]);
             if (!Array.isArray(names) || names.length === 0) return { content: '' };
 
             // Deduplicate and format as keyword triggers for ST's world info scanner

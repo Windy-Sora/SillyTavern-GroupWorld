@@ -478,6 +478,96 @@ function sanitizeDoneSignals(doneSignals, steps, chatLength, source = 'import') 
     return sanitized;
 }
 
+// Recovery copies may be sparse or come from a different progression mode.
+// Validate against every node without promoting them into the active progress.
+function sanitizeLegacyDoneSignals(signals, nodes, chatLength) {
+    const steps = flattenNodes(nodes, { mode: 'all', level: 0 });
+    const indexes = new Map(steps.map((step, index) => [step.id, index]));
+    const seen = new Set();
+    const numeric = value => typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN;
+    return signals.flatMap(signal => {
+        if (!isJsonObject(signal) || typeof signal.nodeId !== 'string' || !indexes.has(signal.nodeId) || seen.has(signal.nodeId)) return [];
+        seen.add(signal.nodeId);
+        const length = numeric(signal.chatLength);
+        const time = numeric(signal.time);
+        return [{ nodeId: signal.nodeId, stepIndex: indexes.get(signal.nodeId),
+            chatLength: Number.isFinite(length) ? Math.min(Math.max(0, length), chatLength) : chatLength,
+            time: Number.isFinite(time) && time >= 0 ? time : Date.now(),
+            source: typeof signal.source === 'string' && signal.source ? signal.source : 'import' }];
+    });
+}
+
+function progressScopeKey(mode, level) {
+    if (mode === 'all') return 'all';
+    if (mode === 'level') {
+        const number = Number(level);
+        return `level:${Number.isSafeInteger(number) && number >= 0 ? number : 0}`;
+    }
+    return 'leaf';
+}
+
+function validProgressKey(key) {
+    if (key === 'leaf' || key === 'all') return true;
+    if (typeof key !== 'string' || !/^level:(0|[1-9]\d*)$/.test(key)) return false;
+    return Number.isSafeInteger(Number(key.slice(6)));
+}
+
+function isProgressTrack(value) {
+    return isJsonObject(value) && Array.isArray(value.doneSignals);
+}
+
+/** Read-only calculation for impact previews; never initializes or saves chat state. */
+export function projectStoryBlueprintProgress({ blueprint, doneSignals = [], progressTracks = null, chatLength = 0, mode = 'leaf', level = 0 }) {
+    const normalized = blueprint ? normalizeBlueprint(blueprint) : null;
+    const steps = normalized ? flattenNodes(normalized.nodes, { mode, level }) : [];
+    const scopedSignals = isJsonObject(progressTracks)
+        ? progressTracks[progressScopeKey(mode, level)]?.doneSignals || []
+        : doneSignals;
+    const validSignals = ensureArray(scopedSignals).filter(signal => signal?.chatLength == null || signal.chatLength <= chatLength);
+    const active = sanitizeDoneSignals(validSignals, steps, chatLength, 'projection');
+    return {
+        total: steps.length,
+        doneCount: active.length,
+        complete: steps.length > 0 && active.length >= steps.length,
+        currentNodeId: steps[Math.min(active.length, Math.max(steps.length - 1, 0))]?.id || null,
+        stepIds: steps.map(step => step.id),
+        activeSignalIds: active.map(signal => signal.nodeId),
+        inactiveSignalCount: validSignals.length - active.length,
+        expiredSignalCount: ensureArray(scopedSignals).length - validSignals.length,
+    };
+}
+
+/** Pure structural-edit reconciliation using the same ordering/prefix rules as runtime.
+ * Preserves custom signal fields; never advances variables or initializes host state. */
+export function reconcileBlueprintStructureProgress(state, blueprint, {chatLength,mode='leaf',level=0,at=Date.now()}={}) {
+    const result=clone(state),tracks=result.progressTracks||{},active=result.activeProgressKey||progressScopeKey(mode,level);
+    if(!validProgressKey(active)||!isJsonObject(tracks)||Object.keys(tracks).length>32)throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+    function reconcile(signals,key) {
+        if(!Array.isArray(signals)||signals.length>256||signals.some(s=>!isJsonObject(s)||typeof s.nodeId!=='string'||
+            ['chatLength','stepIndex','time'].some(k=>s[k]!==undefined&&(!Number.isSafeInteger(s[k])||s[k]<0))))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        const options=key.startsWith('level:')?{mode:'level',level:Number(key.slice(6))}:{mode:key};
+        const steps=flattenNodes(blueprint.nodes,options);
+        const original=new Map();
+        for(const s of signals)if(!original.has(s.nodeId))original.set(s.nodeId,s);
+        const valid=signals.filter(s=>s.chatLength==null||s.chatLength<=chatLength).map(s=>({...s,time:s.time??at}));
+        return sanitizeDoneSignals(valid,steps,chatLength,'structure').map(s=>({...original.get(s.nodeId),...s}));
+    }
+    for(const [key,track] of Object.entries(tracks)){
+        if(!validProgressKey(key)||!isProgressTrack(track))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        tracks[key]={...track,doneSignals:reconcile(key===active?(result.doneSignals||track.doneSignals):track.doneSignals,key),completeNoticeKey:''};
+    }
+    if(!tracks[active])tracks[active]={doneSignals:reconcile(result.doneSignals||[],active),completeNoticeKey:''};
+    if(Object.keys(tracks).length>32)throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+    result.progressTracks=tracks;result.activeProgressKey=active;
+    result.doneSignals=tracks[active].doneSignals;result.completeNoticeKey='';
+    if(result.legacyDoneSignals!==undefined){
+        if(!Array.isArray(result.legacyDoneSignals))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        const ids=collectNodeIds(blueprint.nodes);
+        result.legacyDoneSignals=result.legacyDoneSignals.filter(s=>isJsonObject(s)&&ids.has(s.nodeId));
+    }
+    result.blueprint=clone(blueprint);return result;
+}
+
 export function createStoryBlueprintSystem({
     settings,
     getChatMetadata,
@@ -495,9 +585,17 @@ export function createStoryBlueprintSystem({
     log = console.log,
 }) {
     let generating = false;
+    const warnedVariableConflicts = new WeakSet();
 
     function lang() { return getLang?.() || settings.lang || 'zh'; }
     function completionVariable() { return variableId(settings.storyBlueprintCompletionVariable); }
+    function persistScopeSwitch() {
+        try {
+            Promise.resolve(saveChatConditional?.()).catch(error => log('[StoryBlueprint] Progress-track save failed:', error));
+        } catch (error) {
+            log('[StoryBlueprint] Progress-track save failed:', error);
+        }
+    }
 
     function root(metadata = getChatMetadata()) {
         const meta = metadata;
@@ -516,12 +614,68 @@ export function createStoryBlueprintSystem({
         if (!Array.isArray(state.doneSignals)) state.doneSignals = [];
         if (typeof state.completeNoticeKey !== 'string') state.completeNoticeKey = '';
         if (generating !== true) state.continuePending = false;
+        // A generation/import callback may still hold the previous chat's metadata.
+        // Never switch its progress track or save the newly selected chat for it.
+        if (metadata !== getChatMetadata()) return state;
+        const key = progressScopeKey(settings.storyBlueprintProgressionMode, settings.storyBlueprintProgressionLevel);
+        if (!isJsonObject(state.progressTracks)) {
+            // Legacy signals did not record their mode. Assign them to the mode in use
+            // at migration, but retain an untouched copy for manual recovery.
+            if (state.doneSignals.length) state.legacyDoneSignals = clone(state.doneSignals);
+            state.progressTracks = { [key]: { doneSignals: state.doneSignals, completeNoticeKey: state.completeNoticeKey } };
+            state.activeProgressKey = key;
+            if (state.doneSignals.length) persistScopeSwitch();
+        } else if (state.activeProgressKey !== key) {
+            if (validProgressKey(state.activeProgressKey)) {
+                state.progressTracks[state.activeProgressKey] = {
+                    doneSignals: state.doneSignals,
+                    completeNoticeKey: state.completeNoticeKey,
+                };
+            } else if (state.doneSignals.length && !Array.isArray(state.legacyDoneSignals)) {
+                state.legacyDoneSignals = clone(state.doneSignals);
+            }
+            const track = isProgressTrack(state.progressTracks[key]) ? state.progressTracks[key] : { doneSignals: [], completeNoticeKey: '' };
+            state.progressTracks[key] = track;
+            state.activeProgressKey = key;
+            state.doneSignals = track.doneSignals;
+            state.completeNoticeKey = track.completeNoticeKey || '';
+            persistScopeSwitch();
+        } else {
+            state.progressTracks[key] = { doneSignals: state.doneSignals, completeNoticeKey: state.completeNoticeKey };
+        }
         return state;
+    }
+
+    function updateActiveTrack(state) {
+        state.progressTracks[state.activeProgressKey] = {
+            doneSignals: state.doneSignals,
+            completeNoticeKey: state.completeNoticeKey,
+        };
+    }
+
+    function clearAllProgress(state) {
+        state.doneSignals = [];
+        state.completeNoticeKey = '';
+        state.progressTracks = { [state.activeProgressKey]: { doneSignals: state.doneSignals, completeNoticeKey: '' } };
+        delete state.legacyDoneSignals;
+    }
+
+    function completionVariableConflicts(id, existing) {
+        if (settings.storyBlueprintCompletionVariableGuard === id && existing) {
+            const raw = getChatMetadata()?.[EXT_KEY]?.variables?.defs?.find(def => def?.id === id);
+            return raw?.owner !== 'group-director-story-blueprint' || existing.type !== 'boolean' || existing.scope !== 'global';
+        }
+        return false;
     }
 
     function ensureCompletionVariable() {
         const id = completionVariable();
         const existing = variableSystem?.getDefinition?.(id);
+        const guarded = settings.storyBlueprintCompletionVariableGuard === id;
+        if (completionVariableConflicts(id, existing)) {
+            log('[StoryBlueprint] Completion variable conflicts with an existing chat variable:', id);
+            return false;
+        }
         if (!existing) {
             const zh = lang() === 'zh';
             variableSystem?.upsertDefinition?.({
@@ -538,6 +692,12 @@ export function createStoryBlueprintSystem({
                 injectMode: 'manual',
                 locked: false,
             });
+            if (guarded) {
+                const raw = getChatMetadata()?.[EXT_KEY]?.variables?.defs?.find(def => def?.id === id);
+                if (!raw) return false;
+                raw.owner = 'group-director-story-blueprint';
+                saveChatConditional?.();
+            }
         } else if (settings.storyBlueprintEnabled && existing.locked) {
             log('[StoryBlueprint] Completion variable is locked; Story Blueprint advancement may not work until it is unlocked:', id);
         } else if (settings.storyBlueprintEnabled && (existing.injectMode !== 'manual' || existing.autoUpdate === false)) {
@@ -547,11 +707,13 @@ export function createStoryBlueprintSystem({
                 injectMode: 'manual',
             });
         }
+        return true;
     }
 
     function clearCompletionSignal(reason = 'clear') {
         const id = completionVariable();
-        if (settings.storyBlueprintEnabled) ensureCompletionVariable();
+        if (completionVariableConflicts(id, variableSystem?.getDefinition?.(id))) return;
+        if (settings.storyBlueprintEnabled && !ensureCompletionVariable()) return;
         else if (!variableSystem?.getDefinition?.(id)) return;
         variableSystem?.setValue?.(id, false, {
             source: 'story-blueprint',
@@ -569,8 +731,9 @@ export function createStoryBlueprintSystem({
     function setBlueprint(blueprint, options = {}) {
         const state = root();
         state.blueprint = normalizeBlueprint(blueprint);
-        if (options.resetProgress !== false) state.doneSignals = [];
+        if (options.resetProgress !== false) clearAllProgress(state);
         state.completeNoticeKey = '';
+        updateActiveTrack(state);
         state.lastGeneratedAt = Date.now();
         state.lastError = '';
         state.continuePending = false;
@@ -600,6 +763,7 @@ export function createStoryBlueprintSystem({
         const changed = JSON.stringify(next) !== JSON.stringify(state.doneSignals);
         if (changed) {
             state.doneSignals = next;
+            updateActiveTrack(state);
             saveChatConditional?.();
         }
         return changed;
@@ -657,6 +821,7 @@ export function createStoryBlueprintSystem({
 
     function renderCurrent(options = {}) {
         if (!settings.storyBlueprintEnabled) return '';
+        if (!ensureCompletionVariable()) return '';
         const data = getProviderData();
         if (!data.blueprint || !data.current || data.progress.total === 0) return '';
         if (data.progress.complete) {
@@ -665,6 +830,7 @@ export function createStoryBlueprintSystem({
                 const key = completeNoticeKey(data);
                 if (state.completeNoticeKey === key) return '';
                 state.completeNoticeKey = key;
+                updateActiveTrack(state);
                 saveChatConditional?.();
             }
             return lang() === 'zh'
@@ -689,6 +855,9 @@ export function createStoryBlueprintSystem({
     function healthCheck() {
         const blueprint = getBlueprint();
         const issues = [];
+        if (settings.storyBlueprintEnabled && completionVariableConflicts(completionVariable(), variableSystem?.getDefinition?.(completionVariable()))) {
+            issues.push('Completion variable conflicts with an existing chat variable');
+        }
         if (!blueprint) issues.push('Missing blueprint');
         else {
             if (!Array.isArray(blueprint.nodes) || !blueprint.nodes.length) issues.push('Missing or empty nodes');
@@ -711,7 +880,14 @@ export function createStoryBlueprintSystem({
             }
             return { advanced: false, complete: false, reason: 'disabled' };
         }
-        ensureCompletionVariable();
+        if (!ensureCompletionVariable()) {
+            const metadata = getChatMetadata();
+            if (metadata && !warnedVariableConflicts.has(metadata)) {
+                warnedVariableConflicts.add(metadata);
+                throw Error('Story Blueprint completion variable conflicts with an existing chat variable');
+            }
+            return { advanced: false, complete: false, reason: 'variable-conflict' };
+        }
         const id = completionVariable();
         if (variableSystem?.getValue?.(id) !== true) return { advanced: false, complete: getProgress().complete, reason: 'not-set' };
 
@@ -736,6 +912,7 @@ export function createStoryBlueprintSystem({
                 time: Date.now(),
                 source,
             });
+            updateActiveTrack(state);
         }
         variableSystem.setValue(id, false, { source: 'story-blueprint', reason: 'advance-reset' });
         saveChatConditional?.();
@@ -749,6 +926,7 @@ export function createStoryBlueprintSystem({
         if (!state.doneSignals.length) return false;
         state.doneSignals.pop();
         state.completeNoticeKey = '';
+        updateActiveTrack(state);
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'rollback' });
         saveChatConditional?.();
         return true;
@@ -769,6 +947,7 @@ export function createStoryBlueprintSystem({
             source: 'manual',
         }));
         state.completeNoticeKey = '';
+        updateActiveTrack(state);
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'set-current-step' });
         saveChatConditional?.();
         return getProgress();
@@ -778,6 +957,7 @@ export function createStoryBlueprintSystem({
         const state = root();
         state.doneSignals = [];
         state.completeNoticeKey = '';
+        updateActiveTrack(state);
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'reset-progress' });
         saveChatConditional?.();
     }
@@ -785,8 +965,7 @@ export function createStoryBlueprintSystem({
     function resetBlueprint() {
         const state = root();
         state.blueprint = null;
-        state.doneSignals = [];
-        state.completeNoticeKey = '';
+        clearAllProgress(state);
         saveChatConditional?.();
     }
 
@@ -913,7 +1092,7 @@ ${schema}`;
             getChat,
             getResource: metadata => {
                 const state = root(metadata);
-                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+                return { blueprint: state.blueprint, progressTracks: state.progressTracks, doneSignals: state.doneSignals };
             },
         });
         const executionState = root(executionSnapshot.metadata);
@@ -922,7 +1101,7 @@ ${schema}`;
             getChat,
             getResource: metadata => {
                 const state = root(metadata);
-                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+                return { blueprint: state.blueprint, progressTracks: state.progressTracks, doneSignals: state.doneSignals };
             },
             message: 'Story Blueprint generation became stale',
         });
@@ -997,6 +1176,8 @@ ${schema}`;
         const exportedState = clone(state) || {
             blueprint: clone(state.blueprint),
             doneSignals: clone(state.doneSignals) || [],
+            progressTracks: clone(state.progressTracks) || {},
+            activeProgressKey: state.activeProgressKey,
             lastGeneratedAt: state.lastGeneratedAt || 0,
             lastError: state.lastError || '',
             completeNoticeKey: state.completeNoticeKey || '',
@@ -1006,7 +1187,7 @@ ${schema}`;
             version: 1,
             type: 'group-director-story-blueprint',
             exportedAt: new Date().toISOString(),
-            storyBlueprint: includeProgress ? exportedState : { blueprint: clone(getBlueprint()), doneSignals: [] },
+            storyBlueprint: includeProgress ? exportedState : { blueprint: clone(getBlueprint()), doneSignals: [], progressTracks: {} },
         };
     }
 
@@ -1027,11 +1208,36 @@ ${schema}`;
         const valid = validateImportData(obj);
         if (!valid.ok) return valid;
         const payload = valid.payload;
-        const hasProgress = options.includeProgress && Array.isArray(payload.doneSignals);
-        setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress, persist: options.persist });
-        if (options.includeProgress && Array.isArray(payload.doneSignals)) {
-            root().doneSignals = sanitizeDoneSignals(payload.doneSignals, getSteps(), getChatLength(getChat), 'import');
-            root().completeNoticeKey = '';
+        const hasProgress = options.includeProgress && (Array.isArray(payload.doneSignals) || isJsonObject(payload.progressTracks));
+        setBlueprint(payload.blueprint || payload, { resetProgress: true, persist: options.persist });
+        if (hasProgress) {
+            const state = root();
+            const chatLength = getChatLength(getChat);
+            const tracks = {};
+            if (isJsonObject(payload.progressTracks)) {
+                for (const [key, track] of Object.entries(payload.progressTracks)) {
+                    if (!isProgressTrack(track) || !validProgressKey(key)) continue;
+                    const mode = key.startsWith('level:') ? 'level' : key;
+                    const level = mode === 'level' ? Number(key.slice(6)) : 0;
+                    if (!Number.isSafeInteger(level)) continue;
+                    const steps = flattenNodes(state.blueprint.nodes, { mode, level });
+                    tracks[key] = {
+                        doneSignals: sanitizeDoneSignals(track.doneSignals, steps, chatLength, 'import'),
+                        completeNoticeKey: '',
+                    };
+                }
+            } else if (Array.isArray(payload.doneSignals)) {
+                tracks[state.activeProgressKey] = {
+                    doneSignals: sanitizeDoneSignals(payload.doneSignals, getSteps(), chatLength, 'import'),
+                    completeNoticeKey: '',
+                };
+            }
+            const active = tracks[state.activeProgressKey] || { doneSignals: [], completeNoticeKey: '' };
+            tracks[state.activeProgressKey] = active;
+            state.progressTracks = tracks;
+            state.doneSignals = active.doneSignals;
+            state.completeNoticeKey = '';
+            if (Array.isArray(payload.legacyDoneSignals)) state.legacyDoneSignals = sanitizeLegacyDoneSignals(payload.legacyDoneSignals, state.blueprint.nodes, chatLength);
             if (options.persist !== false) saveChatConditional?.();
         }
         return { ok: true };

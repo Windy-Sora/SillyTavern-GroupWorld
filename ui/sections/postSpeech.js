@@ -13,6 +13,7 @@ registerSection('postSpeech', function (ctx) {
     $c('ps-msg-enabled').prop('checked', settings.postSpeechMessageEnabled ?? false);
     $msgSection.toggle(settings.postSpeechMessageEnabled ?? false);
     $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT_MESSAGE);
+    $c('ps-msg-prompt').data('gdDefaultPrompt', DEFAULT_PROMPT_MESSAGE);
 
     $c('ps-msg-enabled').on('change', function () {
         settings.postSpeechMessageEnabled = !!$(this).prop('checked');
@@ -35,6 +36,7 @@ registerSection('postSpeech', function (ctx) {
     $c('ps-round-enabled').prop('checked', settings.postSpeechRoundEnabled ?? false);
     $roundSection.toggle(settings.postSpeechRoundEnabled ?? false);
     $c('ps-round-prompt').val(settings.postSpeechRoundPrompt || DEFAULT_PROMPT_ROUND);
+    $c('ps-round-prompt').data('gdDefaultPrompt', DEFAULT_PROMPT_ROUND);
 
     $c('ps-round-enabled').on('change', function () {
         settings.postSpeechRoundEnabled = !!$(this).prop('checked');
@@ -62,7 +64,7 @@ registerSection('postSpeech', function (ctx) {
     // ── Decision limit ──
     $c('ps-decision-limit').val(settings.postSpeechDecisionLimit ?? 20);
     $c('ps-decision-limit').on('input', function () {
-        settings.postSpeechDecisionLimit = Math.max(1, parseInt($(this).val()) || 20);
+        settings.postSpeechDecisionLimit = Math.min(500, Math.max(1, parseInt($(this).val()) || 20));
         saveSettings();
     });
 

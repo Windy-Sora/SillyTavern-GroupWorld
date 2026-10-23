@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { createUserProviderLoader } from '../../systems/user-provider-loader.js';
+import vm from 'node:vm';
+import { createUserProviderLoader, getTrustedProviderDigest } from '../../systems/user-provider-loader.js';
 import { CapabilityRegistry } from '../../systems/capability-registry.js';
 
 function deferred() {
@@ -78,6 +79,20 @@ function createProviderHarness(settings, saveSettings = () => {}, loaderOptions 
     });
     return { loader, providers, deps };
 }
+
+test('User Provider loader stamps the same source digest after restore', async () => {
+    await withAssetRuntime(async () => {
+        const settings = {}, source = 'export function register({registerProvider}) { registerProvider({id:"script",placeholder:"{{script}}",render:()=>({content:"x"})}); }';
+        const first = createProviderHarness(settings);
+        assert.equal((await first.loader.importAsset({ name: 'script.js', source }, 'provider', first.deps)).ok, true);
+        const digest = getTrustedProviderDigest(first.providers.get('script'));
+        assert.match(digest, /^[0-9a-f]{64}$/);
+        const restored = createProviderHarness(settings);
+        assert.deepEqual((await restored.loader.restoreAll('provider', restored.deps)).loaded, ['script']);
+        assert.equal(getTrustedProviderDigest(restored.providers.get('script')), digest);
+        assert.equal(getTrustedProviderDigest({ ...restored.providers.get('script') }), null);
+    });
+});
 
 function createCapabilityHarness(settings, saveSettings = () => {}, loaderOptions = {}) {
     const capabilities = new Map();
@@ -364,12 +379,102 @@ test('capability enabled persistence rolls back on rejection and preserves unrel
 
     const persisting = loader.persistCapabilityEnabled();
     await started.promise;
+    assert.deepEqual(entry.enabledById, { 'toggle.id': false, 'toggle.second': true });
     entry.note = 'concurrent';
     save.reject(new Error('toggle save failed'));
 
     await assert.rejects(persisting, /toggle save failed/);
     assert.equal(entry.enabled, true);
+    assert.equal(Object.hasOwn(entry, 'enabledById'), false);
     assert.equal(entry.note, 'concurrent');
+});
+
+test('P2-9: mixed capability states survive restoreAll and the actual APP_READY toggle hook', async () => {
+    await withAssetRuntime(async () => {
+        const settings = { gd: {} };
+        const source = 'export function register({CapabilityRegistry}) { for (const id of ["pair.A", "pair.B"]) CapabilityRegistry.register({id, executor() {}}); }';
+        const first = createCapabilityHarness(settings);
+        assert.equal((await first.loader.importAsset({ name: 'pair.js', source }, 'capability', first.deps)).ok, true);
+        const index = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
+        const start = index.indexOf('    // Hook capability toggle to persist enabled state.');
+        const end = index.indexOf('    // Persist capability scopes for built-in and user-imported capabilities.', start);
+        assert.ok(start >= 0 && end > start);
+        const hook = `{\n${index.slice(start, end)}\n}`;
+        const activate = (f, owner) => vm.runInNewContext(hook, {
+            CapabilityRegistry: f.registry, userProviderLoader: f.loader,
+            settings: owner.gd, saveSettingsDebounced() {}, console,
+        });
+        activate(first, settings);
+        first.registry.setEnabled('pair.B', false);
+        await first.loader.persistCapabilityEnabled();
+        assert.deepEqual(JSON.parse(JSON.stringify(settings.gd._builtinCapEnabled)), { 'pair.B': false });
+        const persisted = JSON.parse(JSON.stringify(settings));
+        const restarted = createCapabilityHarness(persisted);
+        assert.deepEqual((await restarted.loader.restoreAll('capability', restarted.deps)).loaded, ['pair']);
+        activate(restarted, persisted);
+        assert.equal(restarted.registry.get('pair.A').enabled, true);
+        assert.equal(restarted.registry.get('pair.B').enabled, false);
+        const hotReload = await restarted.loader.restoreAll('capability', restarted.deps);
+        assert.deepEqual(hotReload.failed, []);
+        assert.equal(restarted.registry.get('pair.A').enabled, true);
+        assert.equal(restarted.registry.get('pair.B').enabled, false);
+    });
+});
+
+test('capability imports retain per-ID source defaults without requiring a toggle', async () => {
+    await withAssetRuntime(async () => {
+        const settings = { gd: {} };
+        const source = 'export function register({CapabilityRegistry}) { CapabilityRegistry.register({id:"defaults.A", executor() {}}); CapabilityRegistry.register({id:"defaults.B", enabled:false, executor() {}}); }';
+        const first = createCapabilityHarness(settings);
+        assert.equal((await first.loader.importAsset({ name: 'defaults.js', source }, 'capability', first.deps)).ok, true);
+        const restarted = createCapabilityHarness(JSON.parse(JSON.stringify(settings)));
+        await restarted.loader.restoreAll('capability', restarted.deps);
+        assert.equal(restarted.registry.get('defaults.A').enabled, true);
+        assert.equal(restarted.registry.get('defaults.B').enabled, false);
+    });
+});
+
+test('legacy capability flags remain compatible and explicit per-ID records take precedence', async () => {
+    const settings = { gd: {
+        userCapabilities: [{ name: 'legacy', ids: ['legacy.A', 'legacy.B'], enabled: false }],
+        _builtinCapEnabled: { 'legacy.A': true },
+    } };
+    const f = createCapabilityHarness(settings);
+    for (const id of ['legacy.A', 'legacy.B']) f.registry.register({ id, executor() {} });
+    await f.loader.restoreCapabilityEnabled();
+    assert.equal(f.registry.get('legacy.A').enabled, true);
+    assert.equal(f.registry.get('legacy.B').enabled, false);
+    const entry = settings.gd.userCapabilities[0];
+    entry.enabledById = { 'legacy.A': false, 'legacy.B': true };
+    await f.loader.restoreCapabilityEnabled();
+    assert.equal(f.registry.get('legacy.A').enabled, false);
+    assert.equal(f.registry.get('legacy.B').enabled, true);
+    delete entry.enabledById;
+    delete settings.gd._builtinCapEnabled;
+    entry.enabled = true;
+    await f.loader.restoreCapabilityEnabled();
+    assert.equal(f.registry.get('legacy.A').enabled, true);
+    assert.equal(f.registry.get('legacy.B').enabled, true);
+});
+
+test('failed capability state save preserves a newer snapshot and skips unchanged saves', async () => {
+    const firstSave = deferred(), started = deferred();
+    const entry = { name: 'concurrent', ids: ['concurrent.A', 'concurrent.B'], enabled: true };
+    let saves = 0;
+    const f = createCapabilityHarness({ gd: { userCapabilities: [entry] } }, () => {
+        if (++saves === 1) { started.resolve(); return firstSave.promise; }
+    });
+    f.registry.register({ id: 'concurrent.A', enabled: false, executor() {} });
+    f.registry.register({ id: 'concurrent.B', executor() {} });
+    const pending = f.loader.persistCapabilityEnabled();
+    await started.promise;
+    f.registry.setEnabled('concurrent.B', false);
+    await f.loader.persistCapabilityEnabled();
+    firstSave.reject(Error('old save failed'));
+    await assert.rejects(pending, /old save failed/);
+    assert.deepEqual(entry.enabledById, { 'concurrent.A': false, 'concurrent.B': false });
+    await f.loader.persistCapabilityEnabled();
+    assert.equal(saves, 2);
 });
 
 test('input, security warning, read failure, and missing register contracts are stable', async () => {

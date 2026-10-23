@@ -1,3 +1,5 @@
+import { applyApprovedBlueprintLibraryChat } from './blueprint-library-chat.js';
+import { validateBlueprintLibraryDefinition } from './blueprint-library-validation.js';
 /**
  * Story Blueprint Library System.
  *
@@ -211,7 +213,35 @@ export function createStoryBlueprintLibrarySystem({
         });
     }
 
+    function mutateApproved({ operation, id, definition, expectedSettings, validate }) {
+        return enqueueMutation(async () => {
+            if (settings !== expectedSettings) throw Error('STALE_LIBRARY_ASSET');
+            validate();
+            if (!['create','update','delete'].includes(operation)) throw Error('INVALID_LIBRARY_DRAFT');
+            if (operation !== 'delete') validateBlueprintLibraryDefinition(definition);
+            const list = getLibraries(), index = list.findIndex(row => row?.id === id);
+            if (operation !== 'create' && index < 0) throw Error('STALE_LIBRARY_ASSET');
+            if (definition && list.some(row => row.id !== id && row.name === definition.name)) throw Error('LIBRARY_NAME_CONFLICT');
+            const before = index < 0 ? null : list[index];
+            const next = operation === 'delete' ? null : {
+                id: before?.id || genId(), ...clone(definition), createdAt: before?.createdAt ?? Date.now(), updatedAt: Date.now(),
+                sourceGroupName: definition.exportData.source?.groupName || '', ...validateBlueprintLibraryDefinition(definition),
+            };
+            if (operation === 'create') list.push(next);
+            else if (operation === 'delete') list.splice(index, 1);
+            else list[index] = next;
+            const applied = next && JSON.stringify(next);
+            const result = status => ({status, id: next?.id || id, persistence: status === 'saved_unconfirmed' ? 'unconfirmed' : 'unknown'});
+            // A failed save can have reached persistence. Never retry or restore a whole list.
+            try { await saveAll(); } catch { return result('outcome_unknown'); }
+            if (settings.storyBlueprintLibraries !== list || (next ? list.filter(row=>row?.id===next.id).length !== 1 || !list.includes(next) || JSON.stringify(next)!==applied : list.some(row=>row?.id===id))) return result('outcome_unknown');
+            return result('saved_unconfirmed');
+        });
+    }
+
     return {
+        applyApprovedToChat: args => enqueueMutation(() => applyApprovedBlueprintLibraryChat({...args,extensionKey:EXT_KEY})),
+        mutateApproved,
         getLibraries,
         saveCurrentAsLibrary,
         getLibrary,

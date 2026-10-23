@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createConfigProfileSubject } from './helpers/config-profile-subject.mjs';
+import { sanitizeImportedSettings } from '../../systems/config-profile-validation.js';
 
 function installDownloadEnvironment(t) {
     const previousWindow = globalThis.window;
@@ -60,6 +61,19 @@ function storedProfile(overrides = {}) {
         ...overrides,
     };
 }
+
+test('Muyu remembered credential is stripped from configuration profile snapshots and exports', t => {
+    installDownloadEnvironment(t);
+    const { subject, settings } = createConfigProfileSubject({ muyuContextConfig: { inputTokens: 64000, recentTurns: 8, autoSummary: true }, muyuHistoryEnabled: true, agentConfigs: { 'muyu-assistant': { endpoint: 'https://example.test/chat/completions', model: 'model', apiKey: 'MUYU_FAKE_SECRET' } } });
+    const profile = subject.saveCurrentAsProfile('Muyu', '', { agentsTools: true });
+    assert.equal(profile.settings.agentConfigs['muyu-assistant'].apiKey, '');
+    assert.equal(Object.hasOwn(profile.settings, 'muyuHistoryEnabled'), false);
+    assert.equal(Object.hasOwn(profile.settings, 'muyuContextConfig'), false);
+    // Defense in depth also sanitizes an already-stored profile carrying a key.
+    profile.settings.agentConfigs['muyu-assistant'].apiKey = 'MUYU_FAKE_SECRET';
+    assert.doesNotMatch(JSON.stringify(subject.exportProfileAsJson(profile.id)), /MUYU_FAKE_SECRET/);
+    assert.equal(settings.agentConfigs['muyu-assistant'].apiKey, 'MUYU_FAKE_SECRET');
+});
 
 test('saving and deleting profiles cover selected drawers without storing credentials', () => {
     const { subject, settings, calls } = createConfigProfileSubject({
@@ -138,4 +152,17 @@ test('profile export rejects unknown ids before creating a download', async () =
     const { subject } = createConfigProfileSubject();
     assert.throws(() => subject.exportProfileAsJson('missing'), /Profile not found/);
     await assert.rejects(subject.exportProfileAsZip('missing'), /Profile not found/);
+});
+
+test('Personal Muyu instructions cannot travel through JSON/ZIP profiles or be applied from stored profiles', async t => {
+    installDownloadEnvironment(t);
+    const personal = { enabled: true, text: 'PRIVATE_STYLE' }, foreign = { enabled: true, text: 'FOREIGN_STYLE' };
+    const { subject, settings } = createConfigProfileSubject({ muyuInstructionConfig: personal });
+    const profile = subject.saveCurrentAsProfile('Personal', '', { agentsTools: true });
+    assert.equal(Object.hasOwn(profile.settings, 'muyuInstructionConfig'), false);
+    profile.settings.muyuInstructionConfig = foreign;
+    assert.equal(Object.hasOwn(subject.exportProfileAsJson(profile.id).settings, 'muyuInstructionConfig'), false);
+    assert.equal(Object.hasOwn((await subject.exportProfileAsZip(profile.id)).settings, 'muyuInstructionConfig'), false);
+    await subject.applyProfile(profile.id); assert.deepEqual(settings.muyuInstructionConfig, personal);
+    for (const source of ['json', 'zip']) assert.equal(Object.hasOwn(sanitizeImportedSettings({ muyuInstructionConfig: foreign }, { source }), 'muyuInstructionConfig'), false);
 });

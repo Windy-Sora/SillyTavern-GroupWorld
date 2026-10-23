@@ -1,3 +1,5 @@
+import { applyApprovedLibraryChat } from './profile-library-chat.js';
+import { validateProfileLibraryDefinition } from './profile-library-validation.js';
 /**
  * Profile Library System — saved local profile packages backed by extension_settings.
  *
@@ -161,8 +163,9 @@ export function createProfileLibrarySystem({
         });
     }
 
-    async function deleteLibrary(id) {
+    async function deleteLibrary(id, { beforeApply = () => {} } = {}) {
         return enqueueMutation(async () => {
+            beforeApply(settings);
             const list = getLibraries();
             const idx = list.findIndex(x => x.id === id);
             if (idx < 0) return false;
@@ -194,8 +197,9 @@ export function createProfileLibrarySystem({
         });
     }
 
-    async function updateAutoLoadSettings(patch = {}) {
+    async function updateAutoLoadSettings(patch = {}, { beforeApply = () => {} } = {}) {
         return enqueueMutation(async () => {
+            beforeApply(settings);
             const auto = ensureAutoLoadSettings();
             const keys = Object.keys(patch).filter(key => Object.hasOwn(auto, key));
             const previous = Object.fromEntries(keys.map(key => [key, auto[key]]));
@@ -239,7 +243,7 @@ export function createProfileLibrarySystem({
         const data = normalizeLibraryEntry(libraryOrData) || libraryOrData;
         const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
         const members = Array.isArray(options.members) ? options.members : currentMembers();
-        const liveProfiles = getProfiles?.() || {};
+        const liveProfiles = options.liveProfiles ?? getProfiles?.() ?? {};
         const opts = {
             matchHash: true,
             matchAvatarName: true,
@@ -442,9 +446,92 @@ export function createProfileLibrarySystem({
         lastAutoLoadKey = '';
     }
 
+
+    // Exact library-only writes share the existing GUI queue. No applyImport or chat read.
+    async function mutateApproved({ operation, id, definition, validate, expectedSettings }) {
+        const guard = () => {
+            if (expectedSettings !== settings) throw Error('STALE_LIBRARY_ASSET');
+            if (autoLoadBusy) throw Error('LIBRARY_BUSY');
+            validate();
+        };
+        if (operation === 'delete') {
+            let started = false, originalList;
+            try {
+                await deleteLibrary(id, { beforeApply: () => { guard(); originalList = settings.profileLibraries; started = true; } });
+                const absent = settings.profileLibraries === originalList && !getLibraries().some(row => row.id === id);
+                return { status: absent ? 'saved_unconfirmed' : 'outcome_unknown', persistence: absent ? 'unconfirmed' : 'unknown', id };
+            } catch (error) {
+                if (!started) throw error;
+                return { status: 'outcome_unknown', persistence: 'unknown', id };
+            }
+        }
+        if (!['create','update'].includes(operation)) throw Error('INVALID_LIBRARY_DRAFT');
+        return enqueueMutation(async () => {
+            guard();
+            validateProfileLibraryDefinition(definition);
+            const list = getLibraries(), before = operation === 'update' ? list.find(row => row.id === id) : null;
+            if (operation === 'update' && !before) throw Error('STALE_LIBRARY_ASSET');
+            const index = before ? list.indexOf(before) : list.length;
+            const next = { id: before?.id || genId(), name: definition.name, description: definition.description,
+                createdAt: before?.createdAt ?? Date.now(), updatedAt: Date.now(),
+                sourceGroupName: definition.exportData.source?.groupName || '', profileCount: definition.exportData.profiles.length, exportData: clone(definition.exportData) };
+            const fingerprint = JSON.stringify(next), applied = clone(next);
+            if (before) list[index] = next; else list.push(next);
+            try {
+                await saveAll();
+                const matches = settings.profileLibraries === list && list.filter(row=>row.id===next.id).length===1
+                    && list.find(row=>row.id===next.id)===next && JSON.stringify(next)===fingerprint;
+                return { status: matches ? 'saved_unconfirmed' : 'outcome_unknown', persistence: matches ? 'unconfirmed' : 'unknown', id: next.id };
+            } catch {
+                const currentIndex = list.indexOf(next);
+                if (settings.profileLibraries === list && currentIndex >= 0) {
+                    if (before) {
+                        for (const key of Object.keys(applied)) if (JSON.stringify(next[key]) === JSON.stringify(applied[key])) {
+                            if (Object.hasOwn(before,key)) next[key] = before[key]; else delete next[key];
+                        }
+                    } else if (JSON.stringify(next)===fingerprint) list.splice(currentIndex,1);
+                }
+                return { status: 'outcome_unknown', persistence: 'unknown', id: next.id };
+            }
+        });
+    }
+
+
+    function inspectChatLibrary(metadata) {
+        const root = metadata?.[EXT_KEY];
+        if (root !== undefined && (!root || typeof root !== 'object' || Array.isArray(root))) throw Error('LIBRARY_CHAT_UNAVAILABLE');
+        const profiles = root?.characterProfiles ?? {};
+        if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) throw Error('LIBRARY_CHAT_UNAVAILABLE');
+        const members = currentMembers().map(({ avatar, name, hash }) => ({ avatar, name, hash }));
+        if (!members.length) throw Error('LIBRARY_GROUP_REQUIRED');
+        return {
+            profiles: clone(profiles), members,
+            groupName: getCurrentGroup()?.name || '',
+            template: {
+                generatorPrompt: settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt(),
+                jsonSchema: settings.profileJsonSchema || getDefaultProfileSchema(),
+                renderTemplate: settings.profileRenderTemplate || getDefaultProfileRenderTemplate(),
+            },
+            rawTemplate: {
+                profileGeneratorPrompt: settings.profileGeneratorPrompt ?? null,
+                profileJsonSchema: settings.profileJsonSchema ?? null,
+                profileRenderTemplate: settings.profileRenderTemplate ?? null,
+            },
+        };
+    }
+    function applyApprovedToChat(args) {
+        return enqueueMutation(() => {
+            if (autoLoadBusy) throw Error('LIBRARY_BUSY');
+            return applyApprovedLibraryChat({ ...args, settings, extensionKey: EXT_KEY, saveSettings: saveAll });
+        });
+    }
+
     return {
+        inspectChatLibrary, applyApprovedToChat,
+        mutateApproved,
         getLibraries,
         getAutoLoadSettings,
+        isAutoLoading: () => autoLoadBusy,
         updateAutoLoadSettings,
         saveCurrentAsLibrary,
         deleteLibrary,

@@ -86,7 +86,9 @@ registerSection('critique', function (ctx) {
     $c('critique-enabled').prop('checked', !!settings.critiqueEnabled);
     $c('critique-reuse').prop('checked', settings.critiqueReusePrevious !== false);
     $c('critique-prompt').val(settings.critiquePrompt || defaultPrompt);
+    $c('critique-prompt').data?.('gdDefaultPrompt', defaultPrompt);
     $c('critique-schema').val(settings.critiqueSchema || DEFAULT_SCHEMA);
+    $c('critique-schema').data?.('gdDefaultSchema', DEFAULT_SCHEMA);
 
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;
@@ -154,7 +156,7 @@ registerSection('critique', function (ctx) {
         $c('critique-schema').val(DEFAULT_SCHEMA);
         settings.critiqueSchema = '';
         saveSettings();
-        toastr.info(settings.lang === 'zh' ? '已恢复默认 JSON Schema' : 'Critique schema reset to default');
+        toastr.info(settings.lang === 'zh' ? '已恢复默认 JSON 输出示例' : 'Critique output example reset to default');
     });
 
     // Save edited result

@@ -1,3 +1,5 @@
+import { applyApprovedNpcEdit, applyApprovedNpcCreation } from './npc-editor.js';
+import { createApprovedNpcGeneration } from './npc-generation.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -57,6 +59,7 @@ export function createNpcSystem({
     const L = (zh, en) => (settings.lang === 'zh' ? zh : en);
     const fieldRevisions = new WeakMap();
     const entryRevisions = new WeakMap();
+    let activeGenerations = 0;
 
     function bumpFieldRevision(entry, key) {
         let fields = fieldRevisions.get(entry);
@@ -124,7 +127,7 @@ export function createNpcSystem({
 
     // ─── CRUD ──────────────────────────────────────────────────────────
 
-    async function generateNpcs() {
+    async function generateNpcsInternal() {
         const agent = AgentRegistry.get('npc');
         if (!agent) throw new Error('NPC agent not registered');
 
@@ -216,6 +219,14 @@ export function createNpcSystem({
         });
 
         return added;
+    }
+
+    async function generateNpcs() {
+        if (!settings.npcEnabled) throw new Error('NPC generation is disabled');
+        if (approvedGeneration.isGenerating()) throw new Error('NPC_BUSY');
+        activeGenerations++;
+        try { return await generateNpcsInternal(); }
+        finally { activeGenerations--; }
     }
 
     async function updateNpc(index, updates) {
@@ -371,5 +382,17 @@ export function createNpcSystem({
         return _csrfToken;
     }
 
-    return { getNpcs, generateNpcs, updateNpc, deleteNpc, importNpcAsCharacter, nameExists };
+    function applyApprovedEdit(options) {
+        return applyApprovedNpcEdit({...options,extensionKey:EXT_KEY,mutate:(entry,updates)=>{
+            for(const key of Object.keys(updates))bumpFieldRevision(entry,key);
+            Object.assign(entry,updates);
+        }});
+    }
+    const approvedGeneration = createApprovedNpcGeneration({ settings, EXT_KEY, getChatMetadata, getChat, getCharacters,
+        getCurrentGroup, getContext, AgentRegistry, execute, buildContextPool, createCaller, isBusy: () => activeGenerations > 0 });
+    return { getNpcs, generateNpcs, isGenerating: () => activeGenerations > 0 || approvedGeneration.isGenerating(), updateNpc, deleteNpc, importNpcAsCharacter, nameExists, applyApprovedEdit,
+        inspectGeneration: approvedGeneration.inspectGeneration, generateApproved: approvedGeneration.generateApproved,
+        inspectManualCreation:()=>({limit:settings.npcMaxCount??10,characters:(getCharacters()||[]).map(c=>({name:c.name}))}),
+        applyApprovedCreation:options=>applyApprovedNpcCreation({...options,extensionKey:EXT_KEY}),
+    };
 }

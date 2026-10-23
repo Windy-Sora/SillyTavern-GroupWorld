@@ -29,7 +29,7 @@ export default {
         checkRelativeImports: true,
         checkMergeMarkers: true,
         checkReplacementCharacters: true,
-        moduleSmokeRoots: ['agents', 'systems', 'utils'],
+        moduleSmokeRoots: ['agents', 'systems', 'utils', 'muyu'],
         moduleSmokeConcurrency: 8,
     },
     test: {
@@ -42,6 +42,7 @@ export default {
             'systems/**/*.js',
             'ui/**/*.js',
             'utils/**/*.js',
+            'muyu/**/*.js',
         ],
     },
     regression: {

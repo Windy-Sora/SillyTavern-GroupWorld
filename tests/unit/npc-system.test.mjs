@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createNpcSystem } from '../../systems/npc-system.js';
+import { createConfigWriter } from '../../muyu/host/config-write.js';
+import { dependencyFields, readSettingsFields } from '../../muyu/config/registry.js';
 
 function createSubject(getCharacters) {
     const metadata = {};
@@ -24,7 +26,7 @@ function deferred() {
 function fixture(overrides = {}) {
     const metadata = { gd: { npcs: [] } };
     const chat = [];
-    const settings = { lang: 'en', agentConfigs: {}, npcMaxCount: 10, npcBatchSize: 3 };
+    const settings = { lang: 'en', agentConfigs: {}, npcEnabled: true, npcMaxCount: 10, npcBatchSize: 3 };
     let current = metadata;
     const deps = {
         settings, EXT_KEY: 'gd', getChatMetadata: () => current, getChat: () => chat,
@@ -133,6 +135,43 @@ test('NPC generation returns only persisted additions after duplicate and capaci
     const added = await system.generateNpcs();
     assert.deepEqual(added.map(npc => npc.name), ['Bob']);
     assert.deepEqual(metadata.gd.npcs.map(npc => npc.name), ['Alice', 'Bob']);
+});
+
+test('disabled NPC generation stops before model calls and does not change saved NPCs', async () => {
+    let calls = 0;
+    const { system, settings, metadata } = fixture({ execute: async () => { calls++; return [{ name: 'Mage' }]; } });
+    settings.npcEnabled = false;
+    await assert.rejects(system.generateNpcs(), /disabled/);
+    assert.equal(calls, 0); assert.deepEqual(metadata.gd.npcs, []); assert.equal(system.isGenerating(), false);
+});
+
+test('lowering the NPC cap below existing count preserves entries and blocks new generation', async () => {
+    let calls = 0;
+    const { system, settings, metadata } = fixture({ execute: async () => { calls++; return [{ name: 'Mage' }]; } });
+    metadata.gd.npcs = [{ name: 'Alice' }, { name: 'Bob' }];
+    settings.npcMaxCount = 1;
+    await assert.rejects(system.generateNpcs(), /limit reached/);
+    assert.equal(calls, 0); assert.deepEqual(metadata.gd.npcs.map(npc => npc.name), ['Alice', 'Bob']);
+});
+
+test('NPC generation stays busy through model work and async save, rejecting settings writes', async () => {
+    const model = deferred(), save = deferred(), saveStarted = deferred();
+    const { system, settings } = fixture({
+        execute: () => model.promise,
+        saveChatConditional: () => { saveStarted.resolve(); return save.promise; },
+    });
+    const pending = system.generateNpcs();
+    assert.equal(system.isGenerating(), true);
+    model.resolve([{ name: 'Mage' }]);
+    await saveStarted.promise;
+    assert.equal(system.isGenerating(), true);
+    const changes = { npcBatchSize: 2 };
+    const baseline = readSettingsFields(settings, dependencyFields(Object.keys(changes)));
+    const writer = createConfigWriter({ getSettings: () => settings, isBusy: () => system.isGenerating(), saveSettings: async () => undefined });
+    await assert.rejects(writer.apply({ baseline, changes, contractVersion: 2 }), /WRITE_UNAVAILABLE/);
+    assert.equal(settings.npcBatchSize, 3);
+    save.resolve(); await pending;
+    assert.equal(system.isGenerating(), false);
 });
 
 test('failed NPC generation removes only its own additions', async () => {

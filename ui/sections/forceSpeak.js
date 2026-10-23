@@ -20,6 +20,7 @@ registerSection('forceSpeak', function (ctx) {
 
     // Show custom value if set, otherwise display the built-in default
     const defaultPrompt = getDefaultFsPrompt(settings.lang);
+    $c('force-speak-prompt').data('gdDefaultPrompt', defaultPrompt);
     $c('force-speak-prompt').val(settings.forceSpeakPrompt || defaultPrompt);
     $c('force-speak-prompt').on('input', () => {
         settings.forceSpeakPrompt = $c('force-speak-prompt').val();

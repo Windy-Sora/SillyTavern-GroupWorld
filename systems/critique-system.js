@@ -6,10 +6,10 @@ import { createEmptyCritiqueData, isPlainObject } from './critique-validation.js
 const DEFAULT_PROMPT = {
     zh: `你是一个客观中立的群聊导演批判系统。回顾最近的对话，只分析 AI 角色的表现，不要批判或评价用户。
 
-请检查导演的发言顺序、焦点分配和节奏，并检查每个角色的一致性、互动质量以及是否过于被动或强势。只输出符合指定 JSON Schema 的 JSON 对象。`,
+请检查导演的发言顺序、焦点分配和节奏，并检查每个角色的一致性、互动质量以及是否过于被动或强势。只输出符合指定 JSON 输出示例的 JSON 对象。`,
     en: `You are an objective group-chat critique system. Review the recent conversation and critique only AI character performance, never the user.
 
-Assess speaking order, spotlight distribution, pacing, character consistency, interaction quality, and whether a character is too passive or dominant. Output only a JSON object matching the supplied schema.`,
+Assess speaking order, spotlight distribution, pacing, character consistency, interaction quality, and whether a character is too passive or dominant. Output only a JSON object matching the supplied output example.`,
 };
 
 function getDefaultSchema() {
@@ -60,6 +60,7 @@ export function createCritiqueSystem({
         quietPromptId: inject_ids.QUIET_PROMPT,
         inPromptType: extension_prompt_types.IN_PROMPT,
     });
+    let activeGenerations = 0;
 
     function getCritiques() {
         return repository.getCritiques();
@@ -94,7 +95,7 @@ export function createCritiqueSystem({
         const base = preferredPrompt || settings.critiquePrompt
             || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en);
         const schema = settings.critiqueSchema || getDefaultSchema();
-        return `${base}\n\nOutput format must strictly follow this JSON schema:\n${schema}\n\n${inputText}`;
+        return `${base}\n\nOutput a JSON object following this example structure:\n${schema}\n\n${inputText}`;
     }
 
     function parseResponseData(response) {
@@ -132,7 +133,7 @@ export function createCritiqueSystem({
         throw error;
     }
 
-    async function generateCritique() {
+    async function generateCritiqueInternal() {
         const metadata = getChatMetadata();
         const chat = getChat();
         if (!chat.length) throw new Error('No messages to critique');
@@ -182,7 +183,7 @@ export function createCritiqueSystem({
         return saved;
     }
 
-    async function regenerateLastCritique() {
+    async function regenerateLastCritiqueInternal() {
         const metadata = getChatMetadata();
         const critiques = repository.getCritiques(metadata);
         const last = repository.getLatestActive(metadata);
@@ -215,6 +216,15 @@ export function createCritiqueSystem({
         return saved;
     }
 
+    async function trackGeneration(operation) {
+        activeGenerations++;
+        try { return await operation(); }
+        finally { activeGenerations--; }
+    }
+
+    const generateCritique = () => trackGeneration(generateCritiqueInternal);
+    const regenerateLastCritique = () => trackGeneration(regenerateLastCritiqueInternal);
+
     async function updateActiveContent(content) {
         if (typeof content !== 'string') throw new TypeError('Critique content must be a string');
         const active = repository.getLatestActive();
@@ -234,6 +244,7 @@ export function createCritiqueSystem({
         getCritiques,
         generateCritique,
         regenerateLastCritique,
+        isGenerating: () => activeGenerations > 0,
         updateActiveContent,
         revertLastCritique: () => repository.revert(),
         resetAll: () => repository.reset(),

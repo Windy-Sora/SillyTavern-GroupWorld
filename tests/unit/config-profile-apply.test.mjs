@@ -12,6 +12,13 @@ function profile(settings, extra = {}) {
     };
 }
 
+test('Applying an existing profile cannot change the personal read authorization policy', async () => {
+    const {subject,settings}=createConfigProfileSubject({muyuPermissionConfig:{readAccess:'ask'},configProfiles:[profile({muyuPermissionConfig:{readAccess:'all'},llmMaxSpeakers:4})]});
+    const result=await subject.applyProfile('profile-1');
+    assert.deepEqual(settings.muyuPermissionConfig,{readAccess:'ask'});
+    assert.equal(result.changed.includes('muyuPermissionConfig'),false);
+});
+
 test('applying a profile merges defaults and preserves per-user agent credentials', async () => {
     const { subject, settings, calls, extensionSettings } = createConfigProfileSubject({
         profileLibraryAutoLoad: { enabled: false, fixedId: 'old' },

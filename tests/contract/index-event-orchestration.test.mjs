@@ -37,6 +37,7 @@ test('index registers the complete SillyTavern event surface exactly once', () =
     const expected = {
         GROUP_WRAPPER_STARTED: 1,
         GROUP_WRAPPER_FINISHED: 1,
+        GENERATION_STARTED: 1,
         GENERATION_STOPPED: 1,
         CHARACTER_MESSAGE_RENDERED: 2,
         MESSAGE_DELETED: 1,

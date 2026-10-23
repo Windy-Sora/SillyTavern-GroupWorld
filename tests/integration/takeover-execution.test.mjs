@@ -42,7 +42,7 @@ test('takeover failure leaves the unfinished plan unavailable for finalization u
 });
 
 test('nested wrappers preserve an active takeover and rerolls do not consume remaining planned generations', () => {
-    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 2, generationType: 'normal' }), { kind: 'preserve_nested' });
+    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 2, generationType: 'normal', nestedTakeover: true }), { kind: 'preserve_nested' });
     const reroll = decideTakeoverTurn({ remaining: 2, swipeCount: 0, generationType: 'swipe', avatar: 'alice', plannedAvatars: ['alice', 'bob'] });
     assert.equal(reroll.action, 'allow');
     assert.equal(reroll.remaining, 2);

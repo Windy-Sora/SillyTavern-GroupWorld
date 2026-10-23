@@ -19,7 +19,13 @@ registerSection('director', function (ctx) {
     toggleCharDescLength(settings.llmCharDescMode);
 
     $c('llm-prompt').on('input', () => { settings.llmPrompt = $c('llm-prompt').val(); saveSettings(); });
-    $c('llm-max-speakers').on('input', () => { settings.llmMaxSpeakers = Math.max(1, parseInt($c('llm-max-speakers').val()) || 3); saveSettings(); });
+    $c('llm-max-speakers').on('input', () => {
+        if (ctx.quickActions) {
+            if (!ctx.quickActions.setSpeakers($c('llm-max-speakers').val(), 'llm')) $c('llm-max-speakers').val(settings.llmMaxSpeakers);
+            return;
+        }
+        settings.llmMaxSpeakers = Math.max(1, parseInt($c('llm-max-speakers').val()) || 3); saveSettings();
+    });
     $c('llm-context-depth').on('input', () => { settings.llmContextDepth = Math.max(1, parseInt($c('llm-context-depth').val()) || 10); saveSettings(); });
 
     $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
@@ -47,7 +53,7 @@ registerSection('director', function (ctx) {
     });
 
     // JSON Schema
-    $c('llm-json-schema').val(settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema);
+    $c('llm-json-schema').val(settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema);
     $c('llm-json-schema').on('input', () => { settings.llmJsonSchema = $c('llm-json-schema').val(); saveSettings(); });
     $c('llm-json-schema-reset').on('click', () => {
         settings.llmJsonSchema = DEFAULT_SETTINGS.llmJsonSchema;
@@ -68,7 +74,7 @@ registerSection('director', function (ctx) {
         }
         $('#gd-history-meta-display').hide();
         saveChatConditional();
-        toastr.info('导演账本已清空');
+        toastr.info(settings.lang === 'en' ? 'Director ledger cleared' : '导演账本已清空');
     });
 
     $c('llm-prompt-reset').on('click', () => {

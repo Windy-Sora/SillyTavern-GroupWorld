@@ -184,17 +184,39 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         decisionSnapshot = null;
     }
 
+    // Approval must be checked inside the mutation queue, not only before it.
+    async function mutateApproved({ operation, id, definition, validate, expectedSettings = settings }) {
+        if (expectedSettings !== settings) throw new Error('STALE_SCRIPT_ASSET');
+        validate();
+        const list = getList();
+        let entry;
+        try {
+            if (operation === 'create') entry = await add(definition);
+            else if (operation === 'update') entry = await update(id, definition);
+            else if (operation === 'delete') await remove(id);
+            else throw new Error('INVALID_SCRIPT_DRAFT');
+        } catch (_) {
+            return { status: 'outcome_unknown', persistence: 'unknown', id: entry?.id || id || '', enabled: false };
+        }
+        const matches = operation === 'delete'
+            ? !getList().some(row => row.id === id)
+            : !!entry && getList().includes(entry) && JSON.stringify(normalizeScriptExecutor(entry)) === JSON.stringify(normalizeScriptExecutor(definition));
+        return { status: getList() === list && matches ? 'saved_unconfirmed' : 'outcome_unknown',
+            persistence: getList() === list && matches ? 'unconfirmed' : 'unknown', id: entry?.id || id || '', enabled: entry?.enabled === true };
+    }
+
     function getTurnShared() { return turnShared; }
     function getTurnId() { return turnId; }
     function getDecisionSnapshot() { return decisionSnapshot; }
 
-    async function buildParams(entry) {
+    async function buildParams(entry, check = () => {}) {
         const params = Object.create(null);
         for (const p of (entry.params || [])) {
             params[p.key] = p.default;
         }
         if (entry.renderParams) {
             for (const p of (entry.params || [])) {
+                check();
                 if (p.type === 'string' || typeof p.default === 'string') {
                     try {
                         params[p.key] = await renderPrompt(
@@ -453,12 +475,53 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         pushTrace(traceEntry);
     }
 
+    // Explicit manual invocation: local shared/decision state, never a replay of
+    // the automatic pipeline. Same-page code cannot be forcibly interrupted.
+    async function executeOne({ definition: entry, stage, event, signal, validate = () => {} }) {
+        let started = false, stopped = false, timer, abort;
+        const timeout = stage === 'decision' ? decisionTimeoutMs : phaseTimeoutMs;
+        const interrupted = code => ({ status: started ? 'outcome_unknown' : 'not_started', code, started, persistence: 'unknown' });
+        if (signal?.aborted) return interrupted('CANCELLED');
+        const work = async () => {
+            validate();
+            const fn = new Function('ctx', entry.code);
+            // Rendering can execute user Providers, so it is inside this grant
+            // and counts as execution even before the script body starts.
+            started = entry.renderParams === true;
+            const params = await buildParams(entry, () => { if (stopped || signal?.aborted) throw Error('CANCELLED'); validate(); });
+            if (stopped || signal?.aborted) return interrupted('CANCELLED');
+            validate();
+            const ctx = { ...event, params, shared: {}, manual: true,
+                ...(stage === 'decision' ? { decision: {} } : { decisionSnapshot: null }) };
+            started = true;
+            const value = await fn(ctx);
+            if (stopped || signal?.aborted) return interrupted('CANCELLED');
+            // A receipt reports completion, not durable writes or a live decision.
+            let text = '', outputStatus = 'available';
+            try {
+                assertSnapshotValue(value);
+                text = JSON.stringify(value) ?? '';
+                if (text.length > 2000) { text = ''; outputStatus = 'too_large'; }
+            } catch { outputStatus = 'unsupported'; }
+            return { status: 'completed', code: 'COMPLETED', started: true, persistence: 'unknown', text, outputStatus, automaticPipelineMergePerformed: false };
+        };
+        try {
+            return await Promise.race([work().catch(() => interrupted('EXECUTION_ERROR')), new Promise(resolve => {
+                abort = () => { stopped = true; resolve(interrupted('CANCELLED')); };
+                signal?.addEventListener('abort', abort, { once: true });
+                timer = setTimeout(() => { stopped = true; resolve(interrupted('TIMEOUT')); }, timeout);
+                if (signal?.aborted) abort();
+            })]);
+        } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+    }
+
     return {
-        getList,
+        getList, executeOne,
         add: (...args) => enqueueMutation(() => add(...args)),
         update: (...args) => enqueueMutation(() => update(...args)),
         remove: (...args) => enqueueMutation(() => remove(...args)),
         toggle: (...args) => enqueueMutation(() => toggle(...args)),
+        mutateApproved: (...args) => enqueueMutation(() => mutateApproved(...args)),
         createExportData,
         importExecutors: (...args) => enqueueMutation(() => importExecutors(...args)),
         executeAll, executeAllDecision,

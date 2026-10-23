@@ -31,6 +31,16 @@ test('formula round blocks unknown candidates and handles an empty candidate poo
     assert.deepEqual(resetFormulaRoundState(), { scores: {}, speakerCount: 0, initialized: false });
 });
 
+test('formula rerolls bypass stale or empty picks without advancing the round', () => {
+    for (const generationType of ['swipe', 'regenerate']) {
+        for (const scores of [{}, { bob: 100 }]) {
+            const result = decideFormulaTurn({ scores, topN: 1, avatar: 'alice', speakerCount: 3, generationType });
+            assert.equal(result.allowed, true);
+            assert.equal(result.nextSpeakerCount, 3);
+        }
+    }
+});
+
 test('takeover consumes only normal generations and allows rerolls without consuming the plan', () => {
     assert.deepEqual(decideTakeoverTurn({ remaining: 2, avatar: 'alice', plannedAvatars: ['alice', 'bob'] }), {
         action: 'allow', reason: 'manual_takeover', remaining: 1, swipeCount: 0, failed: false, reroll: false,
@@ -51,7 +61,9 @@ test('takeover blocks pending ST order, plan mismatches, and excessive rerolls',
 });
 
 test('wrapper start preserves nested takeover, retries failed plans, reuses swipes, and resets normal rounds', () => {
-    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 2, takeoverFailed: true, generationType: 'swipe' }), { kind: 'preserve_nested' });
+    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 2, takeoverFailed: true, generationType: 'swipe', nestedTakeover: true }), { kind: 'preserve_nested' });
+    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 2, takeoverFailed: true }), { kind: 'reset_new_round', generationType: 'normal' });
+    assert.deepEqual(transitionWrapperStarted({ manualRemaining: 0, nestedTakeover: true }), { kind: 'preserve_nested' });
     assert.deepEqual(transitionWrapperStarted({ takeoverFailed: true }), { kind: 'retry_failed' });
     assert.deepEqual(transitionWrapperStarted({ generationType: 'regenerate' }), { kind: 'reuse_or_restore_plan', generationType: 'regenerate' });
     assert.deepEqual(transitionWrapperStarted({ generationType: 'normal' }), { kind: 'reset_new_round', generationType: 'normal' });

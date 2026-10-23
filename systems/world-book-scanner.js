@@ -7,6 +7,8 @@
  *   loadWorldInfo    — async (name) => { entries: {...} }
  */
 
+import { visibleWorldBookNames, isInternalWorldBook } from './internal-world-books.js';
+
 export function createWorldBookScanner({ world_names, loadWorldInfo, getSelection, getMaxEntries, getSourceMode, getStSelection, renderMacros, log }) {
 
     let cache = null;
@@ -19,10 +21,10 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
 
     /**
      * Scan only the world books the user has manually selected
-     * in the Group World settings panel.
+     * in the Group Director settings panel.
      */
     function getSelectedNames() {
-        const allNames = world_names || [];
+        const allNames = visibleWorldBookNames(world_names || []);
         if ((getSourceMode?.() || 'st') === 'st') {
             const stNames = (getStSelection?.() || []).filter(n => allNames.includes(n));
             return [...new Set(stNames)];
@@ -47,7 +49,7 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
                 const books = await Promise.all(names.map(async (name) => {
             try {
                 const data = await loadWorldInfo(name);
-                return { name, data };
+                return { name, data: isInternalWorldBook(name, data) ? null : data };
             } catch (e) {
                 console.warn(`[GroupDirector] Failed to load world book "${name}":`, e.message);
                 return { name, data: null };

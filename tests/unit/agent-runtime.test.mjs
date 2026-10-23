@@ -53,6 +53,31 @@ test('strict scoped context rejects undeclared reads', () => {
     assert.throws(() => proxy.secret, /AgentAccessViolation.*strict-probe.*secret/);
 });
 
+test('scoped reflection cannot expose or mutate a frozen pool or its prototype', t => {
+    silenceConsole(t);
+    const secret = Symbol('secret');
+    const pool = Object.freeze({ value: 7, secret: 'key', [secret]: 'hidden', readValue() { return this.value; } });
+    const { proxy, report } = createScopedPool(pool, ['value', 'readValue']);
+    assert.deepEqual(Reflect.ownKeys(proxy), ['value', 'readValue']);
+    assert.equal('secret' in proxy, false);
+    assert.equal(Object.getOwnPropertyDescriptor(proxy, 'secret'), undefined);
+    assert.equal(Object.getOwnPropertyDescriptor(proxy, secret), undefined);
+    assert.equal(proxy[secret], undefined);
+    assert.match(report(true), /Symbol\(secret\)/);
+    assert.equal(Object.getPrototypeOf(proxy), null);
+    assert.equal(Object.getOwnPropertyDescriptor(proxy, 'readValue').value(), 7);
+    assert.equal(Object.getOwnPropertyDescriptors(proxy).value.value, 7);
+    const spread = { ...proxy };
+    assert.deepEqual(Object.keys(spread), ['value', 'readValue']);
+    assert.equal(spread.value, 7);
+    assert.equal(spread.readValue(), 7);
+    assert.equal(Reflect.defineProperty(proxy, 'value', { value: 99 }), false);
+    assert.equal(Reflect.deleteProperty(proxy, 'value'), false);
+    assert.equal(Reflect.setPrototypeOf(proxy, {}), false);
+    assert.equal(Reflect.preventExtensions(proxy), false);
+    assert.equal(pool.value, 7);
+});
+
 test('execute runs the semantic pipeline in order through the managed caller', async t => {
     silenceConsole(t);
     const stages = [];
@@ -191,6 +216,9 @@ test('execution traces record successful and failed pipelines without retaining 
 test('trace ring buffer clamps its size and tracing stays opt-in', async t => {
     silenceConsole(t);
     AgentTrace.clear();
+    AgentTrace.setMax(1);
+    AgentTrace.setMax(100000);
+    assert.equal(AgentTrace.getMax(), 200);
     AgentTrace.setMax(1);
     t.after(() => {
         AgentTrace.clear();

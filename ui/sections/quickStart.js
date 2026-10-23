@@ -3,6 +3,7 @@
  * Profile, Memory, World Books, one-click config + summary.
  */
 import { registerSection } from './registry.js';
+import { visibleWorldBookNames } from '../../systems/internal-world-books.js';
 import { getWorldBookSourceLabel } from './quick-start-helpers.js';
 
 registerSection('quickStart', function (ctx) {
@@ -93,7 +94,7 @@ registerSection('quickStart', function (ctx) {
             const stats = memorySystem.getStats();
             memCount = Object.values(stats).reduce((s, st) => s + st.count, 0);
         }
-        const wbCount = (world_names || []).length;
+        const wbCount = visibleWorldBookNames(world_names || []).length;
         const wbSourceMode = settings.worldBookSourceMode || 'st';
         const wbChecked = wbSourceMode === 'st'
             ? (worldBookScanner?.getSelectedNames?.() || []).length
@@ -206,6 +207,7 @@ registerSection('quickStart', function (ctx) {
     });
 
     $c('qs-memory-extract').on('click', async function () {
+        if (ctx.runQuickAction) return ctx.runQuickAction('memory');
         if (!memorySystem) return;
         const btn = $(this); btn.prop('disabled', true);
         try {
@@ -223,7 +225,7 @@ registerSection('quickStart', function (ctx) {
     function refreshQuickWorldBookList() {
         const $list = $('#gd-qs-worldbook-list');
         if (!$list.length) return;
-        const names = world_names || [];
+        const names = visibleWorldBookNames(world_names || []);
         if (!names.length) {
             $list.html(`<small style="color:var(--grey70a);">${isZh() ? '无世界书' : 'No world books'}</small>`);
             renderReadiness();

@@ -137,6 +137,20 @@ function makeOpenAICaller(config) {
 
 function makeAnthropicCaller(config) {
     const base = config.endpoint.replace(/\/+$/, '');
+    function headers() {
+        const result = {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01',
+        };
+        try {
+            const url = new URL(base);
+            if (url.origin === 'https://api.anthropic.com') {
+                result['anthropic-dangerous-direct-browser-access'] = 'true';
+            }
+        } catch (_) { /* keep existing invalid-endpoint error handling */ }
+        return result;
+    }
 
     return {
         supportsAbort: true,
@@ -144,11 +158,7 @@ function makeAnthropicCaller(config) {
         async generate(prompt, { signal } = {}) {
             const resp = await fetch(`${base}/v1/messages`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': config.apiKey,
-                    'anthropic-version': '2023-06-01',
-                },
+                headers: headers(),
                 signal,
                 body: JSON.stringify({
                     model: config.model,
@@ -168,11 +178,7 @@ function makeAnthropicCaller(config) {
             try {
                 const resp = await fetch(`${base}/v1/messages`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': config.apiKey,
-                        'anthropic-version': '2023-06-01',
-                    },
+                    headers: headers(),
                     signal,
                     body: JSON.stringify({
                         model: config.model,

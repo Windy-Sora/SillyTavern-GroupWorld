@@ -65,3 +65,14 @@ test('Top-N selection is deterministic, bounded, and keeps only the highest rank
     assert.deepEqual(selectTopCandidates(scores, 99), ['bob', 'mei', 'alice', 'eve']);
     assert.deepEqual(selectTopCandidates(scores, 0), []);
 });
+
+test('same-name cards do not share explicit speaker recency or consecutive penalties', () => {
+    const first = { name: 'Alice', avatar: 'first.png' };
+    const messages = [{ name: 'Alice', original_avatar: 'second.png' }];
+    assert.equal(findLastSpokenIndex(first, messages, true), -1);
+    assert.equal(countConsecutiveMessages(first, messages, true), 0);
+    assert.equal(findLastSpokenIndex(first, [{ name: 'Alice' }], true), -1);
+    const scored = scoreFormulaCharacter({ character: first, chat: messages, recentMessages: messages,
+        nameAmbiguous: true, scoreWeights: weights, consecutivePenalty: 15, triggerScore: 40 });
+    assert.equal(scored.breakdown.consecutiveCount, 0);
+});

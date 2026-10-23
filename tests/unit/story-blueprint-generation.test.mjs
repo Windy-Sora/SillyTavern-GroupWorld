@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createStoryBlueprintSystem } from '../../systems/story-blueprint-system.js';
+import { createConfigWriter } from '../../muyu/host/config-write.js';
+import { dependencyFields, readSettingsFields } from '../../muyu/config/registry.js';
 
 function deferred() {
     let resolve;
@@ -66,6 +68,50 @@ test('Story Blueprint prompt rendering carries host context, settings, and local
     assert.equal(calls.rendered[0][2].maxPasses, 3);
     assert.match(calls.rendered[0][2].locals.storyBlueprintFullJson, /"Quest"/);
     assert.match(calls.rendered[0][2].locals.storyBlueprintProgress, /0\/1/);
+});
+
+test('Story Blueprint output-format text is appended to both prompts, with empty value restoring the built-in example', async () => {
+    const { system, settings, calls } = fixture();
+    settings.storyBlueprintJsonSchema = 'Plain text instruction: return nodes.';
+    await system.renderGenerationPrompt('new');
+    await system.renderGenerationPrompt('continue');
+    assert.match(calls.rendered[0][0], /\[Output Format\]\nPlain text instruction: return nodes\./);
+    assert.match(calls.rendered[1][0], /\[Output Format\]\nPlain text instruction: return nodes\./);
+    settings.storyBlueprintJsonSchema = '';
+    await system.renderGenerationPrompt('new');
+    assert.match(calls.rendered[2][0], /\[Output Format\]/);
+    assert.match(calls.rendered[2][0], /"nodes"/);
+});
+
+test('Story Blueprint generation and continuation use independent custom Prompts and empty resets', async () => {
+    const { system, settings } = fixture();
+    settings.storyBlueprintPrompt = 'NEW ONLY {{storyBlueprintMaxNodes}} {{characters}}';
+    settings.storyBlueprintContinuePrompt = 'CONTINUE ONLY {{storyBlueprintFullJson}} {{storyBlueprintProgress}}';
+    assert.match(await system.renderGenerationPrompt('new'), /^rendered:NEW ONLY 5/);
+    assert.match(await system.renderGenerationPrompt('continue'), /^rendered:CONTINUE ONLY/);
+    settings.storyBlueprintPrompt = '';
+    settings.storyBlueprintContinuePrompt = '';
+    assert.match(await system.renderGenerationPrompt('new'), /^rendered:Generate a structured Story Blueprint/);
+    assert.match(await system.renderGenerationPrompt('continue'), /^rendered:Continue the existing Story Blueprint/);
+});
+
+test('node target changes only later prompts; active generation blocks the settings writer', async () => {
+    const gate = deferred();
+    const { system, settings, calls } = fixture({ createCaller: () => ({ generate: () => gate.promise }) });
+    settings.storyBlueprintMaxNodes = 12;
+    assert.match(await system.renderGenerationPrompt('new'), /NEW max=12/);
+    assert.match(await system.renderGenerationPrompt('continue'), /CONTINUE max=12/);
+    const request = system.generateBlueprint('new');
+    await settle();
+    const changes = { storyBlueprintMaxNodes: 9 };
+    const baseline = readSettingsFields(settings, dependencyFields(Object.keys(changes)));
+    const writer = createConfigWriter({ getSettings: () => settings, isBusy: () => system.isGenerating(), saveSettings: async () => {} });
+    await assert.rejects(writer.apply({ baseline, changes, contractVersion: 2 }), /WRITE_UNAVAILABLE/);
+    assert.equal(settings.storyBlueprintMaxNodes, 12);
+    gate.resolve({ title: 'Generated', nodes: [{ id: 'one', title: 'One', content: {} }] });
+    await request;
+    assert.equal(system.isGenerating(), false);
+    assert.equal(calls.generated.length, 0);
 });
 
 test('new blueprint generation owns its busy flag and stores normalized output', async () => {

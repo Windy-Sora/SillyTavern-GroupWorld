@@ -8,6 +8,7 @@ registerSection('memory', function (ctx) {
     const getCharacters = () => window.characters || [];
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
+    ctx.refreshMemoryList = renderMemoryList;
 
     const $section = $('#gd-memory-section');
     const $list = $('#gd-memory-list');
@@ -16,10 +17,10 @@ registerSection('memory', function (ctx) {
     $c('memory-enabled').prop('checked', settings.memoryEnabled ?? false);
     $section.toggle(settings.memoryEnabled ?? false);
     $c('memory-token-budget').val(settings.memoryTokenBudget ?? 2000);
-    $c('memory-prompt').val(settings.memoryPrompt || DEFAULT_MEMORY_PROMPT);
-    $c('memory-json-schema').val(settings.memoryJsonSchema || DEFAULT_MEMORY_SCHEMA);
-    $c('memory-render-template').val(settings.memoryRenderTemplate || DEFAULT_MEMORY_RENDER);
-    $c('memory-compress-prompt').val(settings.memoryCompressPrompt || DEFAULT_MEMORY_COMPRESS_PROMPT);
+    $c('memory-prompt').data('gdDefaultPrompt', DEFAULT_MEMORY_PROMPT).val(settings.memoryPrompt || DEFAULT_MEMORY_PROMPT);
+    $c('memory-json-schema').data('gdDefaultSchema', DEFAULT_MEMORY_SCHEMA).val(settings.memoryJsonSchema || DEFAULT_MEMORY_SCHEMA);
+    $c('memory-render-template').data('gdDefaultTemplate', DEFAULT_MEMORY_RENDER).val(settings.memoryRenderTemplate || DEFAULT_MEMORY_RENDER);
+    $c('memory-compress-prompt').data('gdDefaultPrompt', DEFAULT_MEMORY_COMPRESS_PROMPT).val(settings.memoryCompressPrompt || DEFAULT_MEMORY_COMPRESS_PROMPT);
     $c('memory-keep-recent').val(settings.memoryKeepRecent ?? 5);
     $c('memory-max-entries').val(settings.memoryMaxEntries ?? 200);
 
@@ -49,7 +50,6 @@ registerSection('memory', function (ctx) {
         saveSettings();
         window.__gdRefreshDashboard?.();
     });
-    $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val(), 10) || 2000); saveSettings(); });
     $c('memory-prompt').on('input', function () { settings.memoryPrompt = $(this).val(); saveSettings(); });
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
@@ -63,6 +63,7 @@ registerSection('memory', function (ctx) {
     $c('memory-compress-prompt-reset').on('click', () => { settings.memoryCompressPrompt = ''; $c('memory-compress-prompt').val(DEFAULT_MEMORY_COMPRESS_PROMPT); saveSettings(); });
 
     // ── Actions ──
+    $c('memory-generate-all').on('click', () => ctx.runQuickAction?.('memory'));
     $c('memory-refresh').on('click', () => renderMemoryList());
     $c('memory-detect-orphans').on('click', function () {
         const orphans = memorySystem.detectOrphans();
@@ -175,9 +176,10 @@ registerSection('memory', function (ctx) {
         $list.find('.gd-mem-revert-btn').off('click').on('click', async function (e) {
             e.stopPropagation();
             const avatar = $(this).data('av');
-            if (!await callGenericPopup(L('回退最近一次提取？', 'Revert last extraction?'), POPUP_TYPE.CONFIRM)) return;
+            const count = settings.memoryKeepRecent ?? 5;
+            if (!await callGenericPopup(L(`删除该角色最近 ${count} 条记忆？此操作不按提取批次撤销。`, `Remove this character's latest ${count} memories? This is not grouped by extraction batch.`), POPUP_TYPE.CONFIRM)) return;
             try {
-                await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
+                await memorySystem.revertLast(avatar, count);
                 renderMemoryList();
                 window.__gdRefreshDashboard?.();
             } catch (e) { toastr.error(e.message); }

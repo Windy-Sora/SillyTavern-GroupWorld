@@ -341,5 +341,6 @@ registerSection('scriptExecutors', function (ctx) {
         return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
     }
 
+    ctx.refreshScriptExecutorList = () => { if (!$list.find('.gd-se-edit:visible').length) renderList(); };
     renderList();
 });

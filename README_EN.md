@@ -1,115 +1,98 @@
 # SillyTavern Group World
 
-English | [中文](README.md)
+[中文](README.md) | English
 
-A director and continuity extension for [SillyTavern](https://github.com/SillyTavern/SillyTavern) group chats. Before each generation, Group World selects the characters that should speak and supplies tools for character data, memory, world information, story state, and extensible prompt data sources.
+A group-chat director and story-management extension for [SillyTavern](https://github.com/SillyTavern/SillyTavern). Choose who speaks, maintain character memories and story state, or ask the built-in **Muyu assistant** to inspect information, troubleshoot problems and adjust settings.
 
-> Current version: 0.6.0
+Current version: 0.6.0 · [User Guide](docs/USER-GUIDE_EN.md) · [Installation](#installation)
 
 ## Features
 
-- **Formula Director** — Local speaker scoring based on mentions, keywords, recency, initiative, and consecutive-speaker penalties. No additional API request is required.
-- **LLM Director** — Model-planned speakers and order. It can take over ordered generation or only filter unselected characters.
-- **Speaking controls** — Top-N selection, per-character keyword triggers, Talkativeness, and consecutive-speaker penalties.
-- **Director Ledger and Scripts** — Persist each round's decision and inject character-specific instructions for the current turn.
-- **Continuity tools** — Character profiles, character memory, chat summaries, world books, NPCs, variables, and story state.
-- **Extensible runtime** — Providers, prompt templates, capabilities, custom agents, and script executors.
-- **Configuration profiles** — Built-in default and example profiles, plus profile import and export.
+### Muyu Assistant
 
-## Requirements
+Muyu is an owl-girl assistant who helps you look after your Tavern. Click the floating feather to open her chat window and tell her what you'd like to do. She works on desktop and mobile, with no group chat required.
 
-- A working installation of SillyTavern.
-- A group chat.
-- Formula Director makes no extra model call. LLM Director and AI-powered features such as profiles, memory, and summaries require a model connection configured in SillyTavern.
+Ask about a confusing switch, review your configuration, or plan a currency system. You don't need to learn internal field names or decide which module to use first.
+
+- **Understand and troubleshoot.** Find controls, explain settings and inspect authorized chat, memories, variables, world books, character cards and presets to investigate a problem.
+- **Prepare and carry out changes.** Adjust supported settings and manage content such as character cards and world books. Larger requests can start with a plan and change previews, then proceed under your chosen permission mode.
+- **Keep working across conversations.** A history sidebar, new conversations, import/export, context compaction and long-term notes support ongoing tasks. Built-in Skills provide specialist workflows, and you can manage your own Skills too.
+
+Try asking:
+
+> “Review my current settings for conflicts. Analyze only; don't change anything.”
+>
+> “Set the per-character memory limit to 10. Preview it first; do not apply.”
+>
+> “I'd like a currency system. Help me plan what needs to change.”
+
+The Agent does not require importing a character card or world book first. If you prefer Muyu's character-card experience, that import option is still available from the summon menu.
+
+### Group-chat Director
+
+Keep every character from jumping into every turn. Select speakers from the current conversation, with optional ordering and turn-specific instructions.
+
+- **Formula Director:** Score mentions, keywords, initiative and consecutive-speaker penalties, then choose the Top-N characters. No additional model call.
+- **LLM Director:** Let a model plan speakers and their order from the scene, with scripts and individual instructions for the turn.
+
+### Memory and story management
+
+Character profiles, memories and chat summaries help preserve people and events. NPCs, world books, variables and story blueprints organize the cast, setting and story progress. View and edit related content, and reuse it through resource libraries.
+
+### Customization and sharing
+
+Edit feature prompts, organize data sources with Providers and the template DSL, or write scripts and custom Agents. Import and export configuration profiles to save your setup or share it with others.
 
 ## Installation
 
-### Extension Manager
-
-1. Open **Extension Manager** in SillyTavern.
-2. Choose the option to install from a URL and enter:
+1. In SillyTavern, open **Extensions → Install extension** and enter:
 
    ```text
    https://github.com/Windy-Sora/SillyTavern-GroupWorld
    ```
 
-3. Install the extension, then refresh the page.
-4. Open **Group World** from the left settings sidebar and confirm that the extension is enabled.
+2. Refresh after installation and confirm the extension is enabled.
+3. Open **Group World** settings to get started.
 
-### Manual installation
+Alternatively, place the repository in `public/scripts/extensions/third-party/SillyTavern-GroupWorld` and refresh. No build step or changes to SillyTavern core files are required.
 
-Clone or download this repository into the following SillyTavern directory:
+## Getting started
 
-```text
-public/scripts/extensions/third-party/SillyTavern-GroupWorld
-```
+### Talk to Muyu
 
-Restart or refresh SillyTavern afterwards. The extension does not modify SillyTavern core files.
+1. In Group World settings, choose **Open Muyu Agent (recommended)** from the summon menu, or click the floating feather.
+2. Open the window's gear → **Connection**. Reuse a supported current Tavern API or configure an independent endpoint.
+3. Describe your goal. Start with an explanation or read-only review, then try a change preview. For another thread, click **New conversation** in Muyu's history sidebar.
 
-## Quick Start
+### Set up the Director
 
-1. Open a group chat and the **Group World** settings.
-2. In the Director section, choose a mode. Start with **Formula Director** to inspect speaker selection without spending additional tokens.
-3. Set **Top-N** to `1` so one character is selected per turn by default.
-4. Send messages and tune the mention, keyword, recency, initiative, and consecutive-speaker weights as needed.
-5. Switch to **LLM Director** when you want the model to decide speakers and order from the scene; configure its prompt and model connection.
+1. Open a group chat and choose a Director mode in Group World.
+2. For a simple starting point, use Formula Director with **Top-N** set to `1`, then tune the weights from the results.
+3. For model-planned speakers and order, switch to LLM Director and configure its model and prompt.
 
-To apply a recommended starting configuration, select the `group-world-default` profile at the bottom of the dashboard and click Apply.
+You can also review and apply the `group-world-default` configuration profile as a starting setup. See the [User Guide](docs/USER-GUIDE_EN.md) for detailed settings.
 
-## Director Modes
+## Before you start
 
-| Mode | Best for | Selection method | Extra model call |
-| --- | --- | --- | --- |
-| Formula Director | Predictable control, low latency, or no added token cost | Local weighted scoring and Top-N selection | No |
-| LLM Director | Story-aware choices based on relationships and scene context | Model returns a speaker plan and optional order | Yes |
+- **Models and costs:** Muyu, LLM Director and other AI generation features need a working model connection and may incur charges. Formula-based speaker selection adds no model call. Available capabilities depend on the model and Tavern version.
+- **Permissions and changes:** Approval mode lets you preview changes before confirming execution. Broad read access and a dangerous full-access mode are also available. Understand their scope and back up important content. Not every Tavern operation is supported.
+- **Privacy and storage:** Authorized sources and included history may be sent to the model service. History supports browser, account-settings, world-book and optional server storage; keep backups. Internal history books are plaintext archives: keep their entries disabled, and do not activate, bind or manually rename them.
+- **Upgrade compatibility:** Enable **only one** of GroupWorld and GroupDirector. Legacy APIs, settings keys and archive identifiers intentionally remain unchanged; do not rename them. The two extensions do not provide isolated data stores.
 
-## Common Workflows
+### Optional Muyu Services
 
-| Goal | Recommended features |
-| --- | --- |
-| Reduce characters talking over each other | Formula Director + Top-N `1` + consecutive-speaker penalty |
-| Control who appears and in what order | LLM Director + ordered takeover |
-| Preserve long-running context | Profiles, character memory, Director Ledger, and chat summaries |
-| Give a character turn-specific direction | Director Script |
-| Manage a world, NPCs, or quest state | World books, variables, story state, and custom providers |
-| Save or share settings | Profile import / export |
+The base Agent does not need a companion service. For server-side history, web search or local-document features, optionally install [SillyTavern Muyu Services](https://github.com/Windy-Sora/SillyTavern-Muyu-Services). This is a Tavern **server plugin**, not a front-end extension; follow its README. Web search also needs its own configuration. Without the service, basic conversations and Director features still work.
 
-## Documentation
+## Documentation and feedback
 
-- [User Guide](USER-GUIDE_EN.md): interface, settings, recipes, and FAQ.
-- [Template Syntax](TEMPLATE-SYNTAX_EN.md): Prompt DSL, placeholders, and path queries.
-- [Design Notes](DESIGN_EN.md): architecture, execution pipeline, and extension points.
-- [Story Blueprint](STORY-BLUEPRINT.md): story-state and blueprint documentation.
-- [Testing](TESTING.md): automated test platform and coverage.
+- [User Guide](docs/USER-GUIDE_EN.md): interface, settings and common questions.
+- [Templates and DSL](docs/TEMPLATE-SYNTAX_EN.md) · [Story Blueprint](docs/STORY-BLUEPRINT.md)
+- [Muyu capabilities and boundaries](docs/MUYU-AGENT-STATUS.md)
+- [Architecture](docs/DESIGN_EN.md) · [Testing](docs/TESTING.md) · [Documentation index](docs/README.md)
+- [Migration and compatibility notes](MIGRATION.md)
 
-## Development and Testing
-
-The extension uses native ES modules and does not require a build step. Automated tests require Node.js 22 or later:
-
-```bash
-npm ci
-npm test
-```
-
-Other available commands:
-
-```bash
-npm run test:static
-npm run test:unit
-npm run test:integration
-npm run test:full
-npm run test:coverage
-```
-
-## Feedback and Contributions
-
-Issues and pull requests are welcome. For a bug report, please include:
-
-- SillyTavern and Group World versions;
-- Director mode, group-chat mode, and relevant settings;
-- Group World logs; and
-- repeatable steps to reproduce the issue.
+Issues are welcome. Include your Tavern and extension versions, reproduction steps, and error details with credentials and private content removed.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT License](LICENSE)

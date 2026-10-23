@@ -54,7 +54,8 @@ export function parsePath(path) {
                 }
                 i++;
             }
-            if (i < path.length) i++; // skip ]
+            if (i >= path.length || innerQuote) return [{ _empty: true }];
+            i++; // skip ]
 
             const trimmed = inner.trim();
             if ((trimmed[0] === '"' || trimmed[0] === "'") && trimmed.at(-1) === trimmed[0]) {
@@ -62,7 +63,7 @@ export function parsePath(path) {
                     try {
                         segments.push(JSON.parse(trimmed));
                         continue;
-                    } catch (_) { /* fall through to invalid bracket handling */ }
+                    } catch (_) { return [{ _empty: true }]; }
                 } else {
                     let key = '';
                     for (let j = 1; j < trimmed.length - 1; j++) {
@@ -89,11 +90,11 @@ export function parsePath(path) {
                 segments.push({ _empty: true });
                 continue;
             }
-            const n = parseInt(inner, 10);
+            const n = /^-?\d+$/.test(trimmed) ? Number(trimmed) : NaN;
             if (!isNaN(n)) {
                 // Negative index: wrap so resolvePath knows it's a relative index
                 segments.push(n < 0 ? { idx: n } : n);
-            }
+            } else return [{ _empty: true }];
             continue;
         }
 

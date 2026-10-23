@@ -71,6 +71,35 @@ test('single profile generation renders character fields and forwards a strict J
     assert.deepEqual(calls.quiet.at(-1), ['quiet', '', 7, 0, true]);
 });
 
+test('empty profile JSON Schema displays a default example but sends no custom schema on generation', async () => {
+    const { system, settings, calls } = fixture();
+    settings.profileJsonSchema = '';
+    assert.equal(JSON.parse(system.getDefaultProfileSchema()).type, 'object');
+    await system.generateSingleProfile('alice.png');
+    assert.equal(Object.hasOwn(calls.raw[0], 'jsonSchema'), false);
+});
+
+test('changing profile JSON Schema changes the schema hash without rewriting existing profiles', () => {
+    const { system, settings } = fixture();
+    const profiles = system.getProfiles();
+    profiles['alice.png'] = { state: 'ready', profile: { summary: 'Existing' } };
+    const before = system.computeProfileSchemaHash();
+    settings.profileJsonSchema = JSON.stringify({ type: 'object', properties: { summary: { type: 'string' } } });
+    assert.notEqual(system.computeProfileSchemaHash(), before);
+    assert.equal(profiles['alice.png'].profile.summary, 'Existing');
+});
+
+test('a changed generator Prompt feeds later generation without changing schema or existing profiles', async () => {
+    const { system, settings, calls } = fixture();
+    const beforeHash = system.computeProfileSchemaHash();
+    settings.profileGeneratorPrompt = 'New {{charName}} / {{charScenario}} / {{provider}}';
+    const result = await system.generateSingleProfile('alice.png');
+    assert.equal(calls.prompts[0], 'New Alice / Castle / resolved');
+    assert.equal(result.summary, 'Generated');
+    assert.equal(system.computeProfileSchemaHash(), beforeHash);
+    assert.deepEqual(system.getProfiles(), {});
+});
+
 test('single profile generation supports extracted sanitized JSON and rejects unusable output', async () => {
     let sanitized = 0;
     const recovered = fixture({

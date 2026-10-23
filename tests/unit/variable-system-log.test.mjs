@@ -89,6 +89,7 @@ test('automatic updates log ignored values and report malformed character target
         errors: ['trust: unknown character target "Nobody"'],
     });
     assert.equal(system.getLog().filter(entry => entry.ignored).length, 2);
+    assert.deepEqual(system.getLog().filter(entry => entry.ignored).map(entry => entry.outcomeCode), ['locked', 'unknown_character_target']);
     assert.equal(system.getValueStatus('locked').latest, null);
     assert.equal(logs.length, 1);
 });

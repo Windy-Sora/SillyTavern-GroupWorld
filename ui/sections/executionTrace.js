@@ -14,7 +14,7 @@ registerSection('executionTrace', function (ctx) {
     AgentTrace.setMax(settings.traceMaxEntries ?? 50);
     $c('trace-max').val(settings.traceMaxEntries ?? 50);
     $c('trace-max').on('input', function () {
-        settings.traceMaxEntries = Math.max(1, parseInt($(this).val()) || 50);
+        settings.traceMaxEntries = Math.min(200, Math.max(1, parseInt($(this).val()) || 50));
         AgentTrace.setMax(settings.traceMaxEntries);
         saveSettings();
     });
@@ -90,7 +90,7 @@ registerSection('executionTrace', function (ctx) {
             return;
         }
         let html = `<small style="color:var(--grey70a);">${decisions.length} ${L('条决策', ' decisions')} (${L('共', 'total')} ${psSystem.count()})</small>`;
-        decisions.slice(0, 10).forEach((d, i) => {
+        [...decisions].reverse().forEach((d, i) => {
             const time = new Date(d.timestamp).toLocaleTimeString();
             html += `<div style="font-size:0.8em;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
                 <b>#${d.messageIndex}</b> ${esc(d.messageName)} →
@@ -102,6 +102,7 @@ registerSection('executionTrace', function (ctx) {
     }
 
     $('#gd-ps-refresh').on('click', renderPsDecisions);
+    ctx.refreshPostSpeechDecisions = renderPsDecisions;
 
     render();
     renderPsDecisions();

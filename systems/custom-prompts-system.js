@@ -63,7 +63,7 @@ export function createCustomPromptsSystem(deps) {
         if (provider && !isOwned(provider, skipId)) {
             return { ok: false, error: `"${name}" 与内置 Provider 冲突` };
         }
-        const duplicate = getList().find(entry => entry.name === name && entry.id !== skipId);
+        const duplicate = (Array.isArray(settings.customPrompts) ? settings.customPrompts : []).find(entry => entry.name === name && entry.id !== skipId);
         if (duplicate) return { ok: false, error: `"${name}" 已被其他自定义 prompt 使用` };
         return { ok: true };
     }
@@ -150,8 +150,9 @@ export function createCustomPromptsSystem(deps) {
         }
     }
 
-    function setMasterEnabled(on) {
+    function setMasterEnabled(on, { beforeApply = () => {} } = {}) {
         return enqueue(async () => {
+            beforeApply(settings);
             const before = settings.customPromptsEnabled;
             const applied = !!on;
             settings.customPromptsEnabled = applied;
@@ -168,8 +169,9 @@ export function createCustomPromptsSystem(deps) {
         });
     }
 
-    function add(name, content, enabled = true, extra = {}) {
+    function add(name, content, enabled = true, extra = {}, { beforeApply = () => {} } = {}) {
         return enqueue(async () => {
+            beforeApply(settings);
             const valid = validateName(name);
             if (!valid.ok) throw new Error(valid.error);
             const entry = normalizeCustomPrompt({ name, content, enabled, ...extra }, {
@@ -195,8 +197,9 @@ export function createCustomPromptsSystem(deps) {
         });
     }
 
-    function update(id, updates) {
+    function update(id, updates, { beforeApply = () => {} } = {}) {
         return enqueue(async () => {
+            beforeApply(settings);
             const entry = getList().find(item => item.id === id);
             if (!entry) throw new Error('Not found');
             const candidate = normalizeCustomPrompt({ ...entry, ...updates }, { id });
@@ -217,8 +220,9 @@ export function createCustomPromptsSystem(deps) {
         });
     }
 
-    function remove(id) {
+    function remove(id, { beforeApply = () => {} } = {}) {
         return enqueue(async () => {
+            beforeApply(settings);
             const list = getList();
             const index = list.findIndex(entry => entry.id === id);
             if (index < 0) return undefined;
@@ -358,8 +362,88 @@ export function createCustomPromptsSystem(deps) {
         });
     }
 
+
+    // Reuse the same mutation queue and rollback path as the GUI. Approval is rechecked
+    // inside that queue, immediately before any assignment/Provider registration.
+    async function mutateApproved({ operation, id, definition, validate, expectedSettings }) {
+        if (!['create', 'update', 'delete'].includes(operation)) throw Error('INVALID_PROMPT_DRAFT');
+        let started = false;
+        const beforeApply = () => {
+            if (expectedSettings !== settings) throw Error('STALE_PROMPT_ASSET');
+            validate();
+            started = true;
+        };
+        let entry;
+        try {
+            if (operation === 'create') entry = (await add(definition.name, definition.content, definition.enabled, definition, { beforeApply })).entry;
+            else if (operation === 'update') entry = await update(id, definition, { beforeApply });
+            else entry = await remove(id, { beforeApply });
+            const matches = expectedSettings === settings && (operation === 'delete'
+                ? !getList().some(row => row.id === id)
+                : getList().filter(row => row.id === entry.id).length === 1 && getList().find(row => row.id === entry.id) === entry
+                    && Object.entries(definition).every(([key, value]) => Object.is(entry[key], value)));
+            return { status: matches ? 'saved_unconfirmed' : 'outcome_unknown', persistence: matches ? 'unconfirmed' : 'unknown', id: entry?.id || id || '' };
+        } catch (error) {
+            if (!started) throw error;
+            return { status: 'outcome_unknown', persistence: 'unknown', id: entry?.id || id || '' };
+        }
+    }
+
+
+    function mutateBatchApproved({ entries, validate, expectedSettings }) {
+        return enqueue(async () => {
+            if (expectedSettings !== settings) throw Error('STALE_PROMPT_ASSET');
+            validate();
+            if (!Array.isArray(entries) || !entries.length || entries.length > 6) throw Error('INVALID_PROMPT_BATCH');
+            const list = getList(), originalOrder = [...list];
+            const planned = entries.map(row => ({ operation: row.operation, id: row.operation === 'create' ? generateCustomPromptId() : row.id,
+                next: row.next && normalizeCustomPrompt(row.next) }));
+            const undo = [], expected = [];
+            try {
+                for (const row of planned) {
+                    const index = list.findIndex(e => e.id === row.id);
+                    if (row.operation === 'create') {
+                        const entry = { ...row.next, id: row.id }; list.push(entry);
+                        const serialized = JSON.stringify(entry);
+                        undo.push(() => { const i = list.indexOf(entry); if (i >= 0 && JSON.stringify(entry) === serialized) list.splice(i, 1); });
+                        expected.push({ id: row.id, serialized });
+                    } else if (row.operation === 'delete') {
+                        if (index < 0) throw Error('STALE_PROMPT_ASSET');
+                        const entry = list.splice(index, 1)[0];
+                        undo.push(() => {
+                            if (list.some(e => e.id === row.id)) return;
+                            const successor = originalOrder.slice(originalOrder.indexOf(entry) + 1).find(e => list.includes(e));
+                            list.splice(successor ? list.indexOf(successor) : list.length, 0, entry);
+                        });
+                        expected.push({ id: row.id, serialized: null });
+                    } else {
+                        if (index < 0) throw Error('STALE_PROMPT_ASSET');
+                        const entry = list[index], before = { ...entry }, applied = { ...row.next, id: row.id };
+                        Object.assign(entry, applied);
+                        undo.push(() => { if (list.includes(entry)) for (const key of Object.keys(applied)) {
+                            if (!Object.is(entry[key], applied[key])) continue;
+                            if (Object.hasOwn(before, key)) entry[key] = before[key]; else delete entry[key];
+                        } });
+                        expected.push({ id: row.id, serialized: JSON.stringify(entry) });
+                    }
+                }
+                reconcile({ strict: true });
+                await saveSettings();
+                const matches = settings.customPrompts === list && expected.every(row => {
+                    const found = list.filter(e => e.id === row.id);
+                    return row.serialized === null ? found.length === 0 : found.length === 1 && JSON.stringify(found[0]) === row.serialized;
+                });
+                return { status: matches ? 'saved_unconfirmed' : 'outcome_unknown', persistence: matches ? 'unconfirmed' : 'unknown', ids: planned.map(row => row.id) };
+            } catch {
+                if (settings.customPrompts === list) for (const restore of undo.reverse()) restore();
+                try { reconcile(); } catch { /* Registration/save outcome remains unknown. */ }
+                return { status: 'outcome_unknown', persistence: 'unknown', ids: planned.map(row => row.id) };
+            }
+        });
+    }
+
     return {
-        getList, add, update, remove, toggle, initAll, validateName, validateDataJson,
+        mutateBatchApproved, mutateApproved, getList, add, update, remove, toggle, initAll, validateName, validateDataJson,
         hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled,
     };
 }

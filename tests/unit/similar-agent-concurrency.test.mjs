@@ -165,7 +165,7 @@ test('NPC generation rejects a response after the active chat changes', async ()
     const gate = deferred();
     let metadata = {};
     const system = createNpcSystem({
-        settings: { agentConfigs: {}, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
+        settings: { agentConfigs: {}, npcEnabled: true, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
         EXT_KEY: 'gd',
         getChatMetadata: () => metadata,
         saveChatConditional: async () => {},
@@ -191,7 +191,7 @@ test('NPC generation preserves edits saved while the LLM is pending', async () =
     const gate = deferred();
     const metadata = { gd: { npcs: [{ name: 'Existing', description: 'old' }] } };
     const system = createNpcSystem({
-        settings: { agentConfigs: {}, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
+        settings: { agentConfigs: {}, npcEnabled: true, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
         EXT_KEY: 'gd',
         getChatMetadata: () => metadata,
         saveChatConditional: async () => {},
@@ -218,7 +218,7 @@ test('NPC generation rejects an in-place chat append while the LLM is pending', 
     const metadata = {};
     const chat = [{ mes: 'old context' }];
     const system = createNpcSystem({
-        settings: { agentConfigs: {}, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
+        settings: { agentConfigs: {}, npcEnabled: true, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
         EXT_KEY: 'gd',
         getChatMetadata: () => metadata,
         getChat: () => chat,

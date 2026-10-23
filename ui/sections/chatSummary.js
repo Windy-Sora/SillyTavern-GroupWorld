@@ -12,11 +12,13 @@ registerSection('chatSummary', function (ctx) {
     const ss = summarySystem;
     const defaultPrompt = getDefaultPrompt(settings.lang);
     let archiveMutationPending = false;
+    if (ctx.quickActionGuards) ctx.quickActionGuards.summary = () => archiveMutationPending;
 
     // Init
     $c('summary-enabled').prop('checked', !!settings.summaryEnabled);
     $c('summary-reuse').prop('checked', settings.summaryReusePrevious !== false);
     $c('summary-prompt').val(settings.summaryPrompt || defaultPrompt);
+    $c('summary-prompt').data?.('gdDefaultPrompt', defaultPrompt);
 
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;
@@ -115,6 +117,12 @@ registerSection('chatSummary', function (ctx) {
 
     // Execute
     $c('summary-execute').on('click', async () => {
+        if (ctx.runQuickAction) {
+            if (archiveMutationPending) return;
+            await ctx.runQuickAction('summary');
+            checkEnabled();
+            return;
+        }
         if (isRoundActive && isRoundActive()) return;
         $c('summary-execute').prop('disabled', true);
         try {

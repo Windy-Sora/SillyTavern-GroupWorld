@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 
 import { createNpcLibrarySystem } from '../../systems/npc-library-system.js';
 
+test('NPC queued legacy capture retains the source at click time across a chat switch', async () => {
+    const gate = deferred(), started = deferred(); let saves = 0, source = 'A';
+    const { system } = fixture({
+        saveSettings: () => { if (++saves === 1) { started.resolve(); return gate.promise; } },
+        getCurrentGroup: () => ({ name: source }),
+        npcSystem: { getNpcs: () => [{ name: source, description: source }] },
+    });
+    const blocking = system.saveCurrentAsLibrary('Blocking'); await started.promise;
+    const pending = system.saveCurrentAsLibrary('Saved A'); source = 'B';
+    gate.resolve(); await blocking; const entry = await pending;
+    assert.equal(entry.sourceGroupName, 'A'); assert.equal(entry.exportData.npcs[0].name, 'A');
+});
+
 function fixture(overrides = {}) {
     const settings = {};
     const extension_settings = {};
@@ -69,14 +82,17 @@ test('NPC library rejects empty current state', async () => {
     await assert.rejects(system.saveCurrentAsLibrary('Empty'), /No NPCs/i);
 });
 
-test('failed NPC library save removes only its own entry after a later save', async () => {
+test('failed NPC library save releases the queue before a later save', async () => {
     const gate = deferred();
     let saves = 0;
     const { system } = fixture({ saveSettings: () => ++saves === 1 ? gate.promise : Promise.resolve() });
     const pending = system.saveCurrentAsLibrary('Failed');
-    const later = await system.saveCurrentAsLibrary('Later');
+    const laterSave = system.saveCurrentAsLibrary('Later');
+    await Promise.resolve();
+    assert.equal(saves, 1);
     gate.reject(new Error('disk unavailable'));
     await assert.rejects(pending, /disk unavailable/);
+    const later = await laterSave;
     assert.deepEqual(system.getLibraries(), [later]);
 });
 
@@ -88,9 +104,12 @@ test('failed NPC library delete restores relative to surviving entries', async (
     const middle = await system.saveCurrentAsLibrary('Middle');
     const last = await system.saveCurrentAsLibrary('Last');
     const pending = system.deleteLibrary(middle.id);
-    assert.equal(await system.deleteLibrary(first.id), true);
+    const laterDelete = system.deleteLibrary(first.id);
+    await Promise.resolve();
+    assert.equal(saves, 4);
     gate.reject(new Error('disk unavailable'));
     await assert.rejects(pending, /disk unavailable/);
+    assert.equal(await laterDelete, true);
     assert.deepEqual(system.getLibraries(), [middle, last]);
 });
 
@@ -101,9 +120,10 @@ test('failed NPC library file import removes only the imported entry', async () 
     const data = { version: 1, type: 'npc-export', template: { npcPrompt: '' }, npcs: [{ name: 'Guard' }] };
     const pending = system.importFileToLibrary({ name: 'pack.json', text: async () => JSON.stringify(data) });
     await Promise.resolve();
-    const later = await system.saveCurrentAsLibrary('Later');
+    const laterSave = system.saveCurrentAsLibrary('Later');
     gate.reject(new Error('disk unavailable'));
     await assert.rejects(pending, /disk unavailable/);
+    const later = await laterSave;
     assert.deepEqual(system.getLibraries(), [later]);
 });
 

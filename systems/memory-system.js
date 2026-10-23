@@ -1,3 +1,5 @@
+import { peekMemories } from './provider-read-data.js';
+import { createApprovedMemoryGeneration } from './memory-generation.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -44,7 +46,8 @@ export function createMemorySystem({
     }
 
     function getMemories(avatar, metadata = getChatMetadata()) {
-        return getStore(metadata)[avatar] || [];
+        getStore(metadata);
+        return peekMemories(metadata, EXT_KEY)[avatar] || [];
     }
 
     function setMemories(avatar, memories, metadata = getChatMetadata()) {
@@ -387,12 +390,23 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         return count;
     }
 
+    let legacyGenerating = 0;
+    const approved = createApprovedMemoryGeneration({ settings, EXT_KEY, getChatMetadata, getChat, getCharacters,
+        AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext,
+        isBusy: () => legacyGenerating > 0 || _pruning });
+    const trackGeneration = fn => async (...args) => {
+        if (approved.isGenerating()) throw new Error('MEMORY_BUSY');
+        legacyGenerating++;
+        try { return await fn(...args); } finally { legacyGenerating--; }
+    };
     return {
-        generateForCharacter, generateForAll,
+        generateForCharacter: trackGeneration(generateForCharacter), generateForAll: trackGeneration(generateForAll),
+        generateApproved: approved.generateApproved, inspectGeneration: approved.inspectGeneration,
+        isGenerating: () => legacyGenerating > 0 || approved.isGenerating(),
         updateEntry, deleteEntry, deleteCharacterMemories,
-        revertLast, resetAll, compressOldMemories,
+        revertLast, resetAll, compressOldMemories: trackGeneration(compressOldMemories),
         getStats, detectOrphans, listMemories, totalCount,
-        getMemories, pruneAfter,
+        getMemories, pruneAfter, isPruning: () => _pruning,
         // Internal helpers for auto-migration
         _setMemories: (avatar, mems) => replaceMemories(avatar, mems),
         _deleteKey: avatar => removeMemories(avatar),

@@ -285,3 +285,54 @@ test('executeDeferred rejects non-arrays and returns a complete empty receipt', 
     assert.deepEqual(empty.results, []);
     assert.deepEqual(await empty.completion, []);
 });
+
+test('model policy has hard intent, action and delay bounds', async () => {
+    const calls = [];
+    const executor = createExecutor();
+    const capabilities = Array.from({ length: 12 }, (_, index) => ({
+        id: `cap-${index}`, executor: async () => calls.push(index),
+    }));
+    const policy = { intents: capabilities.map(cap => ({ type: cap.id })), timing: { mode: 'round_end', delay: Number.MAX_SAFE_INTEGER } };
+    const queued = await executor.run(policy, capabilities);
+    assert.equal(queued.resolved, 8);
+    assert.equal(queued.deferred.length, 8);
+    assert.ok(queued.deferred.every(plan => plan.delay === 30000));
+    assert.deepEqual(calls, []);
+    const expanded = await executor.run({ intents: [{ type: 'shared' }] }, Array.from({ length: 12 }, (_, index) => ({
+        id: `shared-${index}`, executor: async () => calls.push(index),
+    })));
+    assert.equal(expanded.resolved, 8);
+    assert.equal(calls.length, 8);
+});
+
+test('maxPerMessage and cooldown limit repeated capability execution', async () => {
+    let calls = 0;
+    const capability = { id: 'metered', revision: 1, constraints: { maxPerMessage: 1, cooldown: 30000 }, executor: async () => { calls++; } };
+    const executor = createExecutor();
+    const duplicate = await executor.run({ intents: [{ type: 'metered' }, { type: 'metered' }] }, [capability]);
+    assert.equal(duplicate.resolved, 1);
+    assert.equal(calls, 1);
+    const withinCooldown = await executor.run({ intents: [{ type: 'metered' }] }, [capability]);
+    assert.equal(withinCooldown.results[0].success, false);
+    assert.equal(withinCooldown.results[0].cancelled, true);
+    assert.equal(calls, 1);
+    const replacement = await executor.run({ intents: [{ type: 'metered' }] }, [{ ...capability, revision: 2 }]);
+    assert.equal(replacement.results[0].success, true);
+    assert.equal(calls, 2);
+});
+
+test('blocking mode follows live settings for new batches without changing an active batch', async () => {
+    let blocking = true;
+    const firstGate = deferred(), secondGate = deferred();
+    const executor = createExecutor({ getBlocking: () => blocking });
+    const first = executor.run({ intents: [{ type: 'first' }] }, [{ id: 'first', executor: () => firstGate.promise }]);
+    await Promise.resolve();
+    blocking = false;
+    firstGate.resolve();
+    assert.equal((await first).blocking, true);
+    const second = await executor.run({ intents: [{ type: 'second' }] }, [{ id: 'second', executor: () => secondGate.promise }]);
+    assert.equal(second.blocking, false);
+    assert.equal(second.results[0].pending, true);
+    secondGate.resolve();
+    assert.equal((await second.completion)[0].success, true);
+});

@@ -144,12 +144,16 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
          */
         parseResponse(raw) {
             if (!raw) return null;
+            const bound = policy => {
+                if (!policy || typeof policy !== 'object' || Array.isArray(policy) || !Array.isArray(policy.intents)) return null;
+                return { ...policy, intents: policy.intents.filter(intent => intent && typeof intent.type === 'string' && intent.type.trim()).slice(0, 8) };
+            };
             try {
-                return JSON.parse(raw);
+                return bound(JSON.parse(raw));
             } catch (e) {
                 const extracted = extractJsonObject(raw);
                 if (extracted) {
-                    try { return JSON.parse(sanitizeJson(extracted)); } catch (_) {}
+                    try { return bound(JSON.parse(sanitizeJson(extracted))); } catch (_) {}
                 }
                 return null;
             }

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createProfileSystem } from '../../systems/profile-system.js';
+import { createConfigWriter } from '../../muyu/host/config-write.js';
+import { dependencyFields, readSettingsFields } from '../../muyu/config/registry.js';
 
 function fixture(overrides = {}) {
     const metadata = {};
@@ -93,6 +95,23 @@ test('profile rendering degrades later entries to summaries when the token budge
     } finally { console.log = originalLog; }
 });
 
+test('profile render template changes the next injection but not stored profiles or schema hash', () => {
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+        const { system, settings } = fixture();
+        const profile = ready('alice.png', 'Alice', 'Existing');
+        system.getProfiles()['alice.png'] = profile;
+        const schemaHash = system.computeProfileSchemaHash();
+        settings.profileRenderTemplate = '{{name}} / {{summary}} / {{unknown}}';
+        assert.equal(system.buildCharacterProfilesText(), 'Alice / Existing / {{unknown}}');
+        assert.equal(system.computeProfileSchemaHash(), schemaHash);
+        assert.equal(profile.profile.summary, 'Existing');
+        settings.profileRenderTemplate = '';
+        assert.match(system.buildCharacterProfilesText(), /^- Alice: Existing/);
+    } finally { console.log = originalLog; }
+});
+
 test('profile rendering returns empty output for disabled, pending, and failed stores', () => {
     const original = { log: console.log, warn: console.warn };
     console.log = () => {};
@@ -133,6 +152,7 @@ test('profile placeholder validation reports unknown generator and render tokens
         assert.match(warning.value, /\{\{mystery\}\}/);
         system.validateAndWarnProfilePlaceholders('render');
         assert.match(warning.value, /\{\{unknown\}\}/);
+        assert.match(warning.value, /remain literal/);
         assert.equal(warning.value.match(/\{\{unknown\}\}/g).length, 1);
 
         values['#gd-profile-render-template'] = '{{name}} {{summary}}';
@@ -145,4 +165,41 @@ test('profile sync is a no-op when disabled', async () => {
     const { system, metadata } = fixture({ settings: { profileEnabled: false } });
     await system.syncProfiles(['alice.png']);
     assert.equal(metadata.gd, undefined);
+});
+
+test('profile generation reports busy through model work and chat persistence', async () => {
+    let resolveModel, resolveSave, saves = 0;
+    const modelGate = new Promise(resolve => { resolveModel = resolve; });
+    const saveGate = new Promise(resolve => { resolveSave = resolve; });
+    const originalDollar = globalThis.$;
+    globalThis.$ = () => ({ length: 0 });
+    try {
+        const { system, settings } = fixture({
+            createCaller: () => ({ generate: () => modelGate }),
+            saveChatConditional: () => { saves++; return saveGate; },
+        });
+        const pending = system.generateProfilesBatch(['alice.png']);
+        assert.equal(system.isGenerating(), true);
+        resolveModel('{"summary":"ready"}');
+        while (saves === 0) await Promise.resolve();
+        assert.equal(system.isGenerating(), true);
+        const changes = { profileTokenBudget: 3000 };
+        const baseline = readSettingsFields(settings, dependencyFields(Object.keys(changes)));
+        const writer = createConfigWriter({ getSettings: () => settings, isBusy: () => system.isGenerating(), saveSettings: async () => undefined });
+        await assert.rejects(writer.apply({ baseline, changes, contractVersion: 2 }), /WRITE_UNAVAILABLE/);
+        assert.equal(settings.profileTokenBudget, 1000);
+        resolveSave(); await pending;
+        assert.equal(system.isGenerating(), false);
+    } finally { globalThis.$ = originalDollar; }
+});
+
+test('direct single-profile generation also reports busy and releases it after completion', async () => {
+    let resolveModel;
+    const modelGate = new Promise(resolve => { resolveModel = resolve; });
+    const { system } = fixture({ createCaller: () => ({ generate: () => modelGate }) });
+    const pending = system.generateSingleProfile('alice.png');
+    assert.equal(system.isGenerating(), true);
+    resolveModel('{"summary":"ready"}');
+    await pending;
+    assert.equal(system.isGenerating(), false);
 });

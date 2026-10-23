@@ -344,5 +344,9 @@ registerSection('customAgents', function (ctx) {
         }
     });
 
+    // An assistant save must not replace a user's open editor draft.
+    ctx.refreshCustomAgentList = () => {
+        if (!$list.find('.gd-ca-edit:visible').length) renderList();
+    };
     renderList();
 });

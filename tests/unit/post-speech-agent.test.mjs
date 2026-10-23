@@ -79,4 +79,9 @@ test('PostSpeech Agent parses clean, fenced, trailing-comma, and invalid respons
     });
     assert.equal(agent.parseResponse('broken'), null);
     assert.equal(agent.parseResponse(''), null);
+    assert.equal(agent.parseResponse('{"intents":"not-an-array"}'), null);
+    const oversized = agent.parseResponse(JSON.stringify({ intents: [null, ...Array.from({ length: 30 }, (_, index) => ({ type: `cap-${index}` }))] }));
+    assert.equal(oversized.intents.length, 8);
+    assert.equal(oversized.intents[0].type, 'cap-0');
+    assert.equal(oversized.intents[7].type, 'cap-7');
 });

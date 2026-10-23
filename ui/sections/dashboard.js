@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { visibleWorldBookNames } from '../../systems/internal-world-books.js';
 import { formatProfileSummary, getProfileSummaryEditValue } from './profile-summary-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
@@ -246,6 +247,8 @@ registerSection('dashboard', function (ctx) {
     }
 
     function openSettingsCard(cardName) {
+        const navigation = document.querySelector('.group-director-settings')?.__gdNavigation;
+        if (navigation?.openCard(cardName)) return;
         const $card = $(`[data-card="${cardName}"]`).first();
         if (!$card.length) return;
         const $drawer = $card.closest('.inline-drawer-content');
@@ -844,7 +847,7 @@ registerSection('dashboard', function (ctx) {
 
     function refreshWorldBookStat() {
         const sel = settings.worldBookSelection || {};
-        const names = ctx.world_names || [];
+        const names = visibleWorldBookNames(ctx.world_names || []);
         const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);
         const checked = (settings.worldBookSourceMode || 'st') === 'st'
             ? names.filter(n => active.has(n)).length
@@ -854,7 +857,7 @@ registerSection('dashboard', function (ctx) {
 
     function renderDashWorldBookList() {
         if (!settings.worldBookSelection) settings.worldBookSelection = {};
-        const names = ctx.world_names || [];
+        const names = visibleWorldBookNames(ctx.world_names || []);
         const sel = settings.worldBookSelection;
         const sourceMode = settings.worldBookSourceMode || 'st';
         const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);
@@ -1121,6 +1124,7 @@ registerSection('dashboard', function (ctx) {
 
     // 提取记忆: directly call generateForCharacter for each group member
     $('#gd-dash-memories').on('click', async () => {
+        if (ctx.runQuickAction) return ctx.runQuickAction('memory');
         const group = ctx.getCurrentGroup?.();
         if (!group) { toastr?.warning?.(lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Open settings from a group chat first'); return; }
         const members = group.members.filter(a => !group.disabled_members?.includes(a));
@@ -1139,6 +1143,7 @@ registerSection('dashboard', function (ctx) {
 
     // 执行总结
     $('#gd-dash-summary').on('click', () => {
+        if (ctx.runQuickAction) return ctx.runQuickAction('summary');
         const group = ctx.getCurrentGroup?.();
         if (!group) { toastr?.warning?.(lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Open settings from a group chat first'); return; }
         // Prevent double-click: the drawer execute button is disabled while running
@@ -1199,6 +1204,7 @@ registerSection('dashboard', function (ctx) {
         refreshSummaryStat();
         refreshWorldBookStat();
         window.__gdRefreshVariables?.();
+        ctx.quickActions?.refresh();
     }
 
     // Initial load

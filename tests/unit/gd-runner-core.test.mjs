@@ -86,6 +86,7 @@ test('coverage configuration spans every production area and parses Node summari
         'systems/**/*.js',
         'ui/**/*.js',
         'utils/**/*.js',
+        'muyu/**/*.js',
     ]);
     const output = [
         'start of coverage report',

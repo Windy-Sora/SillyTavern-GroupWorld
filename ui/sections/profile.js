@@ -9,9 +9,15 @@ registerSection('profile', function (ctx) {
     $c('profile-enabled').prop('checked', settings.profileEnabled);
     $c('profile-token-budget').val(settings.profileTokenBudget);
     $c('profile-concurrency').val(settings.profileConcurrency);
-    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt());
-    $c('profile-json-schema').val(settings.profileJsonSchema || getDefaultProfileSchema());
-    $c('profile-render-template').val(settings.profileRenderTemplate || getDefaultProfileRenderTemplate());
+    const defaultGeneratorPrompt = getDefaultProfileGeneratorPrompt();
+    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || defaultGeneratorPrompt);
+    $c('profile-generator-prompt').data?.('gdDefaultPrompt', defaultGeneratorPrompt);
+    const defaultProfileSchema = getDefaultProfileSchema();
+    $c('profile-json-schema').val(settings.profileJsonSchema || defaultProfileSchema);
+    $c('profile-json-schema').data?.('gdDefaultSchema', defaultProfileSchema);
+    const defaultProfileRenderTemplate = getDefaultProfileRenderTemplate();
+    $c('profile-render-template').val(settings.profileRenderTemplate || defaultProfileRenderTemplate);
+    $c('profile-render-template').data?.('gdDefaultTemplate', defaultProfileRenderTemplate);
     $('#gd-profile-section').toggle(settings.profileEnabled);
 
     $c('profile-enabled').on('input', () => {
@@ -45,7 +51,10 @@ registerSection('profile', function (ctx) {
     const checkGroup = () => { const g = getCurrentGroup(); if (!g) { toastr.warning(settings.lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Please open this settings panel from within a group chat'); return null; } return g; };
 
     $c('profile-scan-save').on('click', () => { const g = checkGroup(); if (g) { buildProfileLoaderPanel(); toastr.info(settings.lang === 'zh' ? '已扫描存档' : 'Save scanned'); } });
-    $c('profile-detect-changes').on('click', () => { const g = checkGroup(); if (g) detectCharacterChanges(); });
+    $c('profile-detect-changes').on('click', () => {
+        if (ctx.runQuickAction) return ctx.runQuickAction('profiles');
+        const g = checkGroup(); if (g) detectCharacterChanges();
+    });
 
     $c('profile-regenerate-all').on('click', async () => {
         const g = checkGroup(); if (!g) return;

@@ -1,3 +1,5 @@
+import { applyApprovedNpcLibraryChat } from './npc-library-chat.js';
+import { validateNpcLibraryDefinition } from './npc-library-validation.js';
 /**
  * NPC Library System.
  *
@@ -27,6 +29,12 @@ export function createNpcLibrarySystem({
     log = console.log,
 }) {
     let _idCounter = 0;
+    let mutationQueue = Promise.resolve();
+    function enqueueMutation(work) {
+        const pending = mutationQueue.then(work, work);
+        mutationQueue = pending.catch(() => {});
+        return pending;
+    }
     const genId = () => `npclib_${Date.now()}_${++_idCounter}`;
 
     function getLibraries() {
@@ -91,16 +99,18 @@ export function createNpcLibrarySystem({
             npcCount: data.npcs.length,
             exportData: data,
         };
-        const list = getLibraries();
-        list.push(entry);
-        try { await saveAll(); }
-        catch (error) {
-            const index = list.indexOf(entry);
-            if (index >= 0) list.splice(index, 1);
-            throw error;
-        }
-        log(`[GroupDirector] NPC library saved: "${title}" (${entry.npcCount})`);
-        return entry;
+        return enqueueMutation(async () => {
+            const list = getLibraries();
+            list.push(entry);
+            try { await saveAll(); }
+            catch (error) {
+                const index = list.indexOf(entry);
+                if (index >= 0) list.splice(index, 1);
+                throw error;
+            }
+            log(`[GroupDirector] NPC library saved: "${title}" (${entry.npcCount})`);
+            return entry;
+        });
     }
 
     function getLibrary(id) {
@@ -202,15 +212,59 @@ export function createNpcLibrarySystem({
         return entry;
     }
 
+
+    function mutateApproved({ operation, id, definition, expectedSettings, validate }) {
+        return enqueueMutation(async () => {
+            if (settings !== expectedSettings) throw Error('STALE_LIBRARY_ASSET');
+            validate();
+            if (!['create','update','delete'].includes(operation)) throw Error('INVALID_LIBRARY_DRAFT');
+            if (operation !== 'delete') validateNpcLibraryDefinition(definition);
+            const list = getLibraries(), index = list.findIndex(row => row?.id === id);
+            if (operation !== 'create' && index < 0) throw Error('STALE_LIBRARY_ASSET');
+            if (definition && list.some(row => row.id !== id && row.name === definition.name)) throw Error('LIBRARY_NAME_CONFLICT');
+            const before = index < 0 ? null : list[index];
+            const next = operation === 'delete' ? null : {
+                id: before?.id || genId(), ...clone(definition), createdAt: before?.createdAt ?? Date.now(), updatedAt: Date.now(),
+                sourceGroupName: definition.exportData.source?.groupName || '', npcCount: definition.exportData.npcs.length,
+            };
+            if (operation === 'create') list.push(next);
+            else if (operation === 'delete') list.splice(index, 1);
+            else list[index] = next;
+            const applied = next && JSON.stringify(next);
+            const result = status => ({status, id: next?.id || id, persistence: status === 'saved_unconfirmed' ? 'unconfirmed' : 'unknown'});
+            // A failed save can have reached persistence. Never retry or restore a whole list.
+            try { await saveAll(); } catch { return result('outcome_unknown'); }
+            if (settings.npcLibraries !== list || (next ? list.filter(row=>row?.id===next.id).length !== 1 || !list.includes(next) || JSON.stringify(next)!==applied : list.some(row=>row?.id===id))) return result('outcome_unknown');
+            return result('saved_unconfirmed');
+        });
+    }
+
+    function inspectChatLibrary(metadata) {
+        const root=metadata?.[EXT_KEY];
+        if(root!==undefined&&(!root||typeof root!=='object'||Array.isArray(root)))throw Error('LIBRARY_CHAT_UNAVAILABLE');
+        const npcs=root?.npcs??[];
+        if(!Array.isArray(npcs))throw Error('LIBRARY_CHAT_UNAVAILABLE');
+        const names=new Set();
+        for(const npc of npcs){
+            if(!npc||typeof npc.name!=='string'||!npc.name.trim()||npc.name!==npc.name.trim()||names.has(npc.name.toLowerCase()))throw Error('INVALID_LIBRARY_CHAT');
+            names.add(npc.name.toLowerCase());
+        }
+        return {npcs:clone(npcs),groupName:getCurrentGroup?.()?.name||'',template:{npcPrompt:settings.npcPrompt||getDefaultNpcPrompt?.()||''},rawPrompt:settings.npcPrompt??null};
+    }
+    function applyApprovedToChat(args) {
+        return enqueueMutation(()=>applyApprovedNpcLibraryChat({...args,settings,extensionKey:EXT_KEY,saveSettings:saveAll}));
+    }
     return {
+        inspectChatLibrary, applyApprovedToChat,
+        mutateApproved,
         getLibraries,
         saveCurrentAsLibrary,
         getLibrary,
-        deleteLibrary,
+        deleteLibrary: (...args) => enqueueMutation(() => deleteLibrary(...args)),
         previewLibrary,
         applyLibrary,
         exportLibrary,
-        importFileToLibrary,
+        importFileToLibrary: (...args) => enqueueMutation(() => importFileToLibrary(...args)),
         saveAll,
     };
 }

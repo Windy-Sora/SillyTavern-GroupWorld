@@ -8,6 +8,9 @@ test('force-speak guard only activates before a normal group round and respects 
     assert.equal(getForceSpeakAction({ hasGroup: true }), 'confirm_native');
     assert.equal(getForceSpeakAction({ hasGroup: true, lastMessageIsUser: true }), 'pass');
     assert.equal(getForceSpeakAction({ hasGroup: true, generationType: 'swipe' }), 'pass');
+    for (const mode of ['native', 'block', 'llm']) {
+        assert.equal(getForceSpeakAction({ hasGroup: true, generationType: 'auto', mode }), 'pass');
+    }
 });
 
 test('fresh round state clears all generation and takeover gates', () => {

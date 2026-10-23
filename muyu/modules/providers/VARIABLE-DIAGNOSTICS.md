@@ -1,0 +1,9 @@
+# Variable diagnostics source
+
+`variableDiagnostics` is a separate, chat-scoped `source-only` read permission. Granting `variables` does not grant this source. The directory gives one summary per definition and `item:N` selectors for character-specific stored values; details require the directory revision and are paginated by the existing `muyu.provider.read` contract.
+
+The source reads the current chat metadata directly. It does not initialize the variable store, evaluate defaults or rules, save data, or call a user Provider. Each detail separates the current definition, recorded default, stored value, and at most 20 recent matching attempts from the bounded log. A current definition is not evidence of historical settings. Log entries before host outcome codes were introduced report `unrecorded`; their `reportedReason` is untrusted input, not a host verdict.
+
+New ignored automatic updates record `locked`, `auto_update_disabled`, or `unknown_character_target` when those branches are reached. Unknown-target attempts are counted at the definition level without exposing their raw target string. They prove that no character was resolved for that attempt; they do not distinguish a typo from an inactive or otherwise unavailable identity. The diagnostic states the actual target-resolution rule: eligible active characters, exact avatar keys, or exact/case-insensitive trimmed names. Multiple character items are stored values of one definition, not duplicate definitions. Character avatar storage keys are used only as private selector identities and are never returned in the payload.
+
+This is diagnostic evidence, not an effective-value evaluator or a complete audit trail. The existing 100-entry variable log may omit older attempts. Failed coercion paths without a log entry remain unknown.

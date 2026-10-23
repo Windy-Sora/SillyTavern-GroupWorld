@@ -1,9 +1,28 @@
+import { CONTEXT_DEFAULTS } from './muyu/context/policy.js';
+import { RUN_DEFAULTS } from './muyu/core/budget.js';
+
 export const EXT_KEY = 'group-director';
 export const MODE_OFF = 'off';
 export const MODE_FORMULA = 'formula';
 export const MODE_LLM = 'llm';
 
 export const DEFAULT_SETTINGS = {
+    muyuFloatingBallVisible: true,
+    muyuInstructionConfig: { enabled: false, text: '' },
+    muyuPermissionConfig: { readAccess: 'ask' },
+    muyuContextConfig: { ...CONTEXT_DEFAULTS },
+    muyuRunConfig: { ...RUN_DEFAULTS },
+    muyuDisplayConfig: { processDetail: 'compact' },
+    muyuHistoryEnabled: true,
+    muyuHistoryAccountStorage: false,
+    muyuHistoryStorage: null, // null preserves the existing legacy storage preference.
+    muyuHistoryReadSource: null,
+    muyuHistoryWriteTargets: null,
+    muyuHistoryVolumeMiB: 8,
+    muyuHistoryData: null,
+    muyuAgentMemoryEnabled: false,
+    muyuAgentMemoryData: null,
+    muyuWebSearchConfig: { maxSearches: 3, maxResults: 5, resultBytes: 12000 },
     mode: MODE_FORMULA,
     topN: 1,
     scoreWeights: {
@@ -88,6 +107,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     storyBlueprintProgressionMode: 'leaf',
     storyBlueprintProgressionLevel: 0,
     storyBlueprintCompletionVariable: 'gd_story_chapter_done',
+    storyBlueprintCompletionVariableGuard: '',
     storyBlueprintMaxNodes: 8,
     storyBlueprintPrompt: '',
     storyBlueprintContinuePrompt: '',

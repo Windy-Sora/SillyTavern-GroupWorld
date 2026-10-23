@@ -1,0 +1,17 @@
+{
+  "description": "静态skill_shop示例的渲染预期；源码见用户Provider技能references/structured-template.md，不是当前聊天资料。",
+  "cases": [
+    { "template": "{{skill_shop}}", "expected": "示例商店（静态样本）" },
+    { "template": "{{?skill_shop:balance}}", "expected": "30" },
+    { "template": "{{?skill_shop:stock[0].name}}/{{?skill_shop:stock[-1].name}}", "expected": "药水/火把" },
+    { "template": "{{?skill_shop:stock[id=heal].price}}", "expected": "5" },
+    { "template": "{{?skill_shop:[\"price.table\"].heal}}", "expected": "5" },
+    { "template": "{{?skill_shop:stock[id={{?skill_shop:selected}}].name}}", "expected": "药水" },
+    { "template": "{{?skill_shop:missing|未提供}}/{{?skill_shop:none|未提供}}", "expected": "未提供/未提供" },
+    { "template": "{{?skill_shop:zero|未知}}/{{?skill_shop:active|未知}}/{{?skill_shop:blank|未知}}", "expected": "0/false/" },
+    { "template": "{{#skill_shop:keys}}{{?skill_shop:labels.$it}}{{/skill_shop}}", "expected": "药水\n火把" },
+    { "template": "{{#skill_shop:keys}}{{?skill_shop:labels.$it}}:{{#skill_shop:children.$it}}{{?skill_shop:labels.$it}}{{/skill_shop}}/{{?skill_shop:labels.$it}}{{/skill_shop}}", "expected": "药水:治疗/药水\n火把:照明/火把" },
+    { "template": "{[{{{skill_shop}}}]}", "expected": "{{skill_shop}}" },
+    { "template": "{{#skill_shop:empty}}不会出现{{/skill_shop}}", "expected": "" }
+  ]
+}

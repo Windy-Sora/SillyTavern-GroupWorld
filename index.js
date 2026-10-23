@@ -1,11 +1,13 @@
 import { eventSource, event_types } from '../../../events.js';
-import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
+import { extension_settings, extensionNames, extensionTypes, getContext } from '../../../extensions.js';
+import { is_send_press, saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
-import { groups, selected_group } from '../../../group-chats.js';
-import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
+import { getChatCompletionPreset } from '../../../openai.js';
+import { groups, selected_group, is_group_generating } from '../../../group-chats.js';
+import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, createWorldInfoEntry, deleteWorldInfo, onWorldInfoChange, selected_world_info, world_info } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
+import { user_avatar } from '../../../personas.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, unregisterProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
 import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
@@ -13,6 +15,7 @@ import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
 import { scoreFormulaCharacter } from './systems/speaker-selection.js';
+import { matchEnabledCharacter, directorScriptKey } from './utils/character-identity.js';
 import { decideFormulaTurn } from './systems/round-state.js';
 import { recoverDirectorPlan } from './systems/director-plan.js';
 import { createRoundOrchestrator } from './systems/round-orchestrator.js';
@@ -52,6 +55,7 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { planSummaryAutoRun, runSummaryAutoPlan } from './systems/summary-auto-policy.js';
 import { createConfirmedChatMetadataSave } from './systems/chat-metadata-save-confirmation.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCritiqueAutoCoordinator } from './systems/critique-auto-coordinator.js';
@@ -97,6 +101,7 @@ import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
 import { createConfirmedPostSpeechChatSave } from './systems/post-speech-save-confirmation.js';
 import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
+import { migrateLegacyDirectorOutputFormat, renderDirectorOutputFormat } from './systems/director-output-format.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -108,13 +113,8 @@ delete loaded.directorLlmEnabled;
 delete loaded.directorLlmModel;
 if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.directorLlmPrompt;
 delete loaded.directorLlmPrompt;
-if (typeof loaded.llmJsonSchema === 'string'
-    && !loaded.llmJsonSchema.includes('{{storyBlueprintDoneField}}')
-    && /"global"\s*:\s*\{\s*\}/.test(loaded.llmJsonSchema)) {
-    loaded.llmJsonSchema = loaded.llmJsonSchema.replace(
-        /"global"\s*:\s*\{\s*\}/,
-        '"global": { {{storyBlueprintDoneField}} }',
-    );
+if (typeof loaded.llmJsonSchema === 'string') {
+    loaded.llmJsonSchema = migrateLegacyDirectorOutputFormat(loaded.llmJsonSchema);
 }
 
 let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
@@ -136,14 +136,18 @@ let roundInitialized = false;
 let initPromise = null;              // guards concurrent interceptor calls
 let isGroupChat = false;
 const roundOrchestrator = createRoundOrchestrator();
-let directorScripts = {};           // { characterName: scriptText } from LLM
+let directorScripts = {};           // unique name keys for compatibility; avatar keys for same-name cards
 let directorLastReason = '';         // reason from last director decision, exposed to script executors
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
-const scriptCounterSnapshots = new Map();   // charName → counter value at first render
+const scriptCounterSnapshots = new Map();   // avatar → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
+let directorRoundEpoch = 0;
+let takeoverOwner = null;
+let takeoverWrapperPending = false;
 let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
 let postSpeechRoundQueueEpoch = 0;
+const postSpeechMessageControllers = new Set();
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
@@ -231,16 +235,26 @@ function getScriptPosition() {
         : extension_prompt_types.IN_PROMPT;
 }
 
-async function getScriptForChar(charName, extraContext) {
-    const script = directorScripts[charName] || '';
+async function getScriptForChar(charRef, extraContext) {
+    if (settings.llmScriptEnabled === false) return '';
+    const char = characters.find(c => c.avatar === charRef)
+        || matchCharacterByName(charRef, characters.map(c => c.avatar));
+    if (!char) return '';
+    const charName = char.name;
+    const uniqueName = characters.filter(c => c.name === charName).length === 1;
+    const script = directorScripts[char.avatar] || (uniqueName ? directorScripts[charName] : '') || '';
+    // Old snapshots remain usable only where their name identifies one card.
+    if (!scriptCounterSnapshots.has(char.avatar) && uniqueName && scriptCounterSnapshots.has(charName)) {
+        scriptCounterSnapshots.set(char.avatar, scriptCounterSnapshots.get(charName));
+    }
     // On swipe/regenerate, restore the counter to what it was when this
     // character's script was first rendered this round. On first render,
     // snapshot the current counter for future restores.
     const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
-    if (isReroll && scriptCounterSnapshots.has(charName)) {
-        roundCounterSet(scriptCounterSnapshots.get(charName));
+    if (isReroll && scriptCounterSnapshots.has(char.avatar)) {
+        roundCounterSet(scriptCounterSnapshots.get(char.avatar));
     } else if (!isReroll) {
-        scriptCounterSnapshots.set(charName, roundCounterGet());
+        scriptCounterSnapshots.set(char.avatar, roundCounterGet());
         // Persist to chat_metadata for crash/tab-close recovery
         const cm = chat_metadata[EXT_KEY];
         if (cm) {
@@ -253,8 +267,7 @@ async function getScriptForChar(charName, extraContext) {
     // (Previously it was injected after renderPrompt via a sentinel,
     // which left nested {{?directorLedger:xxx}} unresolved.)
     const combined = wrapper.split('{{script}}').join(script);
-    const char = characters.find(c => c.name === charName);
-    const ctx = { character: charName, avatar: char?.avatar, ...extraContext };
+    const ctx = { ...extraContext, character: charName, avatar: char.avatar, characterNameAmbiguous: !uniqueName };
     return await renderPrompt(combined, ctx, {
         maxPasses: settings.templateMaxPasses,
         recursive: settings.templateRecursive,
@@ -278,6 +291,7 @@ async function saveSettingsConfirmed() {
     try {
         await saveSettingsHost();
         if (!confirmed) throw new Error('Settings persistence was not confirmed');
+        return { confirmed: true };
     } finally {
         eventSource.removeListener(event_types.SETTINGS_UPDATED, onSaved);
     }
@@ -306,10 +320,40 @@ const saveSummaryChatConfirmed = createConfirmedChatMetadataSave({
     selectValue: metadata => metadata[EXT_KEY]?.summaries ?? [],
     label: 'Chat Summary',
 });
+const saveLedgerChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.directorHistory ?? [],
+    label: 'Director Ledger',
+});
 const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave({
     ...confirmedChatSaveDependencies,
     selectValue: metadata => metadata[EXT_KEY]?.storyBlueprint ?? null,
     label: 'Story Blueprint',
+});
+const saveBlueprintLibraryChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => ({blueprint:metadata[EXT_KEY]?.storyBlueprint??null,variables:metadata[EXT_KEY]?.variables??null}),
+    label: 'Blueprint library and completion signal',
+});
+const saveVariablesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.variables ?? null,
+    label: 'Muyu completion variable',
+});
+const saveMemoriesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.charMemories ?? {},
+    label: 'Character memories',
+});
+const saveProfileEditorChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => ({profiles:metadata[EXT_KEY]?.characterProfiles??{},archived:metadata[EXT_KEY]?.archivedProfiles??{}}),
+    label: 'Character profile editing and archive',
+});
+const saveProfilesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.characterProfiles ?? {},
+    label: 'Character profiles',
 });
 
 const variableSystem = createVariableSystem({
@@ -685,7 +729,7 @@ const postSpeechSystem = createPostSpeechSystem({
 
 // ─── PostSpeech Executor ─────────────────────────────────────────────
 const postSpeechExecutor = createExecutor({
-    blocking: settings.postSpeechBlocking !== false,
+    getBlocking: () => settings.postSpeechBlocking !== false,
     log,
     resolveCapability: capabilityId => CapabilityRegistry.get(capabilityId),
     onExecuted: (capId, result) => {
@@ -775,6 +819,7 @@ function scoreCharacter(chId, recentMessages) {
     const avatar = char.avatar;
     const result = scoreFormulaCharacter({
         character: char,
+        nameAmbiguous: characters.some(c => c.avatar !== char.avatar && c.name === char.name),
         recentMessages,
         chat,
         scoreWeights: settings.scoreWeights,
@@ -1001,7 +1046,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             await initPromise;
             initPromise = null;
             if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
-                log('LLM produced no decision; falling back to transparent (allow all)');
+                log(generationStopped ? 'LLM stopped; generation remains cancelled' : 'LLM produced no decision; falling back to transparent (allow all)');
             }
         } else {
             initFormulaRound();
@@ -1060,7 +1105,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             }
             if (!takeoverDecision.reroll) roundSpeakerCount++;
             // Safety-net script injection: ensure the correct per-character script is set
-            const takeoverScript = await getScriptForChar(char.name, {
+            const takeoverScript = await getScriptForChar(char.avatar, {
                 speakerIndex: roundSpeakerCount,
                 speakerIndex0: roundSpeakerCount - 1,
                 speakerCount: llmPickedAvatars?.length || 0,
@@ -1101,7 +1146,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             // Re-rolls operate on an existing message, not a new Director
             // decision. Keep script context if available, but do not mutate
             // the plan cursor, spoken set, or round speaker count.
-            const rerollScript = await getScriptForChar(char.name, {
+            const rerollScript = await getScriptForChar(char.avatar, {
                 speakerIndex: Math.max(roundSpeakerCount, 1),
                 speakerIndex0: Math.max(roundSpeakerCount - 1, 0),
                 speakerCount: llmPickedAvatars?.length || 0,
@@ -1115,7 +1160,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet = new Set(llmTurn.spokenAvatars);
         llmCursor = llmTurn.cursor;
         roundSpeakerCount++;
-        const plannedScript = await getScriptForChar(char.name, {
+        const plannedScript = await getScriptForChar(char.avatar, {
             speakerIndex: roundSpeakerCount,
             speakerIndex0: roundSpeakerCount - 1,
             speakerCount: llmPickedAvatars?.length || 0,
@@ -1151,7 +1196,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         // Inject per-character director script
-        const charScript = await getScriptForChar(char.name, {
+        const charScript = await getScriptForChar(char.avatar, {
             speakerIndex: roundSpeakerCount,
             speakerIndex0: roundSpeakerCount - 1,
             speakerCount: llmPickedAvatars?.length || 0,
@@ -1171,6 +1216,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         topN: settings.topN,
         avatar,
         speakerCount: roundSpeakerCount,
+        generationType: roundGenerateType,
     });
     const { allowed, score, nextSpeakerCount } = formulaTurn;
 
@@ -1185,11 +1231,19 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
 // ─── Event Listeners ─────────────────────────────────────────────────
 
+eventSource.on(event_types.GENERATION_STARTED, (type, params, dryRun) => {
+    if (dryRun) return;
+    takeoverWrapperPending = type === 'normal' && !!takeoverOwner && params?.signal === takeoverOwner.controller.signal
+        && params?.force_chid === takeoverOwner.characterId;
+});
+
 eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
-    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType });
+    const nestedTakeover = !!takeoverOwner && takeoverWrapperPending;
+    takeoverWrapperPending = false;
+    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType, nestedTakeover });
 
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
@@ -1197,6 +1251,14 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
+    directorRoundEpoch++;
+    if (takeoverOwner) {
+        takeoverOwner.controller.abort();
+        takeoverOwner = null;
+        manualGenInProgress = false;
+        roundOrchestrator.clearTakeover();
+    }
+    generationStopped = false;
 
     // Previous takeover failed mid-round: reuse the existing director decision
     // instead of making a new one. Chat already has partial messages from the
@@ -1213,6 +1275,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     }
 
     isGroupChat = true;
+    window.__gdRefreshDashboard?.();
 
     // Regenerate / swipe: reuse the existing director decision — only reset
     // per-speaker tracking. Don't re-trigger takeover; let ST decide which
@@ -1232,6 +1295,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                 const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
                 const recovered = recoverDirectorPlan(lastPlan, {
                     enabledMembers: members,
+                    characters,
                     maxSpeakers: settings.llmMaxSpeakers,
                     matchCharacterByName,
                 });
@@ -1265,7 +1329,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                     if (lastPlan.scripts && typeof lastPlan.scripts === 'object') {
                         for (const [name, script] of Object.entries(lastPlan.scripts)) {
                             const c = matchCharacterByName(name, members);
-                            if (c) directorScripts[c.name] = script;
+                            if (c) directorScripts[directorScriptKey(c, characters)] = script;
                         }
                     }
                     roundInitialized = true;
@@ -1341,12 +1405,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
 });
 
 eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
+    const finishedEpoch = directorRoundEpoch;
     isGroupChat = false;
+    window.__gdRefreshDashboard?.();
     log('Group generation finished');
 
     if (roundOrchestrator.getSnapshot().takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
         await runManualOrderedGeneration();
     }
+    if (finishedEpoch !== directorRoundEpoch) return;
     roundOrchestrator.setPending(false);
     let postSpeechRoundWasAborted = false;
 
@@ -1610,35 +1677,24 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             // Check Auto Summary
             if (settings.autoSummaryEnabled && settings.summaryEnabled) {
                 const interval = settings.autoSummaryInterval || 10;
-                if (sumLen === 0 && chat_metadata[EXT_KEY]._autoSumLen === undefined && legacyLen === undefined) {
-                    console.log('[GD-auto-sum] path: first-enable currentLen=', currentLen);
-                    if (currentLen >= interval) {
-                        try {
-                            log(`Auto-summary: first enable, ${currentLen} existing msgs`);
-                            toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `Auto-summary (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
-                            await chatSummarySystem.generateSummary();
-                            await saveSumLen(currentLen);
-                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-summary failed:', e.message); }
-                    } else {
-                        await saveSumLen(currentLen);
-                    }
-                } else if (currentLen < sumLen) {
-                    console.log('[GD-auto-sum] path: deletion');
-                    await saveSumLen(currentLen);
+                const action = planSummaryAutoRun({ currentLength: currentLen, covered: sumLen,
+                    hasCounter: chat_metadata[EXT_KEY]._autoSumLen !== undefined, hasLegacyCounter: legacyLen !== undefined, interval });
+                const runAction = () => runSummaryAutoPlan(action, { currentLength: currentLen,
+                    generateSummary: () => chatSummarySystem.generateSummary(), saveLength: saveSumLen });
+                if (action.type === 'checkpoint') {
+                    await runAction();
+                } else if (action.type === 'reset') {
+                    await runAction();
                     toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动总结计数器已重置。' : 'Messages deleted. Auto-summary counter reset.', '', { timeOut: 8000 });
-                } else {
-                    const newMsgs = currentLen - sumLen;
-                    console.log('[GD-auto-sum] path: normal newMsgs=', newMsgs, 'interval=', interval);
-                    if (newMsgs >= interval) {
-                        try {
-                            log(`Auto-summary triggered (${newMsgs} msgs)`);
-                            toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                            await chatSummarySystem.generateSummary();
-                            await saveSumLen(currentLen);
-                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-summary failed:', e.message); }
-                    }
+                } else if (action.type === 'execute') {
+                    try {
+                        log(action.firstEnable ? `Auto-summary: first enable, ${currentLen} existing msgs` : `Auto-summary triggered (${action.newMessages} msgs)`);
+                        toastr?.info?.(lang === 'zh'
+                            ? action.firstEnable ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `自动总结触发（${action.newMessages} 条新消息）...`
+                            : action.firstEnable ? `Auto-summary (${currentLen} existing msgs)...` : `Auto-summary (${action.newMessages} msgs)...`, '', { timeOut: 3000 });
+                        await runAction();
+                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-summary failed:', e.message); }
                 }
             }
 
@@ -1757,6 +1813,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // Clear it BEFORE pruning history so no stale pointers linger.
 eventSource.on(event_types.GENERATION_STOPPED, () => {
     generationStopped = true;
+    takeoverOwner?.controller.abort();
     // Always abort PostSpeech if running, even in MODE_OFF (cleanup must run regardless)
     if (postSpeechAbortController) {
         postSpeechAbortController.abort();
@@ -1766,6 +1823,7 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechMessageAbortController.abort();
         log('PostSpeech message aborted by user');
     }
+    for (const controller of postSpeechMessageControllers) controller.abort();
     if (directorAbortController) {
         directorAbortController.abort();
         log('Director LLM aborted by user');
@@ -1822,7 +1880,15 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
     // Per-message PostSpeech uses its own AbortController so user-Stop can cut
     // the render prompt (including slow providers) mid-flight.
-    postSpeechMessageAbortController = new AbortController();
+    const messageController = new AbortController();
+    postSpeechMessageAbortController = messageController;
+    postSpeechMessageControllers.add(messageController);
+    const messageEpoch = postSpeechRoundQueueEpoch;
+    const messageMetadata = chat_metadata;
+    const messageContent = msg.mes;
+    const isCurrentMessage = () => !messageController.signal.aborted
+        && messageEpoch === postSpeechRoundQueueEpoch && messageMetadata === chat_metadata
+        && chat[msgIndex] === msg && msg.mes === messageContent;
 
     try {
         const charName = msg.name || '';
@@ -1847,7 +1913,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         const callCfg = {
             ...agentConfig.call,
-            signal: postSpeechMessageAbortController.signal,
+            signal: messageController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 log(`PostSpeech retry ${attempt}/${maxRetries}`);
             },
@@ -1858,6 +1924,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             caller,
             config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
         });
+        if (!isCurrentMessage()) return;
 
         // Dedup: skip if no new capabilities would be triggered.
         // For swipe/regenerate, allow re-analysis (message content changed).
@@ -1909,6 +1976,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
                     { ...policy, intents: activeContexts.map(context => context.intent) },
                     CapabilityRegistry.listExecutableForMode('message')
                 );
+                if (!isCurrentMessage()) { reservation.release(); return; }
                 if (execResult.deferred.length) {
                     enqueuePostSpeechRoundJob(activeContexts, execResult.deferred);
                     reservation.release();
@@ -1939,8 +2007,9 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
     } finally {
-        if (postSpeechMessageAbortController) {
-            const wasAborted = postSpeechMessageAbortController.signal.aborted;
+        postSpeechMessageControllers.delete(messageController);
+        if (postSpeechMessageAbortController === messageController) {
+            const wasAborted = messageController.signal.aborted;
             postSpeechMessageAbortController = null;
             if (wasAborted) log('PostSpeech message aborted by user');
         }
@@ -1950,6 +2019,12 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 // ───
 
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
+    directorRoundEpoch++;
+    takeoverOwner?.controller.abort();
+    takeoverOwner = null;
+    takeoverWrapperPending = false;
+    invalidatePostSpeechRoundQueue();
+    for (const controller of postSpeechMessageControllers) controller.abort();
     customAgentSystem.invalidateExecutions();
     roundScores = {};
     roundSpeakerCount = 0;
@@ -1977,6 +2052,13 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    directorRoundEpoch++;
+    takeoverOwner?.controller.abort();
+    takeoverOwner = null;
+    takeoverWrapperPending = false;
+    manualGenInProgress = false;
+    roundOrchestrator.clearTakeover();
+    for (const controller of postSpeechMessageControllers) controller.abort();
     invalidatePostSpeechRoundQueue();
     postSpeechSystem.resetPending();
     customAgentSystem.invalidateExecutions();
@@ -2017,6 +2099,17 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
 let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
+    if (manualGenInProgress) return;
+    const owner = { controller: new AbortController(), characterId: null };
+    const epoch = directorRoundEpoch;
+    const metadata = chat_metadata;
+    takeoverOwner = owner;
+    const ownsRound = () => takeoverOwner === owner && directorRoundEpoch === epoch && chat_metadata === metadata;
+    const canContinue = () => {
+        if (!ownsRound()) return false;
+        if (generationStopped || owner.controller.signal.aborted) { roundOrchestrator.markFailed(); return false; }
+        return true;
+    };
     manualGenInProgress = true;
     roundOrchestrator.setPending(false);
     const schedule = roundOrchestrator.beginTakeover(llmPickedAvatars, {
@@ -2032,6 +2125,7 @@ async function runManualOrderedGeneration() {
 
     try {
         for (let i = 0; i < orderedList.length; i++) {
+            if (!canContinue()) return;
             const avatar = orderedList[i];
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
@@ -2054,11 +2148,12 @@ async function runManualOrderedGeneration() {
             // Inject per-character director script with order context.
             // Use original plan position so retries/skips don't shift the index.
             const origPos = llmPickedAvatars.indexOf(avatar);
-            const charScript = await getScriptForChar(characters[chId].name, {
+            const charScript = await getScriptForChar(characters[chId].avatar, {
                 speakerIndex: origPos + 1,
                 speakerIndex0: origPos,
                 speakerCount: llmPickedAvatars.length,
             });
+            if (!canContinue()) return;
             if (charScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, getScriptPosition(), 0, true);
             }
@@ -2071,7 +2166,15 @@ async function runManualOrderedGeneration() {
                 // ensures the JS bridge and async character context settle
                 // before ST's nested generateGroupWrapper cycles characters.
                 await new Promise(r => setTimeout(r, 150));
-                await ctx.generate('normal', { force_chid: chId });
+                if (!canContinue()) return;
+                const previousLength = chat.length;
+                owner.characterId = chId;
+                await ctx.generate('normal', { force_chid: chId, signal: owner.controller.signal });
+                if (!canContinue()) return;
+                if (!chat.slice(previousLength).some(message => !message.is_user && !message.is_system && message.name === characters[chId].name && message.mes)) {
+                    roundOrchestrator.markFailed();
+                    return;
+                }
                 // Post-generation: log full message snapshot for identity diagnostics
                 if (chat.length > 0) {
                     const lastMsg = chat[chat.length - 1];
@@ -2087,12 +2190,12 @@ async function runManualOrderedGeneration() {
                 roundOrchestrator.markCompleted(avatar);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
-                roundOrchestrator.markFailed();
+                if (ownsRound()) roundOrchestrator.markFailed();
                 // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
                 // so a retry reuses the same director decision instead of making a new one.
                 return;
             } finally {
-                if (charScript) {
+                if (ownsRound() && charScript) {
                     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
                 }
             }
@@ -2101,13 +2204,16 @@ async function runManualOrderedGeneration() {
         console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
-        roundOrchestrator.finishTakeover();
-        manualGenInProgress = false;
-        // Restore the original character context so ST doesn't stay stuck
-        // on the last generated character after takeover
-        if (savedChId !== undefined && savedChId !== null) {
-            setCharacterId(savedChId);
-            setCharacterName(savedChName);
+        if (ownsRound()) {
+            takeoverOwner = null;
+            takeoverWrapperPending = false;
+            roundOrchestrator.finishTakeover();
+            manualGenInProgress = false;
+            // Restore identity only while this takeover still owns the round.
+            if (savedChId !== undefined && savedChId !== null) {
+                setCharacterId(savedChId);
+                setCharacterName(savedChName);
+            }
         }
     }
 }
@@ -2233,7 +2339,7 @@ async function initForceSpeakLLM(char, avatar) {
 
         // Record to ledger with user message anchor — normalize speakers to names for ledger consistency
         if (settings.llmHistoryEnabled) {
-            const forceSpeakName = parsed.names?.[0] || char?.name || parsed.speakers?.[0] || '?';
+            const forceSpeakName = char?.name || parsed.names?.[0] || '?';
             await addToDirectorHistory({
                 ...parsed,
                 speakers: [forceSpeakName],
@@ -2269,14 +2375,14 @@ async function initForceSpeakLLM(char, avatar) {
         if (parsed.scripts && typeof parsed.scripts === 'object') {
             for (const [name, s] of Object.entries(parsed.scripts)) {
                 const c = matchCharacterByName(name, enabledMembers);
-                if (c && c.name === char.name && s) { script = s; break; }
+                if (c && c.avatar === char.avatar && s) { script = s; break; }
             }
         }
         if (!script && parsed.script) script = parsed.script;
 
         if (script) {
-            directorScripts[char.name] = script;
-            const charScript = await getScriptForChar(char.name, {
+            directorScripts[directorScriptKey(char, characters)] = script;
+            const charScript = await getScriptForChar(char.avatar, {
                 speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
             });
             if (charScript) {
@@ -2368,6 +2474,7 @@ async function initRoundWithLLM() {
             await addToDirectorHistory({
                 ...parsed,
                 speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || '?'),
+                speakerAvatars: [...capped],
                 reason: parsed.reason ?? '',
                 scripts: parsed.scripts ?? {},
                 loreAssignments: parsed.loreAssignments ?? {},
@@ -2380,7 +2487,7 @@ async function initRoundWithLLM() {
             for (const [name, script] of Object.entries(parsed.scripts)) {
                 if (script && typeof script === 'string') {
                     const c = matchCharacterByName(name, enabledMembers);
-                    if (c) directorScripts[c.name] = script;
+                    if (c) directorScripts[directorScriptKey(c, characters)] = script;
                 }
             }
         }
@@ -2411,6 +2518,7 @@ async function initRoundWithLLM() {
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
             const recovered = recoverDirectorPlan(lastPlan, {
                 enabledMembers,
+                characters,
                 maxSpeakers: settings.llmMaxSpeakers,
                 matchCharacterByName,
             });
@@ -2435,7 +2543,7 @@ async function initRoundWithLLM() {
                     directorScripts = {};
                     for (const [name, script] of Object.entries(lastPlan.scripts)) {
                         const c = matchCharacterByName(name, enabledMembers);
-                        if (c) directorScripts[c.name] = script;
+                        if (c) directorScripts[directorScriptKey(c, characters)] = script;
                     }
                 }
                 if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
@@ -2444,7 +2552,8 @@ async function initRoundWithLLM() {
         }
 
         toastr.error('导演决策失败，且无历史记录。请检查网络后重试。');
-        llmPickedSet = new Set();
+        llmPickedSet = null;
+        llmPickedAvatars = null;
     }
 }
 
@@ -2456,40 +2565,9 @@ async function initRoundWithLLM() {
  * Returns the character object or null.
  */
 function matchCharacterByName(name, enabledMembers) {
-    if (!name || typeof name !== 'string') return null;
-
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-
-    // 1. Exact match (case-sensitive)
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (c && c.name === trimmed) return c;
-    }
-
-    // 2. Case-insensitive exact match
-    const lower = trimmed.toLowerCase();
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (c && c.name.toLowerCase() === lower) return c;
-    }
-
-    // 3. Substring match — character name contains the LLM name or vice versa
-    let best = null;
-    let bestLen = 0;
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (!c) continue;
-        const cLower = c.name.toLowerCase();
-        if (cLower.includes(lower) || lower.includes(cLower)) {
-            if (c.name.length > bestLen) {
-                best = c;
-                bestLen = c.name.length;
-            }
-        }
-    }
-
-    return best;
+    const matched = matchEnabledCharacter(name, enabledMembers, characters);
+    if (!matched && typeof name === 'string' && name.trim()) log(`Unknown or ambiguous speaker reference: "${name}" — use the exact avatar id for same-name cards`);
+    return matched;
 }
 
 function getDefaultLlmPrompt() {
@@ -2556,17 +2634,12 @@ It is OK to assign none (empty array) or different entries to different characte
 }
 
 function buildJsonSchema() {
-    const scriptField = settings.llmScriptEnabled
-        ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
-        : '';
-    const storyBlueprintDoneField = settings.storyBlueprintEnabled
-        ? `\n      "${storyBlueprintSystem.getCompletionVariable()}": false\n    `
-        : '';
-    const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
-    return schema
-        .replace(/\{\{scriptField\}\}/g, scriptField)
-        .replace(/\{\{storyBlueprintDoneField\}\}/g, storyBlueprintDoneField)
-        .replace(/\{\{llmJsonSchema\}\}/g, '');
+    return renderDirectorOutputFormat({
+        text: settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema,
+        scriptEnabled: settings.llmScriptEnabled,
+        storyBlueprintEnabled: settings.storyBlueprintEnabled,
+        completionVariable: settings.storyBlueprintEnabled ? storyBlueprintSystem.getCompletionVariable() : '',
+    });
 }
 
 
@@ -2647,6 +2720,7 @@ registerCharacterCritique(() => critiqueSystem.getActiveCharacterCritiqueData())
 registerCharCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
 registerIdentity(settings);
 registerCharMemory({
+    getRenderTemplate: () => settings.memoryRenderTemplate || '',
     getMemoriesForAll: () => {
         const result = {};
         const stats = memorySystem.getStats();
@@ -2696,23 +2770,87 @@ registerCharMemory({
     log,
 });
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
+const muyuProviderBindings = getProviders().filter(p => ['recentMessages', 'chatSummary', 'character_profiles', 'charMemory', 'characters', 'directorLedger', 'directorHistory'].includes(p.id) && !p._gdOwner);
 registerNpcList(() => npcSystem.getNpcs());
 customAgentSystem.refreshProviders();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 eventSource.on(event_types.APP_READY, async () => {
     const deps = {
-        settings, EXT_KEY, chat_metadata, saveChatConditional, saveSettings,
+        muyuProviderBindings, getMuyuProviders: getProviders, saveMuyuCredentials: saveSettingsConfirmed, getRequestHeaders,
+        getMuyuSelectedPersona: () => user_avatar,
+        getMuyuExtensionDirectory: () => ({ names: extensionNames, types: extensionTypes,
+            disabled: Array.isArray(extension_settings.disabledExtensions) ? extension_settings.disabledExtensions : null }),
+        getMuyuWorldBookState: () => {
+            const context = getContext();
+            const selectedCharacter = context.characters?.[context.characterId];
+            const avatar = selectedCharacter?.avatar;
+            const fileName = typeof avatar === 'string' ? avatar.replace(/\.[^/.]+$/, '') : null;
+            const additional = fileName && Array.isArray(world_info?.charLore)
+                ? world_info.charLore.find(entry => entry?.name === fileName)?.extraBooks : [];
+            return { names: world_names, global: selected_world_info, chat: getChatMetadata()?.world_info,
+                characterPrimary: selectedCharacter?.data?.extensions?.world, characterAdditional: additional,
+                persona: power_user?.persona_description_lorebook };
+        },
+        deleteWorldInfo,
+        setMuyuGlobalWorldBooks: names => {
+            const select=$('#world_info');if(!select.length || names.some(name=>!world_names.includes(name)))throw Error('WRITE_UNAVAILABLE');
+            select.val(names.map(name=>String(world_names.indexOf(name))));
+            onWorldInfoChange('__notSlashCommand__','');
+            select.trigger('change.select2');
+        },
+        getMuyuLivePreset: () => getChatCompletionPreset(),
+        getMuyuPresetBusy: () => is_send_press || is_group_generating || manualGenInProgress || isGroupChat,
+        getMuyuCharacterReferences: avatar => {
+            const context=getContext(),groups=context.groups,tags=context.tagMap,notes=extension_settings.note?.chara,lore=world_info?.charLore;
+            if(!Array.isArray(groups)||!tags||typeof tags!=='object'||Array.isArray(tags)||notes!==undefined&&!Array.isArray(notes)||lore!==undefined&&!Array.isArray(lore)||groups.some(g=>!Array.isArray(g.members)||g.members.some(m=>typeof m!=='string')||g.disabled_members!==undefined&&!Array.isArray(g.disabled_members)))return null;
+            const assignedTags=Object.hasOwn(tags,avatar)?tags[avatar]:[];
+            if(!Array.isArray(assignedTags)||assignedTags.some(id=>typeof id!=='string'||!id.length))return null;
+            const file=avatar.replace(/\.png$/,'');
+            const known=Number(context.characters?.[context.characterId]?.avatar===avatar)
+                + groups.filter(g=>g.members.includes(avatar)||g.disabled_members?.includes(avatar)).length
+                + Number(assignedTags.length>0)
+                + (notes||[]).filter(n=>n?.name===file).length + (lore||[]).filter(n=>n?.name===file).length
+                + (getChatMetadata()?.[EXT_KEY]?.npcs||[]).filter(n=>n?.importedAvatar===avatar).length;
+            return {known,unloadedReferences:'unknown'};
+        },
+        getMuyuWorldBookReferences: name => {
+            if(!Array.isArray(characters) || !Array.isArray(selected_world_info) || world_info?.charLore && !Array.isArray(world_info.charLore))return null;
+            const personas=power_user?.persona_descriptions || {};
+            if(typeof personas!=='object' || Array.isArray(personas))return null;
+            const known=selected_world_info.filter(n=>n===name).length + Number(getChatMetadata()?.world_info===name)
+                + characters.filter(c=>c?.data?.extensions?.world===name).length
+                + (world_info?.charLore||[]).filter(row=>row?.extraBooks?.includes(name)).length
+                + Object.values(personas).filter(p=>p?.lorebook===name).length
+                + Number(power_user?.persona_description_lorebook===name) + Number($('#character_world').val()===name);
+            return {known,unloadedChatReferences:'unknown'};
+        },
+        getMuyuAccount: async () => {
+            const account = await import('../../../user.js');
+            return { enabled: account.accountsEnabled, handle: account.currentUser?.handle, created: account.currentUser?.created };
+        },
+        muyuOwner: {},
+        getMuyuGuards: () => ({
+            roundActive: isGroupChat,
+            takeoverPending: roundOrchestrator.getSnapshot().takeoverPending,
+            takeoverRemaining: roundOrchestrator.getSnapshot().takeoverRemaining,
+            takeoverFailed: roundOrchestrator.getSnapshot().takeoverFailed,
+            manualGenerating: manualGenInProgress,
+            generationType: roundGenerateType,
+            canFinalize: roundOrchestrator.canFinalize({ manualGenerationInProgress: manualGenInProgress, generationStopped }),
+        }),
+        settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveBlueprintLibraryChatConfirmed, saveMemoriesChatConfirmed, saveLedgerChatConfirmed, saveStoryBlueprintChatConfirmed, saveProfileEditorChatConfirmed, saveVariablesChatConfirmed, saveProfilesChatConfirmed, saveNpcChatConfirmed, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
-        toastr, world_names, loadWorldInfo, renderPrompt, worldBookScanner,
+        toastr, world_names, loadWorldInfo, createWorldInfoEntry, renderPrompt, worldBookScanner,
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
         critiqueSystem,
+        profileSystem,
         customAgentSystem,
         getChat: () => chat,
         getCharacters: () => characters,

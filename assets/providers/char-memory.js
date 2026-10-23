@@ -1,10 +1,11 @@
 import { registerProvider } from '../../provider-registry.js';
+import { renderMemoryTemplate } from './memory-template.js';
 
 /**
  * {{charMemory}} — All characters' memories (for Director Prompt).
  * {{charMemoryCurrent}} — Current character's memories (for Script Wrapper).
  */
-export function register({ getMemoriesForAll, getMemoriesForChar, log }) {
+export function register({ getMemoriesForAll, getMemoriesForChar, getRenderTemplate = () => '', log }) {
 
     registerProvider({
         id: 'charMemory',
@@ -22,8 +23,14 @@ export function register({ getMemoriesForAll, getMemoriesForChar, log }) {
                 flatAll.push(...mems);
             }
 
+            let rendered = content.trim();
+            const template = getRenderTemplate();
+            if (template) {
+                try { rendered = renderMemoryTemplate(template, all); }
+                catch (error) { console.warn('[GroupDirector] Invalid memory render template; using legacy format:', error.message); }
+            }
             return {
-                content: content.trim(),
+                content: rendered,
                 data: { all: flatAll, byChar: all },
             };
         },

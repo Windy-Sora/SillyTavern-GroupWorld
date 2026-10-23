@@ -1,3 +1,4 @@
+import { latestActiveSummary } from './provider-read-data.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -34,10 +35,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
 
     function findLatestActive(metadata = cm()) {
         const summaries = getLiveSummaries(metadata);
-        for (let i = summaries.length - 1; i >= 0; i--) {
-            if (summaries[i].active) return summaries[i];
-        }
-        return null;
+        return latestActiveSummary(summaries);
     }
 
     function getLatestActive(metadata = cm()) {
@@ -200,7 +198,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         if (!last) throw new Error('No active summary to regenerate');
 
         let inputText = '';
-        if (last.basedOn !== null && last.basedOn >= 0 && summaries[last.basedOn]) {
+        if (Number.isInteger(last.basedOn) && last.basedOn >= 0 && last.basedOn < summaries.indexOf(last) && summaries[last.basedOn]) {
             const prev = summaries[last.basedOn];
             const newMessages = chat.slice(prev.rangeEnd, last.rangeEnd);
             inputText = `[Previous summary]\n${prev.content}\n\n[New content]\n` +
@@ -336,8 +334,20 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
             const removed = summaries.filter(summary => !summary.active);
             if (!removed.length) return 0;
             summaries.splice(0, summaries.length, ...summaries.filter(summary => summary.active));
+            const references = summaries.map(summary => {
+                const before = summary.basedOn;
+                const target = Number.isInteger(before) && before >= 0 ? original[before] : null;
+                const index = target ? summaries.indexOf(target) : -1;
+                const after = index >= 0 && index < summaries.indexOf(summary) ? index : null;
+                summary.basedOn = after;
+                return { summary, before, after, target };
+            });
             await persistMutation(metadata, () => {
                 restoreRemovedEntries(summaries, original, removed);
+                for (const { summary, before, after, target } of references) {
+                    if (!summaries.includes(summary) || summary.basedOn !== after) continue;
+                    summary.basedOn = target ? summaries.indexOf(target) : before;
+                }
                 return false;
             });
             return removed.length;
@@ -374,7 +384,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
             for (const summary of summaries) {
                 if (summary.active && summary.rangeEnd > chatLength) {
                     setActive(summary, false);
-                    if (summary.basedOn !== null && summary.basedOn >= 0 && summaries[summary.basedOn]) {
+                    if (Number.isInteger(summary.basedOn) && summary.basedOn >= 0 && summary.basedOn < summaries.indexOf(summary) && summaries[summary.basedOn]) {
                         setActive(summaries[summary.basedOn], true);
                     }
                 }
@@ -393,6 +403,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
     }
 
     return {
+        isGenerating: () => summarizing,
         getActiveSummaryText,
         getLatestActive,
         getSummaries,

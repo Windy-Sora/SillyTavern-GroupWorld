@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { mountAssistantMenu } from '../assistant-menu.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 import { getCharacters } from '../../../../../../script.js';
 
@@ -30,11 +31,21 @@ registerSection('gdAssistant', function (ctx) {
         return csrfHeaders(); // no Content-Type — browser sets with boundary
     }
 
-    $c('dash-get-assistant').on('click', async function () {
+    const button = $c('dash-get-assistant')[0];
+    button.__gdAssistantDispose?.();
+    button.__gdAssistantDispose = mountAssistantMenu({ button, lang: settings.lang,
+        onOpen: () => {
+            if (ctx.muyuOwner?.floating) ctx.muyuOwner.floating.open('muyu');
+            else toastr.warning(L('暮羽窗口尚未准备好，请重新打开设置。', 'Muyu is not ready. Please reopen settings.'));
+        },
+        onImport: importAssistant,
+    });
+
+    async function importAssistant() {
         const ok = await callGenericPopup(
             L(
-                '<b>🦉 领养暮羽</b><br>一只住在 GD 插件里的猫头鹰娘——会写代码、懂架构、不甩术语。<br>领回家就能直接问，紫色台灯下随时待命。<br><br>将导入角色卡「暮羽」+ 配套助手世界书，同名角色/世界书将覆盖更新。',
-                '<b>🦉 Adopt Mu</b><br>An owl girl living inside GD — writes code, knows architecture, skips the jargon.<br>Take her home and ask away, she\'s always there under her purple lamp.<br><br>Imports "Mu" character card + companion world book. Same name will be overwritten.'
+                '<b>🦉 领养暮羽</b><br>一只住在 GroupWorld 插件里的猫头鹰娘——会写代码、懂架构、不甩术语。<br>领回家就能直接问，紫色台灯下随时待命。<br><br>将导入角色卡「暮羽」+ 配套助手世界书，同名角色/世界书将覆盖更新。',
+                '<b>🦉 Adopt Mu</b><br>An owl girl living inside GroupWorld — writes code, knows architecture, skips the jargon.<br>Take her home and ask away, she\'s always there under her purple lamp.<br><br>Imports "Mu" character card + companion world book. Same name will be overwritten.'
             ),
             POPUP_TYPE.CONFIRM,
         );
@@ -142,5 +153,5 @@ registerSection('gdAssistant', function (ctx) {
         } finally {
             $btn.prop('disabled', false).css('opacity', '1').html(originalText);
         }
-    });
+    }
 });

@@ -12,6 +12,7 @@ registerSection('userProviders', function (ctx) {
     const $pFile = $('#gd-user-provider-file');
 
     renderList('provider', $pList);
+    ctx.refreshUserProviderList = () => renderList('provider', $pList);
 
     const deps = {
         log: ctx.log || console.log,

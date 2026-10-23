@@ -64,6 +64,7 @@ test('variable system refuses automatic updates to locked or manual variables wi
     assert.deepEqual(result, { applied: 0, ignored: 3, errors: [] });
     assert.equal(subject.getValue(subject.getDefinition('locked_note')), 'keep');
     assert.equal(subject.getValue(subject.getDefinition('manual_note')), 'keep');
+    assert.deepEqual(subject.getLog().filter(entry => entry.ignored).map(entry => entry.outcomeCode), ['locked', 'auto_update_disabled']);
 });
 
 test('variable exports and imports preserve definitions and isolate imported data', async () => {

@@ -23,3 +23,8 @@ coverage/
 .claude/settings.local.json
 .claude/worktrees/
 .bug-hunter/
+
+# Local audit reports (not part of shipped documentation)
+/BUG-REVIEW-FEEDBACK-RESPONSE-2026-10-07.md
+/BUG-REVIEW-FIX-REPORT-2026-10-07.md
+/GD-GW-SYNC-TEMP.md

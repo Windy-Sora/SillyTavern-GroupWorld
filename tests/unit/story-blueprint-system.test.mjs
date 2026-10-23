@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createStoryBlueprintSystem } from '../../systems/story-blueprint-system.js';
+import { createStoryBlueprintSystem, projectStoryBlueprintProgress } from '../../systems/story-blueprint-system.js';
 
 function fixture(overrides = {}) {
     const metadata = {};
@@ -115,6 +115,30 @@ test('completion variables are created, repaired, cleared, and diagnosed when lo
     assert.deepEqual(calls.setValues.at(-1), ['chapter_done', false, { source: 'story-blueprint', reason: 'test' }]);
 });
 
+test('guarded completion variable never reuses a colliding user variable', () => {
+    const metadata = { gd: { variables: { defs: [{ id: 'new_done', type: 'boolean', scope: 'global' }] } } };
+    const definition = { id: 'new_done', type: 'boolean', scope: 'global', injectMode: 'manual' };
+    const calls = [];
+    const settings = { storyBlueprintEnabled: true, storyBlueprintCompletionVariable: 'new_done',
+        storyBlueprintCompletionVariableGuard: 'new_done', storyBlueprintProgressionMode: 'leaf' };
+    const system = createStoryBlueprintSystem({ settings, getChatMetadata: () => metadata, getChat: () => [], EXT_KEY: 'gd',
+        saveChatConditional: () => calls.push('save'), variableSystem: {
+            getDefinition: () => definition, getValue: () => true,
+            upsertDefinition: () => calls.push('upsert'), setValue: () => calls.push('set'),
+        }, log: () => {} });
+    system.setBlueprint(nestedBlueprint());
+    assert.equal(system.ensureCompletionVariable(), false);
+    assert.equal(system.renderCurrent(), '');
+    assert.throws(() => system.consumeCompletionSignal(), /conflicts/);
+    assert.equal(system.consumeCompletionSignal().reason, 'variable-conflict');
+    assert.equal(system.getProgress().doneCount, 0);
+    assert.equal(calls.includes('upsert'), false);
+    assert.equal(calls.includes('set'), false);
+    settings.storyBlueprintEnabled = false;
+    system.clearCompletionSignal('disabled-reset');
+    assert.equal(calls.includes('set'), false);
+});
+
 test('completion signals advance once per step, deduplicate completion, and roll back', () => {
     const { system, values } = fixture();
     system.setBlueprint(nestedBlueprint());
@@ -174,6 +198,142 @@ test('Story Blueprint prunes non-contiguous and future progress after chat rollb
     assert.equal(system.getProgress().doneCount, 0);
 });
 
+test('progression impact projection reads raw state without pruning or saving it', () => {
+    const { system, metadata, calls, chat } = fixture();
+    system.setBlueprint(nestedBlueprint());
+    metadata.gd.storyBlueprint.doneSignals = [{ nodeId: 'scene-1', chatLength: 1, time: 1 }];
+    const before = JSON.stringify(metadata.gd.storyBlueprint);
+    const saves = calls.saved;
+    const current = projectStoryBlueprintProgress({ blueprint: metadata.gd.storyBlueprint.blueprint,
+        doneSignals: metadata.gd.storyBlueprint.doneSignals, chatLength: chat.length, mode: 'leaf', level: 0 });
+    const projected = projectStoryBlueprintProgress({ blueprint: metadata.gd.storyBlueprint.blueprint,
+        doneSignals: metadata.gd.storyBlueprint.doneSignals, chatLength: chat.length, mode: 'level', level: 0 });
+    assert.equal(current.doneCount, 1);
+    assert.equal(current.currentNodeId, 'scene-2');
+    assert.deepEqual(projected.stepIds, ['chapter', 'ending']);
+    assert.equal(projected.doneCount, 0);
+    assert.equal(projected.inactiveSignalCount, 1);
+    assert.equal(JSON.stringify(metadata.gd.storyBlueprint), before);
+    assert.equal(calls.saved, saves);
+    // The existing runtime getter still prunes on read; a draft preview must use the pure projector.
+});
+
+test('progress tracks retain independent completion and notices across mode and level switches', () => {
+    const { system, settings, metadata } = fixture();
+    system.setBlueprint(nestedBlueprint());
+    system.setCurrentStep(1);
+    assert.equal(system.getProgress().current?.id, 'scene-2');
+
+    settings.storyBlueprintProgressionMode = 'level';
+    settings.storyBlueprintProgressionLevel = 0;
+    assert.equal(system.getProgress().doneCount, 0);
+    system.setCurrentStep(1);
+    assert.equal(system.getProgress().current?.id, 'ending');
+
+    settings.storyBlueprintProgressionLevel = 1;
+    assert.equal(system.getProgress().doneCount, 0);
+    system.setCurrentStep(2);
+    settings.storyBlueprintProgressionMode = 'all';
+    assert.equal(system.getProgress().doneCount, 0);
+    system.setCurrentStep(1);
+
+    settings.storyBlueprintProgressionMode = 'leaf';
+    assert.equal(system.getProgress().doneCount, 1);
+    settings.storyBlueprintProgressionMode = 'level';
+    settings.storyBlueprintProgressionLevel = 0;
+    assert.equal(system.getProgress().doneCount, 1);
+    settings.storyBlueprintProgressionLevel = 1;
+    assert.equal(system.getProgress().doneCount, 2);
+    settings.storyBlueprintProgressionMode = 'all';
+    assert.equal(system.getProgress().doneCount, 1);
+    assert.deepEqual(Object.keys(metadata.gd.storyBlueprint.progressTracks).sort(), ['all', 'leaf', 'level:0', 'level:1']);
+    const projected = projectStoryBlueprintProgress({ blueprint: metadata.gd.storyBlueprint.blueprint,
+        progressTracks: metadata.gd.storyBlueprint.progressTracks, chatLength: 2, mode: 'level', level: 1 });
+    assert.equal(projected.doneCount, 2);
+
+    system.resetProgress();
+    settings.storyBlueprintProgressionMode = 'leaf';
+    assert.equal(system.getProgress().doneCount, 1);
+    system.resetBlueprint();
+    assert.deepEqual(Object.keys(metadata.gd.storyBlueprint.progressTracks), ['leaf']);
+});
+
+test('legacy progress is retained in the active mode with a recovery copy', () => {
+    const { system, metadata, settings } = fixture();
+    system.setBlueprint(nestedBlueprint());
+    metadata.gd.storyBlueprint = {
+        blueprint: metadata.gd.storyBlueprint.blueprint,
+        doneSignals: [{ nodeId: 'scene-1', chatLength: 1, time: 1 }],
+        completeNoticeKey: '',
+    };
+    assert.equal(system.getProgress().doneCount, 1);
+    assert.deepEqual(metadata.gd.storyBlueprint.legacyDoneSignals.map(s => s.nodeId), ['scene-1']);
+    settings.storyBlueprintProgressionMode = 'all';
+    assert.equal(system.getProgress().doneCount, 0);
+    settings.storyBlueprintProgressionMode = 'leaf';
+    assert.equal(system.getProgress().doneCount, 1);
+});
+
+test('export and import round-trip every progress track while clean export excludes them', () => {
+    const source = fixture();
+    source.system.setBlueprint(nestedBlueprint());
+    source.system.setCurrentStep(1);
+    source.settings.storyBlueprintProgressionMode = 'all';
+    source.system.setCurrentStep(2);
+    const full = source.system.buildExportFile(true);
+    const clean = source.system.buildExportFile(false);
+    assert.equal(Object.keys(full.storyBlueprint.progressTracks).length, 2);
+    assert.deepEqual(clean.storyBlueprint.progressTracks, {});
+
+    const target = fixture();
+    assert.deepEqual(target.system.applyImportText(JSON.stringify(full), { includeProgress: true }), { ok: true });
+    assert.equal(target.system.getProgress().doneCount, 1);
+    target.settings.storyBlueprintProgressionMode = 'all';
+    assert.equal(target.system.getProgress().doneCount, 2);
+    target.system.applyImportText(JSON.stringify(clean), { includeProgress: false });
+    assert.equal(target.system.getProgress().doneCount, 0);
+    target.settings.storyBlueprintProgressionMode = 'leaf';
+    assert.equal(target.system.getProgress().doneCount, 0);
+});
+
+test('blueprint imports sanitize sparse legacy recovery signals without promoting them into active progress', () => {
+    const { system, metadata } = fixture();
+    const blueprint = { nodes: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] };
+    assert.deepEqual(system.applyImportText(JSON.stringify({ blueprint, doneSignals: [], legacyDoneSignals: [
+        null, 'bad', 4, { nodeId: 'missing' },
+        { nodeId: 'b', stepIndex: 99, chatLength: -2, time: { valueOf: 1, toString: 1 }, source: { bad: true }, extra: 'drop' },
+        { nodeId: 'b', time: 99 }, { nodeId: 'a', chatLength: 999, time: 12, source: 'manual' },
+    ] }), { includeProgress: true }), { ok: true });
+    const legacy = metadata.gd.storyBlueprint.legacyDoneSignals;
+    assert.deepEqual(legacy.map(s => s.nodeId), ['b', 'a']);
+    assert.equal(legacy[0].stepIndex, 1);
+    assert.equal(legacy[0].chatLength, 0);
+    assert.equal(legacy[0].source, 'import');
+    assert.ok(Number.isFinite(legacy[0].time));
+    assert.equal('extra' in legacy[0], false);
+    assert.deepEqual(legacy[1], { nodeId: 'a', stepIndex: 0, chatLength: 2, time: 12, source: 'manual' });
+    assert.equal(system.getProgress().doneCount, 0);
+    system.applyImportText(JSON.stringify({ blueprint, doneSignals: [], legacyDoneSignals: [{ nodeId: 'a' }] }), { includeProgress: false });
+    assert.equal(metadata.gd.storyBlueprint.legacyDoneSignals, undefined);
+});
+
+test('failed blueprint import restores all mode-specific tracks', async () => {
+    let attempts = 0;
+    const { system, settings } = fixture({ saveChatConfirmed: async () => {
+        if (++attempts === 1) throw Error('save failed');
+    } });
+    system.setBlueprint(nestedBlueprint());
+    system.setCurrentStep(1);
+    settings.storyBlueprintProgressionMode = 'all';
+    system.setCurrentStep(2);
+    const before = system.buildExportFile(true).storyBlueprint.progressTracks;
+    await assert.rejects(system.applyImportTextAndSave(JSON.stringify({ nodes: [{ id: 'new', title: 'New' }] }),
+        { includeProgress: false }), /save failed/);
+    assert.deepEqual(system.getState().progressTracks, before);
+    settings.storyBlueprintProgressionMode = 'leaf';
+    assert.equal(system.getProgress().doneCount, 1);
+});
+
 test('provider rendering exposes current data and emits a completion notice once', () => {
     const { system, settings } = fixture();
     settings.storyBlueprintProviderTemplate = '{{progress.done}}/{{progress.total}} {{current.path}} {{current.content.purpose}}';
@@ -184,6 +344,19 @@ test('provider rendering exposes current data and emits a completion notice once
     assert.match(system.renderCurrent({ consumeCompleteNotice: true }), /blueprint is complete/i);
     assert.equal(system.renderCurrent({ consumeCompleteNotice: true }), '');
     assert.equal(system.getProviderData().progress.complete, true);
+});
+
+test('Story Blueprint Provider template replaces dot paths only and empty value restores its default', () => {
+    const { system, settings } = fixture();
+    system.setBlueprint(nestedBlueprint());
+    settings.storyBlueprintProviderTemplate = '{{current.nodeJson}} / {{completionVariable}} / {{missing.path}}';
+    const rendered = system.renderCurrent();
+    assert.match(rendered, /"title": "Scene 1"/);
+    assert.match(rendered, /chapter_done/);
+    assert.doesNotMatch(rendered, /missing\.path/);
+    assert.doesNotMatch(rendered, /undefined/);
+    settings.storyBlueprintProviderTemplate = '';
+    assert.match(system.renderCurrent(), /Story Blueprint/);
 });
 
 test('blank blueprint helpers create and append unique chapters', () => {

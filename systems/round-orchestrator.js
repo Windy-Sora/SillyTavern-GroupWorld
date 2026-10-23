@@ -13,7 +13,7 @@ function createInitialState(initial = {}) {
     };
 }
 
-/** Stateful coordination for the takeover slice of a Group World round. */
+/** Stateful coordination for the takeover slice of a Group Director round. */
 export function createRoundOrchestrator(initial = {}) {
     let state = createInitialState(initial);
 
@@ -33,12 +33,13 @@ export function createRoundOrchestrator(initial = {}) {
         return getSnapshot();
     }
 
-    function startWrapper({ generationType = 'normal' } = {}) {
+    function startWrapper({ generationType = 'normal', nestedTakeover = false } = {}) {
         state.generationType = generationType;
         return transitionWrapperStarted({
             generationType,
             manualRemaining: state.takeoverRemaining,
             takeoverFailed: state.takeoverFailed,
+            nestedTakeover,
         });
     }
 

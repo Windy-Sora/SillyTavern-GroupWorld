@@ -1,0 +1,56 @@
+# Optional service tools: capability gate
+
+The server provides operations; the client owns static tool definitions, permissions and budgets. A server response cannot register arbitrary tools, inject descriptions or grant reads/writes. Existing history, Brave search and diagnostics remain independent.
+
+## Capability foundation (A round)
+
+`GET /service/status` adds optional `toolProtocols`. Old replies without it remain valid. Service 0.6.0 advertises documentSearch/webFetch/workspaceWrite/jsonValidate v1. workspaceRead is not implemented or advertised. Each future route owner advertises its exact implemented protocol version only after implementation and tests.
+
+Client-supported versions are closed in `tool-gate.js`: documentSearch, workspaceRead, webFetch, workspaceWrite and jsonValidate, all v1. Future tool IDs use the closed `muyu.service.*` map; unknown IDs fail closed. Existing tool IDs are unaffected.
+
+`muyuServiceTools` holds literal boolean opt-ins in extension settings (missing/invalid values are off). The local-document switch is in the Muyu gear → Storage & memory → Optional services; check capabilities first. All off means no automatic service detection. Explicit “Check service capabilities” still works.
+
+The port exposes `toolStatus()` and `captureTools()`. Capture is synchronous and non-blocking; opted-in capabilities trigger background detection when the 60-second cache expires. Concurrent probes merge. A turn started before positive detection has no new service tools; detection cannot expand that running task. Failure/missing/legacy/incompatible states are cached as well. There is no polling and no automatic install prompt.
+
+Captures persist across task handoffs, not across unrelated new tasks or host resets. Settings, supported versions and epoch are rechecked before execution and each model request. A capability observed as revoked or unavailable remains disabled for that captured task, even if restored later. Future handlers MUST call `capture.unavailable(capability)` on unavailable routes, protocol/transport failure; ordinary argument errors do not imply service loss. A failed capability does not disable unrelated capabilities. New tasks may recover from fresh detection.
+
+Controller filters initial and resumed tool IDs, independently gates broker execution, and supplies a subtractive `toolVisibility` hook that removes unavailable definitions from subsequent requests. Visibility never authorizes execution. Existing broker permissions, source refusal and external-effect allowlists still apply; future write/file handlers must implement their own authorization and must not inherit read-all permission.
+
+`cancel()` aborts transport, clears capability cache and invalidates captured tasks. Late detection results cannot restore a reset gate. No automatic retries of business operations are introduced.
+
+## B round: read-only documents
+
+`service-documents` is a static on-demand group: list_roots, list_files, search_documents and read_document. Its only source is global `serviceDocuments`; enabling tools does not grant data consent. Existing read-all/full-access and explicit denials apply. The host port validates closed response DTOs; handlers charge the entire UTF-8 result against the existing data budget, honor cancellation and invalidate only this capability after transport/protocol failure. The server cannot register tools or choose permissions.
+
+The authenticated account has a default private workspace (not created by reads). Additional roots are administrator-configured in a private file, never HTTP/model-supplied absolute paths. Root retargeting and file edits invalidate revisions. Relative-path containment, symlink/junction rejection, text/file/tree/concurrency limits live only on the server; see the bundled server README for configuration. Results are untrusted reference text, not instructions or current ST configuration. Search is literal and bounded; limited/skipped results are incomplete, not proof of absence. Long-line reads continue with both nextLine and nextColumn (UTF-16).
+
+No file writes, installation or code execution. Missing/legacy services and disabled tools leave normal chat unchanged. Enabling after a task starts takes effect on the next task only.
+
+## C round: public text pages
+
+`service-pages` contains only `muyu.service.fetch_page`, explicitly classified as an external effect and allowlisted by the composition. User opt-in to public page reading is permission for public GET requests, independent of Brave search, its key and the globe switch. It is not a read-all source grant or permission to transmit private host data in URLs. The tool remains absent unless opt-in and protocol v1 detection agree. The port accepts only a closed page DTO from the fixed /web/page service route. UTF-8 result bytes share the existing data budget; at most six fetch attempts per task, preserved across continuations. Disabled tasks do not accumulate page quotas. Transport/protocol failures disable this capability for that task; blocked/unsupported pages do not disable other service features. No automatic retries.
+
+The server validates standard-port HTTP(S), all DNS answers and every redirect. It pins a validated address into Node's lookup hook, verifies the actual peer before sending HTTP and on response, preserves TLS certificate checks, never uses ST cookies/headers or an ambient proxy, and blocks HTTPS downgrade. Bounds cover total deadline, response headers/body, concurrent accounts, redirects and extracted text. Only UTF-8 HTML/plain text is supported; no login, JS rendering, PDF or compressed response. HTML extraction is approximate, untrusted and may contain boilerplate; limited means the excerpt is incomplete. No disk cache or URL/body logs. Fake-IP DNS in 198.18/15 is intentionally rejected; use real public resolution rather than relaxing internal-network protections.
+
+Node primitives: [HTTP custom lookup](https://nodejs.org/api/http.html#httprequestoptions-callback), [DNS all-address lookup](https://nodejs.org/api/dns.html#dnspromiseslookuphostname-options). See server README for deployment and limits.
+
+## D: workspace server foundation and exact client approval
+
+Fixed POST `/workspace/preview`, `/workspace/apply` and `/workspace/validate` are implemented. They use the authenticated account's private workspace only, not administrator-added read roots. Flat `.md`, `.txt`, `.json` documents only; no scripts, nested paths, config/secrets, deletion, installation or execution. Preview is read-only and binds one-use random ID to the exact content, account and expected SHA-256 revision (null means create only), expiring after five minutes. Apply rechecks the baseline before the atomic commit. Pending proposals are bounded and intentionally disappear on restart.
+
+Limits: 64 KiB per new content, 64 workspace files / 8 MiB total, 8 pending proposals per account / 128 globally, 20 oldest-first raw-byte backups (old readable files <=256 KiB). File contents are synced before atomic rename; create uses exclusive hard-link publication, never a clobbering rename. Backups are private, outside searchable roots; no automatic restore endpoint. JSON validation is syntax plus depth/node/unsafe-key checks, not a business schema validator and not an apply operation. Errors do not expose paths/content/native exception details.
+
+Writes are serialized within the service process. External same-account filesystem writers are not coordinated: revision checks reject observed changes but are not an OS-level atomic compare-and-swap against another process. Do not concurrently edit these files outside the service. Symlink/junction checks are defense in depth, not a sandbox against an adversary with local filesystem permissions. `file_synced` means file fsync and immediate hash verification, not directory fsync or crash-proof transaction persistence. Cancellation/transport failure after the commit begins is an unknown outcome, not proof of no write; never blindly retry.
+
+D2 adds independent default-off workspace/JSON switches in the existing gear. Static on-demand service-workspace contains write_file (PREVIEW ONLY, read effect, serviceDocuments source) and validate_json (submitted text only). No model commit tool. New files use empty-string expectedRevision, converted to null by the client; updates use documentSearch list/read SHA-256. Enable document search to obtain existing file baselines. Entire before/after JSON must fit 20000 UTF-8 bytes, tool text <=12000 chars; reject, never truncate. beforeText is for exact local review, not automatically sent in the model result. Results share the data budget; exhausted budgets prevent transport.
+
+Private client tickets bind full content, target, expiry, server proposal and capability capture; publication transfers ownership to workspace-draft artifacts. Exact coordinator approval rechecks the ticket and capability, consumes once, and never retries automatically. Normal mode needs GUI approval. apply=true in full access only requests execution after a successful run and explicit user write intent; preview-only never applies. Revocation/reset invalidates tickets. Metadata-only v35 historical receipts omit filename/content/server token/backup ID. saved_confirmed means file sync and immediate hash check then, not current file state or crash-proof directory durability. Read permission does not approve writes.
+
+## Remaining rounds
+
+- D is complete for bounded single documents; no batch writes, automatic restore, scripts or installation.
+- E complete: three stable collapsible settings groups (documents/workspace, public pages, text validation), per-capability support/preference indicators, distinct checking/saving/storage-test progress and bilingual consent boundaries. Checking remains explicit; an enabled but unavailable preference can always be disabled. Changing status does not rebuild groups or discard their expanded state or the message draft.
+
+E paid Deepseek campaign: eleven runs across eight synthetic scenarios using the real controller, client port and backend handlers with fixed-route simulated transport. Disabled tools caused zero detection calls; missing service offered no service tools; successful document reads ignored injected write instructions; malformed JSON was correctly rejected; document preview published a draft without apply; denied data read never reached document routes; loopback pages were blocked without alternate reads; out-of-root requests produced no draft or writes. Initial missing-service explanation incorrectly claimed GD core features depended on the service. A first explicit instruction fixed a repeat, but over-compression reproduced the false dependency; the final wording explicitly forbids claiming memory/director/summary/blueprint are absent, and its repeat no longer made that claim. Instruction capacity reserves remain unchanged. Model success is not a general correctness guarantee. Real ST HTTP authentication and visual/mobile settings acceptance remain separate; public HTTPS success remains unverified in the local Fake-IP DNS environment.
+
+No service installed, legacy service, unknown protocols, disabled capabilities and service failure must all preserve normal chat and original history/search behavior.
