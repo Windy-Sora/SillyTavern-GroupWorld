@@ -255,6 +255,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
         },
         update(id, patch) {
             const previous = records.get(id); if (!previous || closed) throw Error('NOT_READY');
+            if (previous.imported || previous.archived) throw Error('HISTORY_READ_ONLY');
             // Only runtime-owned fields may be updated by capture/send. Metadata uses manage().
             if (Object.keys(patch).some(k => !['messages', 'status', 'title', 'required', 'contextSummary'].includes(k))) throw Error('HISTORY_INVALID');
             const upgrade = previous.version < 7 && patch.messages?.some(message => message.origin) ? { version: 7, receipts: previous.receipts || [], scopeChanges: previous.scopeChanges || [] } : {};

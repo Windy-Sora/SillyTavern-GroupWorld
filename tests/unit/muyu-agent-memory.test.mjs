@@ -23,7 +23,7 @@ function fixture(save = async () => {}) {
 }
 function moduleFor(f, question = '记住：简洁回答', budget = 50000) {
     const module = createAgentMemoryModule({ port: f.port, budget: () => budget });
-    module.bindRun({ id: 'run' }, { userQuestion: question });
+    module.bindRun({ id: 'run', taskId: 'task', target: f.target }, { userQuestion: question });
     const ctx = { runId: 'run', target: f.target, signal: new AbortController().signal };
     return { module, ctx, call: (id, args) => module.handlers['muyu.notes.' + id](args, ctx) };
 }
@@ -91,7 +91,10 @@ test('Pending note saves serialize edits, and reads never expose unconfirmed opt
     const reading = f.port.list(a).then(value => { readDone = true; return value; });
     await tick(); assert.equal(readDone, false); assert.equal(calls, 1);
     wait.reject(Error('failed')); await assert.rejects(first, /NOTE_SAVE_UNKNOWN/); await second;
-    assert.deepEqual((await reading).map(note => note.content), ['second']); assert.equal(calls, 2);
+    // Async identity capture may place this read before or after the second save.
+    const observed = (await reading).map(note => note.content);
+    assert.ok(observed.length === 0 || observed.length === 1 && observed[0] === 'second');
+    assert.deepEqual((await f.port.list(a)).map(note => note.content), ['second']); assert.equal(calls, 2);
 });
 
 test('Save failure cannot overwrite a concurrent repository replacement', async () => {
@@ -248,7 +251,7 @@ test('Repeated model remember operations do not duplicate notes or re-execute co
     let saves = 0; const f = fixture(async () => { saves++; }); await f.port.setEnabled(true); const m = moduleFor(f);
     const args = { quote: '简洁回答', scope: 'chat' }, first = await m.call('remember', args), count = saves;
     assert.equal((await m.call('remember', args)).id, first.id); assert.equal(saves, count);
-    m.module.transferRun('run', { id: 'continued' });
+    m.module.transferRun('run', { id: 'continued', taskId: 'task', target: f.target });
     assert.equal((await m.module.handlers['muyu.notes.remember'](args, { ...m.ctx, runId: 'continued' })).id, first.id); assert.equal(saves, count);
     const later = moduleFor(f); assert.equal((await later.call('remember', args)).id, first.id);
     assert.equal((await f.port.list(a)).length, 1);

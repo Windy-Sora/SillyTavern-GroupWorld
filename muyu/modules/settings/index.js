@@ -1,5 +1,5 @@
 import { randomUUID } from '../../runtime/crypto.js';
-import { copyJson, jsonKey } from '../../core/json-contract.js';
+import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { assertActive, ExecutionError } from '../../core/execution.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { configFields, configDomains, configChangesSchema, dependencyFields, fieldDefinition, previewSettings, readSettingsFields, selectedFields } from '../../config/registry.js';
@@ -135,7 +135,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         invalidateCandidates(run, Object.keys(changes));
         const fields = dependencyFields(Object.keys(changes)), baseline = read(ctx.target, fields);
         const basePreview = previewSettings({ baseline, changes });
-        let plan, completionPlan, togglePlan, content;
+        let plan, completionPlan, togglePlan, content, result;
+        const candidateId = 'settings:' + randomUUID();
         try {
             plan = inspectMemoryLimit(changes, ctx.target);
             completionPlan = inspectCompletionVariable(changes, ctx.target, baseline);
@@ -144,12 +145,13 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             content = copyJson({ module: 'settings-config', producedByRunId: ctx.runId, baseline, requestedChanges: changes, preview, ...(plan ? { memoryPrunePlan: plan } : {}), ...(completionPlan ? { completionVariablePlan: completionPlan } : {}), ...(togglePlan ? { blueprintTogglePlan: togglePlan } : {}) });
             // Reserve envelope space for artifact, validation and operation metadata.
             if (new TextEncoder().encode(JSON.stringify(content)).length > 24000) throw Error('DRAFT_TOO_LARGE');
+            // Validate the actual model response before retaining a candidate or its leases.
+            const modelPreview = { ...content.preview, interpretation: 'Draft comparison only. before is the captured preview baseline, not proof of the current value. after is proposed, not executed. No write or persistence is confirmed by this result.' };
+            try {
+                result = validateJson(output, { candidateId, text: JSON.stringify(apply ? { ...modelPreview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : modelPreview), ...(apply ? { applyRequested: true } : {}) });
+            } catch { throw Error('DRAFT_TOO_LARGE'); }
         } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); if (togglePlan) blueprintTogglePort?.forget(togglePlan); throw error; }
-        const candidateId = 'settings:' + randomUUID();
-        // Model-only interpretation; keep the private draft and approval equality contract unchanged.
-        const modelPreview = { ...content.preview, interpretation: 'Draft comparison only. before is the captured preview baseline, not proof of the current value. after is proposed, not executed. No write or persistence is confirmed by this result.' };
-        const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...modelPreview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : modelPreview) });
-        run.candidates.set(candidateId, { candidateId, content }); return { ...result, ...(apply ? { applyRequested: true } : {}) };
+        run.candidates.set(candidateId, { candidateId, content }); return result;
     });
     registry.seal();
     function verifyContent(content, expectedTarget) {

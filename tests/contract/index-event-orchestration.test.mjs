@@ -121,10 +121,13 @@ test('PostSpeech claims intents before message, round, and queued capability exe
 
     const drain = source.slice(source.indexOf('async function drainPostSpeechRoundQueue()'), source.indexOf('// Custom extension prompt key'));
     assertOrdered(drain, [
-        'postSpeechSystem.reserveExecution(job.contexts',
+        'job.contexts.filter(',
+        'postSpeechSystem.wasExecuted(context.messageIndex, context.intent?.type)',
+        'postSpeechSystem.reserveExecution(contexts)',
         'postSpeechExecutor.executeDeferred(plans)',
         'postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation)',
     ]);
+    assert.doesNotMatch(drain, /allowPending: job\.allowPending/);
 });
 
 test('new group rounds reset stale runtime state before clearing persisted counters', () => {

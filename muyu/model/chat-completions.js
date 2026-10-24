@@ -114,7 +114,9 @@ function decode(data, byName, connection) {
     const content = m.content ?? '';
     if (typeof content !== 'string') fail();
     const calls = m.tool_calls ?? [];
-    if (!Array.isArray(calls) || calls.length > 64 || (choice.finish_reason === 'tool_calls') !== (calls.length > 0)) fail();
+    // Some gateways label a complete tool-call response as stop. Validate every
+    // call below before emitting it; never tolerate truncation or an empty tool_calls finish.
+    if (!Array.isArray(calls) || calls.length > 64 || choice.finish_reason === 'tool_calls' && !calls.length) fail();
     const seen = new Set(), events = [];
     copyModelText(content);
     // Small events retain the existing observer/DTO boundary, even for long answers.

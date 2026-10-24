@@ -1,11 +1,11 @@
-import { jsonKey } from '../../core/json-contract.js';
+import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createExecutionTasks } from '../execution-tasks.js';
 
 const string = maxLength => ({ type: 'string', maxLength });
 /** Paid business execution is distinct from diagnosis, manual drafts and read permissions. */
 export function createMemoryGenerationModule({ port, charge }) {
-    const registry = createToolRegistry(), runs = new Map();
+    const registry = createToolRegistry(), runs = new Map(); let disposed = false;
     const taskExecutions = createExecutionTasks(port);
     const outputSchema = { type: 'object', properties: { candidateId: string(100), text: string(24000) }, required: ['candidateId', 'text'], additionalProperties: false };
     const tools = {
@@ -36,8 +36,8 @@ export function createMemoryGenerationModule({ port, charge }) {
             if (charge && !charge(ctx.runId, 16000)) return encoded({ status: 'not_started', code: 'RESULT_BUDGET_EXCEEDED', modelCallAttempted: false, resultWriteStarted: false, chatSave: 'not_started' });
             return encoded(await port.execute(args.executionId, { target: ctx.target, taskId: run.taskId, signal: ctx.signal }));
         },
-    }, bindRun(identity) { runs.set(identity.id, { taskId: identity.taskId, target: identity.target }); },
-    transferRun(from, identity) { const old = runs.get(from); if (!old) return; if (old.taskId !== identity.taskId || jsonKey(old.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, old); },
+    }, bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { taskId: identity.taskId, target: copyJson(identity.target) }); },
+    transferRun(from, identity) { const old = runs.get(from); if (!old) return; if (runs.has(identity.id) || old.taskId !== identity.taskId || jsonKey(old.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, old); },
     retainArtifacts() {}, // Execution receipts are not draft artifacts.
-    forgetTask(id) { taskExecutions.forget(id); }, forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); taskExecutions.clear(); } };
+    forgetTask(id) { taskExecutions.forget(id); }, forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); taskExecutions.clear(); } };
 }

@@ -105,3 +105,64 @@ test('round queue stops old-chat jobs after a chat switch during execution', asy
     assert.equal(subject.postSpeechSystem.wasExecuted(1, 'image'), false);
     assert.equal(subject.saves, 0);
 });
+
+test('both timing cannot replay an intent already completed at message time, including duplicate jobs', async () => {
+    const context = { messageIndex: 2, messageName: 'A', intent: { type: 'image', params: {} } }; let starts = 0;
+    const subject = fixture(Array.from({ length: 2 }, () => ({ contexts: [context], deferred: [], allowPending: true })), {
+        async run() { starts++; throw Error('must not execute'); },
+    });
+    await subject.postSpeechSystem.record(2, 'A', 'image', {}, {});
+    await subject.drain(); assert.equal(starts, 0); assert.equal(subject.saves, 1);
+    assert.equal(subject.postSpeechSystem.isPending(2, 'image'), false);
+});
+
+test('both timing cannot overlap a non-blocking message execution', async () => {
+    const context = { messageIndex: 3, messageName: 'A', intent: { type: 'image', params: {} } }; let starts = 0, complete;
+    const completion = new Promise(resolve => { complete = resolve; });
+    const subject = fixture([{ contexts: [context], deferred: [], allowPending: true }], {
+        async run() { starts++; throw Error('must not execute'); },
+    });
+    const held = subject.postSpeechSystem.reserveExecution([context]);
+    await subject.postSpeechSystem.trackExecution({ blocking: false, completion }, [context], held);
+    await subject.drain(); assert.equal(starts, 0); assert.equal(subject.postSpeechSystem.isPending(3, 'image'), true);
+    complete([{ intentIndex: 0, success: true }]); await completion; await new Promise(resolve => setImmediate(resolve));
+    assert.equal(subject.postSpeechSystem.wasExecuted(3, 'image'), true); assert.equal(subject.postSpeechSystem.isPending(3, 'image'), false);
+    assert.equal(subject.saves, 1);
+});
+
+for (const results of [[], [{ intentIndex: 0, success: false }]]) test('failed or unresolved message intents remain eligible at round end: ' + JSON.stringify(results), async () => {
+    const context = { messageIndex: 4, messageName: 'A', intent: { type: 'image', params: {} } }; let starts = 0;
+    const subject = fixture([{ contexts: [context], deferred: [], allowPending: true }], {
+        async run() { starts++; return { blocking: true, deferred: [], results: [{ intentIndex: 0, success: true }] }; },
+    });
+    const held = subject.postSpeechSystem.reserveExecution([context]);
+    await subject.postSpeechSystem.trackExecution({ blocking: true, results }, [context], held);
+    assert.equal(subject.postSpeechSystem.wasExecuted(4, 'image'), false);
+    await subject.drain(); assert.equal(starts, 1); assert.equal(subject.postSpeechSystem.wasExecuted(4, 'image'), true);
+    assert.equal(subject.saves, 1);
+});
+
+test('completed and pending filtering preserves original deferred-plan indexes', async () => {
+    const contexts = ['done', 'busy', 'fresh'].map(type => ({ messageIndex: 8, messageName: 'A', intent: { type, params: {} } }));
+    const plans = contexts.map((context, intentIndex) => ({ action: { intentIndex, capabilityId: context.intent.type } })), executed = [];
+    const subject = fixture([{ contexts, deferred: plans, allowPending: true }], {
+        async executeDeferred(selected) {
+            executed.push(...selected.map(plan => ({ capabilityId: plan.action.capabilityId, intentIndex: plan.action.intentIndex })));
+            return { blocking: true, results: selected.map(plan => ({ intentIndex: plan.action.intentIndex, success: true })) };
+        },
+    });
+    await subject.postSpeechSystem.record(8, 'A', 'done', {}, {});
+    const held = subject.postSpeechSystem.reserveExecution([contexts[1]]);
+    await subject.drain(); assert.deepEqual(executed, [{ capabilityId: 'fresh', intentIndex: 0 }]);
+    assert.equal(subject.postSpeechSystem.wasExecuted(8, 'fresh'), true); assert.equal(subject.postSpeechSystem.wasExecuted(8, 'busy'), false);
+    assert.equal(subject.postSpeechSystem.isPending(8, 'busy'), true); held.release();
+    assert.equal(subject.saves, 2);
+});
+
+test('round filtering does not globally forbid an explicit new reservation of an existing key', async () => {
+    const subject = fixture([], {}), context = { messageIndex: 9, intent: { type: 'image', params: {} } };
+    await subject.postSpeechSystem.record(9, 'A', 'image', {}, {});
+    const reservation = subject.postSpeechSystem.reserveExecution([context]);
+    assert.equal(reservation.contexts.length, 1); assert.equal(subject.postSpeechSystem.isPending(9, 'image'), true);
+    reservation.release(); assert.equal(subject.postSpeechSystem.isPending(9, 'image'), false);
+});

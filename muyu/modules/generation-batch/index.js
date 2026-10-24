@@ -5,7 +5,7 @@ import { createExecutionTasks } from '../execution-tasks.js';
 export const GENERATION_BATCH_RESULT_BYTES = 24000;
 /** One exact ordered proposal, never a generic write or child-ticket permission. */
 export function createGenerationBatchModule({ port, charge }) {
-    const registry = createToolRegistry(), runs = new Map(), executions = new Map();
+    const registry = createToolRegistry(), runs = new Map(), executions = new Map(); let disposed = false;
     const taskExecutions = createExecutionTasks(port);
     const string = maxLength => ({ type: 'string', maxLength });
     const step = { type: 'object', properties: { kind: { type: 'string', enum: ['memory', 'profile', 'npc'] }, mode: { type: 'string', enum: ['trial', 'save'] }, revision: string(80), character: string(80), count: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['kind', 'mode', 'revision'], additionalProperties: false };
@@ -49,9 +49,9 @@ export function createGenerationBatchModule({ port, charge }) {
             const work = Promise.resolve().then(() => port.execute(args.executionId, { target: ctx.target, taskId: r.taskId, signal: ctx.signal })).then(encoded);
             executions.set(key, work); return copyJson(await work);
         },
-    }, bindRun(identity) { runs.set(identity.id, { taskId: identity.taskId, target: identity.target }); },
-    transferRun(from, identity) { const r = runs.get(from); if (!r) return; if (r.taskId !== identity.taskId || jsonKey(r.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, r); },
+    }, bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { taskId: identity.taskId, target: copyJson(identity.target) }); },
+    transferRun(from, identity) { const r = runs.get(from); if (!r) return; if (runs.has(identity.id) || r.taskId !== identity.taskId || jsonKey(r.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, r); },
     retainArtifacts() {},
     forgetTask(taskId) { for (const key of executions.keys()) if (JSON.parse(key)[0] === taskId) executions.delete(key); taskExecutions.forget(taskId); },
-    forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); executions.clear(); taskExecutions.clear(); } };
+    forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); executions.clear(); taskExecutions.clear(); } };
 }

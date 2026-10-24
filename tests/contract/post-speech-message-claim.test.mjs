@@ -171,3 +171,26 @@ test('late capability planning after message deletion cannot requeue or save its
     await task;
     assert.equal(f.queued, 0); assert.equal(f.saved, 0);
 });
+
+for (const blocking of [true, false]) test('both timing executes a message intent once across the real listener and round drain, blocking=' + blocking, async () => {
+    const f = lifecycleFixture('both'), completion = deferred(); let saves = 0;
+    f.sandbox.postSpeechRoundQueue = [];
+    f.sandbox.postSpeechSystem = createPostSpeechSystem({ settings: {}, EXT_KEY: 'test',
+        getChatMetadata: () => f.sandbox.chat_metadata, getChat: () => f.sandbox.chat,
+        saveChatConditional: async () => { saves++; }, log() {} });
+    vm.runInNewContext(source.slice(source.indexOf('function isPostSpeechIntentQueued('), source.indexOf('// Custom extension prompt key')), f.sandbox);
+    const rendering = f.listeners.get('render')(0, 'swipe');
+    f.responses[0].resolve('policy'); await f.started;
+    f.executions[0].resolve({ blocking, deferred: [], results: blocking ? [{ intentIndex: 0, success: true }] : [], completion: completion.promise });
+    await rendering;
+    assert.equal(f.sandbox.postSpeechRoundQueue.length, 1); assert.equal(f.starts, 1);
+    await f.sandbox.drainPostSpeechRoundQueue();
+    assert.equal(f.starts, 1); assert.equal(f.sandbox.postSpeechRoundQueue.length, 0);
+    if (!blocking) {
+        assert.equal(f.sandbox.postSpeechSystem.isPending(0, 'image'), true);
+        completion.resolve([{ intentIndex: 0, success: true }]); await completion.promise;
+        await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.equal(saves, 1); assert.equal(f.sandbox.postSpeechSystem.wasExecuted(0, 'image'), true);
+    assert.equal(f.sandbox.postSpeechSystem.isPending(0, 'image'), false);
+});

@@ -164,12 +164,11 @@ function isPostSpeechIntentQueued(messageIndex, capabilityId) {
     );
 }
 
-function enqueuePostSpeechRoundJob(contexts, deferred = [], allowPending = false) {
+function enqueuePostSpeechRoundJob(contexts, deferred = []) {
     if (!contexts.length) return;
     postSpeechRoundQueue.push({
         contexts: [...contexts],
         deferred: [...deferred],
-        allowPending,
     });
 }
 
@@ -193,13 +192,20 @@ async function drainPostSpeechRoundQueue() {
 
     for (const job of pendingJobs) {
         if (queueEpoch !== postSpeechRoundQueueEpoch) break;
-        const reservation = postSpeechSystem.reserveExecution(job.contexts, { allowPending: job.allowPending });
+        // The message phase may have completed or still own these intent keys.
+        // Round draining must not replay either; failed/unresolved intents stay eligible.
+        const queuedIndexes = [];
+        const contexts = job.contexts.filter((context, index) => {
+            if (postSpeechSystem.wasExecuted(context.messageIndex, context.intent?.type)) return false;
+            queuedIndexes.push(index); return true;
+        });
+        const reservation = postSpeechSystem.reserveExecution(contexts);
         if (!reservation.contexts.length) continue;
         let trackingStarted = false;
         try {
             let execResult;
             if (job.deferred.length) {
-                const selected = new Map(reservation.indexes.map((index, selectedIndex) => [index, selectedIndex]));
+                const selected = new Map(reservation.indexes.map((index, selectedIndex) => [queuedIndexes[index], selectedIndex]));
                 const plans = job.deferred
                     .filter(plan => selected.has(plan.action.intentIndex))
                     .map(plan => ({
@@ -2000,7 +2006,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         // Queue for round-end execution (round | both modes)
         if ((timing === 'round' || timing === 'both') && !queuedByPolicy) {
-            enqueuePostSpeechRoundJob(activeContexts, [], timing === 'both');
+            enqueuePostSpeechRoundJob(activeContexts);
             log(`PostSpeech: queued ${activeContexts.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
         }
 
