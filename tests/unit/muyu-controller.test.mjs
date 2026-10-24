@@ -1,4 +1,3 @@
-test('Display preferences save independently without starting a model run or granting access', async () => {
 for(const operation of ['copy','save_current','update','select'])for(const access of ['normal','deny','full','preview'])test('ST preset controller / '+operation+' / '+access+' separates read and exact write approval',async()=>{
     const {createStPresetEditor}=await import('../../muyu/host/st-preset-editor.js');let f,writes=0,selected='PRIVATE_NAME';
     const names=['PRIVATE_NAME'],saved={PRIVATE_NAME:{temperature:1,prompts:[{identifier:'main',content:'PRIVATE_PROMPT',role:'system'}],prompt_order:[],proxy_password:'PRIVATE_SECRET'}};let live=structuredClone(saved.PRIVATE_NAME);
@@ -17,6 +16,7 @@ for(const operation of ['copy','save_current','update','select'])for(const acces
     if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:stPresetContent'));assert.doesNotMatch(JSON.stringify(artifact),/PRIVATE_SECRET/);assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NAME|PRIVATE_PROMPT|PRIVATE_SECRET|New preset/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,34);}
     await f.controller.dispose();
 });
+test('Display preferences save independently without starting a model run or granting access', async () => {
     let saved = null;
     const f = fixture([], { displayConfig: { read: () => ({ processDetail: 'compact' }), save: async value => { saved = value; } } });
     await f.controller.saveDisplayConfig({ processDetail: 'detailed' });

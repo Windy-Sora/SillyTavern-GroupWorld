@@ -104,10 +104,10 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 const template = settings.memoryPrompt || DEFAULT_MEMORY_PROMPT;
 
                 let filled = template
-                    .replace(/\{\{charName\}\}/g, ctx.charName)
-                    .replace(/\{\{charDescription\}\}/g, ctx.charDescription)
-                    .replace(/\{\{charPersonality\}\}/g, ctx.charPersonality)
-                    .replace(/\{\{existingMemories\}\}/g, ctx.existingText);
+                    .replace(/\{\{charName\}\}/g, () => ctx.charName)
+                    .replace(/\{\{charDescription\}\}/g, () => ctx.charDescription)
+                    .replace(/\{\{charPersonality\}\}/g, () => ctx.charPersonality)
+                    .replace(/\{\{existingMemories\}\}/g, () => ctx.existingText);
 
                 const schema = inspectMemorySchema(settings.memoryJsonSchema || '');
                 if (schema) filled += `\n\nOutput must follow this JSON Schema (only event and mood are stored):\n${JSON.stringify(schema)}`;

@@ -18,6 +18,7 @@ test('runner options preserve profile defaults and support both option forms', (
         report: '',
         list: false,
         verbose: false,
+        summary: false,
         help: false,
     });
     const options = parseOptions([
@@ -37,7 +38,7 @@ test('runner options preserve profile defaults and support both option forms', (
 
 test('test output parsing keeps summary and historical contract semantics', () => {
     const output = '✔ BUG-2 works\nℹ tests 3\nℹ pass 2\nℹ fail 0\nℹ skipped 1\nℹ todo 0\n';
-    assert.deepEqual(parseTestSummary(output), { tests: 3, pass: 2, fail: 0, skipped: 1, todo: 0 });
+    assert.deepEqual(parseTestSummary(output), { tests: 3, pass: 2, fail: 0, cancelled: null, skipped: 1, todo: 0 });
     assert.deepEqual(parseBugCoverage([{ type: 'test:pass', kind: 'test', line: 3, name: 'BUG-2 works' }], ['BUG-2', 'BUG-3']), {
         required: ['BUG-2', 'BUG-3'],
         found: ['BUG-2'],

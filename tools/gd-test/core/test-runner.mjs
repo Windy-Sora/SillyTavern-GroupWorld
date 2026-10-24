@@ -13,6 +13,7 @@ export function parseTestSummary(output) {
         tests: number('tests'),
         pass: number('pass'),
         fail: number('fail'),
+        cancelled: number('cancelled'),
         skipped: number('skipped'),
         todo: number('todo'),
     };
@@ -63,7 +64,8 @@ export async function runNodeTests({ root, config, testEntries, options, require
     if (options.filter && !files.some(file => relativePath(root, file).toLowerCase().includes(options.filter.toLowerCase()))) {
         args.push(`--test-name-pattern=${options.filter}`);
     }
-    args.push(...files);
+    // cwd is root; avoid repeating its absolute path for every test on Windows.
+    args.push(...files.map(file => relativePath(root, file)));
     let result;
     let events = [];
     let eventError = '';

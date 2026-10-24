@@ -130,7 +130,8 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Toggle enable
-        $list.find('.gd-ca-toggle-btn').off('click').on('click', async function () {
+        $list.find('.gd-ca-toggle-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const id = $(this).data('id');
             try {
                 await customAgentSystem.toggle(id);
@@ -262,7 +263,8 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Execute
-        $list.find('.gd-ca-exec-btn').off('click').on('click', async function () {
+        $list.find('.gd-ca-exec-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const id = $(this).data('id');
             const list = getList();
             const inst = list.find(a => a.id === id);

@@ -13,7 +13,7 @@ export function register(settings, getDirectorHistory) {
             const lastPlan = history[history.length - 1];
             const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
             return {
-                content: wrapper.replace('{{previousPlan}}', JSON.stringify(lastPlan, null, 2)),
+                content: wrapper.replace('{{previousPlan}}', () => JSON.stringify(lastPlan, null, 2)),
                 data: lastPlan,
             };
         },
@@ -34,7 +34,7 @@ export function register(settings, getDirectorHistory) {
             const recentPlans = history.slice(-count);
             const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
             return {
-                content: wrapper.replace('{{previousPlans}}', JSON.stringify(recentPlans, null, 2)),
+                content: wrapper.replace('{{previousPlans}}', () => JSON.stringify(recentPlans, null, 2)),
                 data: recentPlans,
             };
         },

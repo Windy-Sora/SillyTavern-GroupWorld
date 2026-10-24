@@ -1,5 +1,32 @@
 import { normalizeCustomAgent } from './custom-agent-validation.js';
 
+function removeTrailingCommas(text) {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (escaped) {
+            result += char;
+            escaped = false;
+            continue;
+        }
+        if (inString && char === '\\') {
+            result += char;
+            escaped = true;
+            continue;
+        }
+        if (char === '"') inString = !inString;
+        if (!inString && char === ',') {
+            let next = index + 1;
+            while (/\s/.test(text[next])) next++;
+            if (text[next] === '}' || text[next] === ']') continue;
+        }
+        result += char;
+    }
+    return result;
+}
+
 export function extractCustomAgentJson(text) {
     if (typeof text !== 'string') return null;
     const firstBrace = text.indexOf('{');
@@ -18,7 +45,7 @@ export function extractCustomAgentJson(text) {
             depth--;
             if (depth === 0) {
                 let raw = text.slice(firstBrace, index + 1);
-                raw = raw.replace(/,(\s*[}\]])/g, '$1');
+                raw = removeTrailingCommas(raw);
                 raw = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
                 try { return JSON.parse(raw); } catch (_) { return null; }
             }

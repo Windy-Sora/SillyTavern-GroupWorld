@@ -295,10 +295,10 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         const memoriesText = oldOnes.map((m, i) => `${i + 1}. ${m.event} [${m.mood}]`).join('\n');
 
         let filled = compressPrompt
-            .replace(/\{\{charName\}\}/g, char.name)
-            .replace(/\{\{charDescription\}\}/g, char.description || '')
-            .replace(/\{\{charPersonality\}\}/g, char.personality || '')
-            .replace(/\{\{memories\}\}/g, memoriesText);
+            .replace(/\{\{charName\}\}/g, () => char.name)
+            .replace(/\{\{charDescription\}\}/g, () => char.description || '')
+            .replace(/\{\{charPersonality\}\}/g, () => char.personality || '')
+            .replace(/\{\{memories\}\}/g, () => memoriesText);
 
         let summary;
         try {

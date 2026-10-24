@@ -358,6 +358,10 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 // Detect if the script replaced ctx.decision entirely, losing old keys.
                 if (turnId === myTurnId) {
                     assertSnapshotValue(ctx.decision, 'ctx.decision');
+                    if (!ctx.decision || typeof ctx.decision !== 'object' || Array.isArray(ctx.decision)
+                        || (Array.isArray(event.decision?.speakers) && (!Array.isArray(ctx.decision.speakers) || ctx.decision.speakers.some(value => typeof value !== 'string')))) {
+                        throw new TypeError('ctx.decision must remain an object with a speakers array when provided');
+                    }
                     if (ctx.decision !== decisionForScript) {
                         const oldKeys = Object.keys(decisionForScript || {});
                         const newKeys = Object.keys(ctx.decision || {});

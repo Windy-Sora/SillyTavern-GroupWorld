@@ -117,7 +117,7 @@ if (typeof loaded.llmJsonSchema === 'string') {
     loaded.llmJsonSchema = migrateLegacyDirectorOutputFormat(loaded.llmJsonSchema);
 }
 
-let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+let settings = Object.assign(structuredClone(DEFAULT_SETTINGS), loaded);
 settings.scoreWeights = Object.assign({}, DEFAULT_SETTINGS.scoreWeights, loaded.scoreWeights || {});
 extension_settings[EXT_KEY] = settings;
 // Wire the live provider timeout default into the renderer (kept in sync in saveSettings).
@@ -599,7 +599,10 @@ function buildContextPool(overrides = {}) {
     return {
         // Data
         chat: () => chat,
-        recentMessages: (n) => chat.slice(-Math.min(n ?? 10, chat.length)),
+        recentMessages: (n) => {
+            const count = Math.max(0, Math.min(Math.trunc(Number(n ?? 10)) || 0, chat.length));
+            return count ? chat.slice(-count) : [];
+        },
         characters: () => characters,
         charactersRaw: () => characters,
         profilesText: () => buildCharacterProfilesText(),
@@ -971,8 +974,8 @@ function initFormulaRound() {
 }
 
 function getRecentMessages() {
-    const count = Math.min(settings.recentMessageCount, chat.length);
-    return chat.slice(-count);
+    const count = Math.max(0, Math.min(Math.trunc(Number(settings.recentMessageCount)) || 0, chat.length));
+    return count ? chat.slice(-count) : [];
 }
 
 // ─── Main Interceptor ─────────────────────────────────────────────────
@@ -1835,7 +1838,8 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
     try {
         if (msgType && msgType !== 'normal' && msgType !== 'swipe' && msgType !== 'regenerate') return;
-        const msg = chat[chat.length - 1];
+        if (!Number.isInteger(messageId) || messageId < 0 || messageId >= chat.length) return;
+        const msg = chat[messageId];
         if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
         if (String(msg.name).startsWith('_')) return;
         const char = characters?.find(c => c.name === msg.name);
@@ -1857,13 +1861,14 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     if (!settings.postSpeechMessageEnabled) return;
     if (msgType && msgType !== 'normal' && msgType !== 'swipe' && msgType !== 'regenerate') return;
 
-    const msg = chat[chat.length - 1];
+    if (!Number.isInteger(messageId) || messageId < 0 || messageId >= chat.length) return;
+    const msg = chat[messageId];
     if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
     if (String(msg.name).startsWith('_')) return;
 
     // Dedup: same message index, don't trigger twice.
-    const msgIndex = chat.length - 1;
-    const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+    const msgIndex = messageId;
+    const isReroll = ['swipe', 'regenerate'].includes(msgType || roundGenerateType);
     if (!isReroll && msgIndex === postSpeechLastMsgIndex) return;
     postSpeechLastMsgIndex = msgIndex;
 
@@ -2731,41 +2736,19 @@ registerCharMemory({
         return result;
     },
     getMemoriesForChar: async (name) => {
-        const char = characters.find(c => c.name === name);
+        if (typeof name !== 'string' || !name.trim()) return [];
+        const matches = characters.filter(c => c.name === name);
+        if (matches.length > 1) return [];
+        const char = matches[0];
         const avatar = char?.avatar;
         // 1. Exact avatar match
         if (avatar) {
-            const mems = memorySystem.listMemories(avatar);
-            if (mems.length > 0) return mems;
+            return memorySystem.listMemories(avatar);
         }
         // 2. Exact name match in stats
         const stats = memorySystem.getStats();
-        for (const [av, s] of Object.entries(stats)) {
-            if (s.name === name) return memorySystem.listMemories(av);
-        }
-        // 3. Fuzzy match: avatar or name is a substring of the other
-        for (const [av, s] of Object.entries(stats)) {
-            if (!s.name || s.name === name) continue;
-            const a = s.name.toLowerCase(), b = name.toLowerCase();
-            if (a.includes(b) || b.includes(a)) {
-                const mems = memorySystem.listMemories(av);
-                if (mems.length > 0) {
-                    // Auto-migrate: move memories to the current avatar key and clean old
-                    if (avatar && av !== avatar) {
-                        if (typeof memorySystem._setMemories !== 'function' || typeof memorySystem._deleteKey !== 'function') {
-                            console.warn('[charMemory] _setMemories/_deleteKey not available, skipping auto-migration');
-                            return mems;
-                        }
-                        const existing = memorySystem.listMemories(avatar);
-                        await memorySystem._setMemories(avatar, [...existing, ...mems]);
-                        await memorySystem._deleteKey(av);
-                        log(`[charMemory] auto-migrated ${mems.length} memories: "${av}" → "${avatar}"`);
-                    }
-                    return avatar ? memorySystem.listMemories(avatar) : mems;
-                }
-            }
-        }
-        return [];
+        const matchingStats = Object.entries(stats).filter(([, s]) => s.name === name);
+        return matchingStats.length === 1 ? memorySystem.listMemories(matchingStats[0][0]) : [];
     },
     log,
 });

@@ -41,6 +41,7 @@ registerSection('variables', function (ctx) {
 
     let selectedId = null;
     let autosaveTimer = null;
+    let editorEpoch = 0;
     const DASH_HIDE_INACTIVE_KEY = 'gd.variables.hideInactiveCharacterRows';
     let hideInactiveCharacterRows = localStorage?.getItem(DASH_HIDE_INACTIVE_KEY) === '1';
     const TEXT = {
@@ -267,6 +268,7 @@ registerSection('variables', function (ctx) {
         if (!selectedId) { $editor.hide().empty(); return; }
         const def = variableSystem.getDefinition(selectedId);
         if (!def) { selectedId = null; $editor.hide().empty(); return; }
+        const epoch = editorEpoch;
         const globalValue = def.scope === 'global' ? variableSystem.getValue(def) : def.defaultValue;
         $editor.empty().show().append(`
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -320,6 +322,9 @@ registerSection('variables', function (ctx) {
         }
         renderCharValues();
         const saveCurrentEditor = (options = {}) => {
+            if (epoch !== editorEpoch || selectedId !== def.id || !$editor[0]?.isConnected || !variableSystem.getDefinition(def.id)) return;
+            const nextId = $editor.find('#gd-var-edit-id').val();
+            if (typeof nextId !== 'string' || !nextId.trim()) return;
             const oldId = def.id;
             const defaultParsed = tryParseJsonish($('#gd-var-edit-value').val(), $('#gd-var-edit-type').val());
             if (!defaultParsed.ok) {
@@ -720,6 +725,8 @@ registerSection('variables', function (ctx) {
     }
 
     function refresh() {
+        clearTimeout(autosaveTimer);
+        editorEpoch++;
         applyStaticLabels();
         renderTemplates();
         renderList();

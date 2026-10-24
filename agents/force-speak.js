@@ -68,7 +68,7 @@ export function createForceSpeakAgent({
                 const wiText = pool.worldInfoText?.();
                 if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiText) {
                     const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-                    filled = wrapper.replace('{{worldInfo}}', wiText) + '\n\n' + filled;
+                    filled = wrapper.replace('{{worldInfo}}', () => wiText) + '\n\n' + filled;
                 }
 
                 // Profile auto-inject
@@ -89,7 +89,7 @@ export function createForceSpeakAgent({
                 const systemInstruction = settings.lang === 'zh'
                     ? `【系统指令】用户已强制触发 {charName} 发言。请只选择 {charName} 一人作为本轮发言者。忽略其他角色。为 {charName} 生成一段简短的舞台指导。`
                     : `[SYSTEM] Force-speak: {charName} has been manually triggered. You MUST select ONLY {charName}. Do NOT select any other characters. Write a short stage direction for {charName}.`;
-                const finalInstruction = (fsPrompt || systemInstruction).replace(/\{charName\}/g, char?.name ?? '');
+                const finalInstruction = (fsPrompt || systemInstruction).replace(/\{charName\}/g, () => char?.name ?? '');
                 filled += '\n\n' + finalInstruction;
 
                 return filled;

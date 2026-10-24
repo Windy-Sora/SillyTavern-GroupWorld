@@ -1,8 +1,15 @@
 # 暮羽可选服务端插件
 
-本目录是 GroupWorld 随附的共享服务端运行时源码，供单独部署；服务与 GroupDirector 通用，兼容路由和数据目录不改名，不要重复安装。面向用户的完整安装与功能说明在 [SillyTavern Muyu Services 仓库](https://github.com/Windy-Sora/SillyTavern-Muyu-Services)。
+本目录是 GroupDirector 与 GroupWorld 共用的暮羽服务端运行时源码，供单独部署。使用任意一个客户端都只需一份服务，不需要 GroupWorld 专用版本。面向用户的完整安装与功能说明在 [SillyTavern Muyu Services 仓库](https://github.com/Windy-Sora/SillyTavern-Muyu-Services)。
 
 它不是前端扩展，不能把服务仓库地址填入酒馆「安装扩展」来安装。没有安装时，暮羽仍可使用原有聊天与支持的浏览器存储；可选服务工具不会因此自动启用。
+
+## 共用与兼容
+
+- GroupDirector、GroupWorld 前端只启用其中一个；共享服务统一安装到 `plugins/gd-muyu-history/`，不要重复加载同 ID 的服务。
+- 插件 ID `gd-muyu-history`、路由 `/api/plugins/gd-muyu-history` 和数据目录 `.group-director/muyu/` 保持原样，不因产品名改成 GW。
+- 同一酒馆账号的历史可能共用命名空间和文件，不是两套隔离数据。切换客户端前先备份，不手动改名或搬动存档。
+- 更新当前使用的客户端和共享服务即可；实际可用工具以能力协议、启用项与权限为准，不靠仓库版本号相同来推定。显式选择服务读取源时，服务不可用会报错，不静默切换历史来源。
 
 ## 安装
 
@@ -41,7 +48,7 @@ enableServerPlugins: true
 | 网页正文 | 受限公共 HTTP(S) 文本读取，不登录、不执行网页脚本 |
 | 本地资料检索 | 账户工作区及管理员登记的额外只读目录 |
 | 工作区草稿 | 私有工作区平级 md/txt/json 的预览与一次性提交 |
-| JSON 校验 | 语法及有界数据检查，不应用 GD／ST 配置 |
+| JSON 校验 | 语法及有界数据检查，不应用 GroupDirector／GroupWorld／ST 配置 |
 | 自检与诊断 | 显式存储自检、服务自身的有界脱敏错误记录 |
 
 能力声明不授予权限；客户端还须检查启用项、授权、目标和预算。搜索与网页读取是独立能力，搜索本身不抓取结果网页。

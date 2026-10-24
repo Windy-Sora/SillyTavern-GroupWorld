@@ -128,7 +128,14 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
         for (const book of scanResult) {
             for (const entry of book.entries) {
                 if (entry.disable) {
-                    scored.push({ book: book.name, entry, importance: 0 });
+                    scored.push({
+                        book: book.name, uid: entry.uid, comment: entry.comment || '', importance: 0,
+                        disable: true, constant: !!entry.constant, depth: entry.depth, probability: entry.probability,
+                        keyCount: entry.keyCount, keySecondaryCount: entry.keySecondaryCount,
+                        keywords: entry.key, keysecondary: entry.keysecondary,
+                        characterFilter: entry.characterFilter || { isExclude: false, names: [], tags: [] },
+                        factors: 'disabled', contentPreview: entry.contentPreview,
+                    });
                     continue;
                 }
 

@@ -14,7 +14,7 @@ export function register(settings, roundState, buildDirectorWorldInfo) {
             }
             if (!roundState.text) return { content: '' };
             const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-            return { content: wrapper.replace('{{worldInfo}}', roundState.text) };
+            return { content: wrapper.replace('{{worldInfo}}', () => roundState.text) };
         },
     });
 }

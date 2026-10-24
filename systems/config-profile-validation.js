@@ -50,8 +50,17 @@ function validateVariables(variables) {
     }
 }
 
+function assertSafeKeys(value) {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+        if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('Invalid manifest: unsafe property');
+        assertSafeKeys(child);
+    }
+}
+
 export function validateConfigProfileManifest(manifest, { source = 'json' } = {}) {
     requireRecord(manifest, 'root');
+    assertSafeKeys(manifest);
     const validTypes = source === 'zip'
         ? ['config-profile']
         : ['config-profile', 'config-profile-manifest'];

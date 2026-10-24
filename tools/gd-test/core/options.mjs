@@ -19,6 +19,7 @@ Options:
   --report <path>    Write a machine-readable JSON report
   --list             List selected tests without running them
   --verbose          Print complete child-process output
+  --summary          Print counts and failure details only (full output stays in JSON)
   --help             Show this help
 `.trim();
 
@@ -32,6 +33,7 @@ export function parseOptions(argv, env = process.env) {
         report: '',
         list: false,
         verbose: false,
+        summary: false,
         help: false,
     };
     let profileSet = false;
@@ -68,6 +70,8 @@ export function parseOptions(argv, env = process.env) {
             options.list = true;
         } else if (arg === '--verbose') {
             options.verbose = true;
+        } else if (arg === '--summary') {
+            options.summary = true;
         } else if (arg === '--help' || arg === '-h') {
             options.help = true;
         } else {

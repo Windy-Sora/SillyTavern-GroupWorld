@@ -112,15 +112,22 @@ function snapshotSettings(settings, drawers) {
 }
 
 /** Apply a snapshot back to settings. Returns list of changed keys. */
+const PROFILE_SETTING_KEYS = new Set([
+    ...Object.values(DRAWER_KEYS).flat(),
+    // Generated partial profiles also carry director/formula settings, unlike drawer exports.
+    'mode', 'topN', 'llmRespectOrder', 'llmJsonSchemaHint', 'scoreWeights', 'recentMessageCount',
+    'consecutivePenalty', 'triggerEnabled', 'triggerScore', 'initiativeEnabled', 'initiativeBaseScore',
+]);
 function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
+        if (!PROFILE_SETTING_KEYS.has(k)) continue;
         if (['muyuHistoryAccountStorage', 'muyuHistoryStorage', 'muyuHistoryReadSource', 'muyuHistoryWriteTargets', 'muyuHistoryVolumeMiB', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData', 'muyuSkillData'].includes(k)) continue;
         if (['muyuInstructionConfig', 'muyuPermissionConfig'].includes(k)) continue; // Personal instructions and authorization never come from story profiles.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
         if (k === 'agentConfigs') continue;   // preserved per-user, never overwritten by snapshot
-        // Merge with DEFAULT_SETTINGS base: new keys get defaults, unknown keys preserved
+        // Only registered story settings may be restored from a profile.
         const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS[k] || null));
         const incoming = JSON.parse(JSON.stringify(v));
         let merged;

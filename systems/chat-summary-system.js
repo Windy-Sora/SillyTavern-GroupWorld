@@ -381,7 +381,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
                 else changes.get(summary).applied = active;
                 summary.active = active;
             };
-            for (const summary of summaries) {
+            for (const summary of [...summaries].reverse()) {
                 if (summary.active && summary.rangeEnd > chatLength) {
                     setActive(summary, false);
                     if (Number.isInteger(summary.basedOn) && summary.basedOn >= 0 && summary.basedOn < summaries.indexOf(summary) && summaries[summary.basedOn]) {

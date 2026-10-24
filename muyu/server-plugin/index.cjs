@@ -70,17 +70,28 @@ function serialized(key, work) {
     void tail.finally(() => { if (queues.get(key) === tail) queues.delete(key); });
     return result;
 }
-function createFileStore(dir) {
-    return {
-        async list() {
+function createFileStore(dir, onInvalid = () => {}) {
+    async function inventory() {
             let names;
-            try { names = await fs.readdir(dir); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+            try { names = await fs.readdir(dir); } catch (error) { if (error.code === 'ENOENT') return { rows: [], sizes: new Map(), count: 0, bytes: 0 }; throw error; }
             const rows = [];
+            const sizes = new Map();
             for (const name of names) if (uuid.test(name.slice(0, -5)) && name.endsWith('.json')) {
-                const record = await read(dir, name.slice(0, -5)); if (record) rows.push(summary(record));
+                const id = name.slice(0, -5);
+                try {
+                    const record = await read(dir, id);
+                    if (record) { const row = summary(record); rows.push(row); sizes.set(id, row.bytes); }
+                } catch (error) {
+                    if (!(error instanceof SyntaxError) && error.message !== 'HISTORY_INVALID') throw error;
+                    // Preserve unreadable/unknown-version records and account for their disk usage.
+                    sizes.set(id, (await fs.stat(file(dir, id))).size);
+                    try { onInvalid(); } catch { /* Diagnostics cannot control storage. */ }
+                }
             }
-            return rows;
-        },
+            return { rows, sizes, count: sizes.size, bytes: [...sizes.values()].reduce((sum, size) => sum + size, 0) };
+    }
+    return {
+        async list() { return (await inventory()).rows; },
         read: id => read(dir, id),
         async write(record, expectedRevision) {
             const id = record?.id; file(dir, id);
@@ -91,9 +102,9 @@ function createFileStore(dir) {
                 if (!old && expectedRevision !== 0) throw Error('HISTORY_DELETED');
                 if ((old?.revision || 0) !== expectedRevision) throw Error('HISTORY_CONFLICT');
                 const next = check({ ...record, revision: expectedRevision + 1 }, id);
-                const listed = await this.list();
-                if (!old && listed.length >= 64) throw Error('HISTORY_CAPACITY');
-                if (listed.filter(row => row.id !== id).reduce((sum, row) => sum + row.bytes, 0) + summary(next).bytes > 256 * 1024 * 1024) throw Error('HISTORY_CAPACITY');
+                const listed = await inventory();
+                if (!old && listed.count >= 64) throw Error('HISTORY_CAPACITY');
+                if (listed.bytes - (listed.sizes.get(id) || 0) + summary(next).bytes > 256 * 1024 * 1024) throw Error('HISTORY_CAPACITY');
                 await replace(dir, id, next);
                 return next;
             });
@@ -129,10 +140,11 @@ function init(router) {
     registerServiceStatus(router, { records: 64, recordBytes: maxBytes, totalBytes: 256 * 1024 * 1024, messages: 4096 });
     registerDiagnostics(router, diagnostics);
     router.get('/health', (_req, res) => res.json({ version: 1 }));
-    router.get('/records', (req, res) => respond(res, () => createFileStore(directory(req)).list(), req, 'history.list'));
+    const storeFor = (req, operation) => createFileStore(directory(req), () => diagnostics.record(req, { operation, stage: 'read', code: 'HISTORY_INVALID' }));
+    router.get('/records', (req, res) => respond(res, () => storeFor(req, 'history.list').list(), req, 'history.list'));
     router.get('/records/:id', (req, res) => respond(res, () => createFileStore(directory(req)).read(req.params.id), req, 'history.read'));
     router.put('/records/:id', (req, res) => respond(res, () => {
-        const dir = directory(req), store = createFileStore(dir);
+        const store = storeFor(req, 'history.write');
         if (req.body?.record?.id !== req.params.id) throw Error('HISTORY_INVALID');
         return store.write(req.body.record, req.body.expectedRevision);
     }, req, 'history.write'));

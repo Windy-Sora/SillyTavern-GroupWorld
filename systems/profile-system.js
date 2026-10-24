@@ -206,10 +206,10 @@ async function generateSingleProfileInternal(avatar) {
     const schemaText = settings.profileJsonSchema || '';
 
     let filled = generatorPrompt
-        .replace(/\{\{charName\}\}/g, char.name)
-        .replace(/\{\{charDescription\}\}/g, char.description || '')
-        .replace(/\{\{charPersonality\}\}/g, char.personality || '')
-        .replace(/\{\{charScenario\}\}/g, char.scenario || '');
+        .replace(/\{\{charName\}\}/g, () => char.name)
+        .replace(/\{\{charDescription\}\}/g, () => char.description || '')
+        .replace(/\{\{charPersonality\}\}/g, () => char.personality || '')
+        .replace(/\{\{charScenario\}\}/g, () => char.scenario || '');
 
     // Run through renderPrompt so registered providers (worldBookImportance,
     // character_profiles, etc.) are resolved in addition to the manual fields above.

@@ -42,7 +42,19 @@ function printTests(stage, options) {
         const { lines, branches, functions } = stage.coverage.summary;
         console.log(`\n[coverage] loaded modules only: lines ${lines}%, branches ${branches}%, functions ${functions}%`);
     }
-    if (!options.verbose && stage.output?.trim()) console.log(`\n${stage.output.trim()}`);
+    if (options.summary) {
+        const counts = stage.counts || {};
+        console.log(`\n[tests] ${stage.ok ? 'PASS' : 'FAIL'} — ${counts.tests ?? '?'} tests, ${counts.pass ?? '?'} passed, ${counts.fail ?? '?'} failed, ${counts.cancelled ?? '?'} cancelled, ${counts.skipped ?? '?'} skipped, ${counts.todo ?? '?'} todo (${stage.durationMs}ms)`);
+        if (!options.verbose && !stage.ok && stage.output?.trim()) {
+            const output = stage.output.trim();
+            const failures = /^\s*✖ failing tests:/m.exec(output);
+            // Preserve raw diagnostics when Node could not produce its normal failure footer.
+            const contractOnly = stage.exitCode === 0 && !stage.timedOut && stage.matchedTests > 0
+                && counts.fail === 0 && stage.bugCoverage?.missing?.length;
+            if (failures) console.error(output.slice(failures.index).trim());
+            else if (!contractOnly) console.error(output);
+        }
+    } else if (!options.verbose && stage.output?.trim()) console.log(`\n${stage.output.trim()}`);
     const coverage = stage.bugCoverage;
     if (coverage?.missing.length) console.error(`\n[regression-contracts] FAIL — missing scenario IDs: ${coverage.missing.join(', ')}`);
     else if (coverage?.required.length) console.log(`\n[regression-contracts] PASS — ${coverage.found.length}/${coverage.required.length} historical BUG IDs`);

@@ -375,7 +375,9 @@ registerSection('dashboard', function (ctx) {
 
     // Inline edit helper: replaces a detail text with a textarea on "edit" click
     function makeEditable($detail, field, getValue, setValue, afterSave, formatFn) {
-        const $display = $detail.find(`.gd-edit-field[data-field="${field}"]`);
+        const $display = $detail.find('.gd-edit-field').filter(function () {
+            return this.getAttribute('data-field') === field;
+        });
         if (!$display.length) return;
 
         function attachBtn() {
@@ -471,7 +473,7 @@ registerSection('dashboard', function (ctx) {
             const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
             const profile = p.profile || {};
             const summarize = () => formatProfileSummary(profile, lang, esc);
-            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${esc(state)}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
             makeEditable($detail, 'profile-summary',
                 () => getProfileSummaryEditValue(profile),
@@ -493,7 +495,7 @@ registerSection('dashboard', function (ctx) {
         for (const [av, s] of entries) {
             const mems = memorySystem.listMemories?.(av) || [];
             const recent = mems.slice(-5).reverse();
-            const detailRows = recent.map((m, idx) => `<div class="gd-edit-field" data-field="mem-${av}-${mems.indexOf(m)}">· ${esc(m.event || '')} ${m.mood ? `[${esc(m.mood)}]` : ''}</div>`).join('');
+            const detailRows = recent.map((m, idx) => `<div class="gd-edit-field" data-field="mem-${escPopup(av)}-${mems.indexOf(m)}">· ${esc(m.event || '')} ${m.mood ? `[${esc(m.mood)}]` : ''}</div>`).join('');
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(s.name || av)} ▸</span><span class="gd-list-meta">${s.count || 0} ${lang === 'zh' ? '条' : 'entries'}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detailRows || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
             for (const m of recent) {
@@ -908,7 +910,7 @@ registerSection('dashboard', function (ctx) {
             $input.prop('checked', checked);
             $input.prop('disabled', sourceMode === 'st');
             $input.on('change', async function () { sel[name] = !!$(this).prop('checked'); ctx.worldBookScanner?.clearCache?.(); saveSettings(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
-            $label.append($input, name);
+            $label.append($input, document.createTextNode(name));
             $wbList.append($label);
         }
         $wbCount.text(lang === 'zh' ? `已选 ${totalChecked}/${names.length}` : `${totalChecked}/${names.length} selected`);

@@ -21,7 +21,7 @@ async function upgrade(saved) {
     assert.ok(start >= 0 && end > start);
     const extension_settings = { [EXT_KEY]: structuredClone(saved), unrelated: { keep: true } };
     const context = vm.createContext({ extension_settings, EXT_KEY, DEFAULT_SETTINGS: structuredClone(DEFAULT_SETTINGS),
-        MODE_OFF, MODE_FORMULA, MODE_LLM, migrateLegacyDirectorOutputFormat });
+        MODE_OFF, MODE_FORMULA, MODE_LLM, migrateLegacyDirectorOutputFormat, structuredClone });
     vm.runInContext(source.slice(start, end), context);
     return extension_settings;
 }
