@@ -1,6 +1,6 @@
 # 暮羽 Agent 模块开发规范
 
-GroupWorld 适配：安装目录及显示名称使用 GW；开发 API、序列化标识与旧存档保持不变。添加可见产品名时引用 `utils/product-identity.js`，不要机械替换 `window.GroupDirector` 或给工具／Provider 创建新命名空间。内置 Skill 内容变更需递增 revision，不覆盖用户资源。无可选宿主端口就不发布相应工具。来源和验收记录见 [MIGRATION](../MIGRATION.md)。
+GroupWorld 适配：安装目录及显示名称使用 GW；开发 API、序列化标识与旧存档保持不变。添加可见产品名时引用 `utils/product-identity.js`，不要机械替换 `window.GroupDirector` 或给工具／Provider 创建新命名空间。内置 Skill 内容变更需递增 revision，不覆盖用户资源。无可选宿主端口就不发布相应工具。来源和验收记录见 [MIGRATION](MIGRATION.md)。
 
 本规范描述接入约束，不列历史轮次或拟议 API。架构见 [架构文档](MUYU-AGENT-ARCHITECTURE.md)，范围见 [能力表](MUYU-AGENT-STATUS.md)。新增或解除暂缓的功能需先核对真实业务与宿主合同。
 

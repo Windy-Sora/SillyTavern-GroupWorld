@@ -8,7 +8,7 @@
 
 产品元数据集中在 `utils/product-identity.js`。最终模型系统指令和公开导航引用可信宿主身份，说明 GroupDirector／GD 为兼容别名，不是缺失依赖，也不等于世界书。身份说明参与请求预算，不另占任务 DTO 或引入额外模型调用。
 
-用户界面、内置技能说明和出厂助手资料采用 GroupWorld 名称；变更的内置技能递增 revision，用户编辑的技能、Provider 和历史原文不被覆盖。`window.GroupDirector`、设置及聊天键、工具／Provider／Skill ID、资产归属、回执 schema 和历史命名空间不得随品牌改名。可选服务沿用同一服务插件，不创建 GW 专属后端或静默迁移用户数据。当前兼容验收见 [MIGRATION](../MIGRATION.md)。
+用户界面、内置技能说明和出厂助手资料采用 GroupWorld 名称；变更的内置技能递增 revision，用户编辑的技能、Provider 和历史原文不被覆盖。`window.GroupDirector`、设置及聊天键、工具／Provider／Skill ID、资产归属、回执 schema 和历史命名空间不得随品牌改名。可选服务沿用同一服务插件，不创建 GW 专属后端或静默迁移用户数据。当前兼容验收见 [MIGRATION](MIGRATION.md)。
 
 ```text
 经典入口 / 悬浮窗口 / 设置与历史

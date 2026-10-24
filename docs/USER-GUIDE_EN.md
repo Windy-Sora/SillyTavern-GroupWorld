@@ -1,6 +1,6 @@
 # GroupWorld — User Guide
 
-> The public UI is classic settings plus the Muyu floating window. Use GroupWorld install/profile names while retaining compatibility API and archive names. Enable only GD or GW, not both, and back up before upgrading. See [Muyu quick start](../README_EN.md#muyu-assistant) and [migration checks](../MIGRATION.md).
+> The public UI is classic settings plus the Muyu floating window. Use GroupWorld install/profile names while retaining compatibility API and archive names. Enable only GD or GW, not both, and back up before upgrading. See [Muyu quick start](../README_EN.md#muyu-assistant) and [migration checks](MIGRATION.md).
 
 Optional services now use collapsible “Local documents & workspace”, “Public web pages” and “Text validation” groups. Click “Check service capabilities” first; each switch shows support and preference status. Missing/legacy services never expose unavailable tools, and previously enabled preferences can still be turned off. Enabling is not data consent or write approval. Updating existing documents needs document search for a revision baseline. Public page reading is independent of globe search. GroupWorld memory, director and summary features do not depend on the optional service.
 

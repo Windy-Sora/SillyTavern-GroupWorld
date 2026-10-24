@@ -1,6 +1,6 @@
 # GroupWorld — Design Document
 
-> GroupWorld uses its own installation directory and default profile. `window.GroupDirector`, settings keys, Provider/tool IDs, log prefixes and archive markers are stable compatibility identifiers, not missing dependencies. See [MIGRATION](../MIGRATION.md) for the source baseline, retained adaptations and release checks.
+> GroupWorld uses its own installation directory and default profile. `window.GroupDirector`, settings keys, Provider/tool IDs, log prefixes and archive markers are stable compatibility identifiers, not missing dependencies. See [MIGRATION](MIGRATION.md) for the source baseline, retained adaptations and release checks.
 
 Muyu separates the saved personal read preference from connection-local execution approval. Allow reads covers fixed data sources, retrieval and unapplied previews, not direct apply/save/install flags, Provider render, scripts/code tests or business generation. Ask remains the compatibility default; full access is connection-local. Story profiles cannot transfer the read preference; history transport and globe-controlled search remain independent. Policy switching is blocked during runs and pending authorization.
 

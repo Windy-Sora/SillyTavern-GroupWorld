@@ -1,6 +1,6 @@
 # GroupWorld — 设计文档
 
-> 当前产品为 GroupWorld，安装目录与默认档采用 GW 路径；`window.GroupDirector`、设置键、Provider／工具 ID、日志和存档标识保持兼容，不因名称替换而变化。具体适配、来源及验收边界见 [MIGRATION](../MIGRATION.md)。
+> 当前产品为 GroupWorld，安装目录与默认档采用 GW 路径；`window.GroupDirector`、设置键、Provider／工具 ID、日志和存档标识保持兼容，不因名称替换而变化。具体适配、来源及验收边界见 [MIGRATION](MIGRATION.md)。
 
 暮羽授权由个人阅读偏好与连接内执行授权分别管理。阅读全开只允许固定资料来源、检索和不落盘预览；不允许apply/save/install直写、Provider render、脚本／合成代码测试或业务生成。逐项审批为兼容默认；全权限只在当前连接有效。阅读偏好不进入故事配置档，历史外发和小地球联网保持独立。运行或授权等待期间不切换策略。
 

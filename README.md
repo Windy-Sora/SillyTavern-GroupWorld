@@ -89,7 +89,7 @@
 - [模板与 DSL](docs/TEMPLATE-SYNTAX.md) · [故事蓝图](docs/STORY-BLUEPRINT.md)
 - [暮羽能力与边界](docs/MUYU-AGENT-STATUS.md)
 - [开发设计](docs/DESIGN.md) · [测试规范](docs/TESTING.md) · [文档目录](docs/README.md)
-- [迁移与兼容记录](MIGRATION.md)
+- [迁移与兼容记录](docs/MIGRATION.md)
 
 遇到问题欢迎提 Issue，附上酒馆与插件版本、复现步骤，以及去除密钥和私人内容后的错误信息。
 

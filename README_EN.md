@@ -89,7 +89,7 @@ The base Agent does not need a companion service. For server-side history, web s
 - [Templates and DSL](docs/TEMPLATE-SYNTAX_EN.md) · [Story Blueprint](docs/STORY-BLUEPRINT.md)
 - [Muyu capabilities and boundaries](docs/MUYU-AGENT-STATUS.md)
 - [Architecture](docs/DESIGN_EN.md) · [Testing](docs/TESTING.md) · [Documentation index](docs/README.md)
-- [Migration and compatibility notes](MIGRATION.md)
+- [Migration and compatibility notes](docs/MIGRATION.md)
 
 Issues are welcome. Include your Tavern and extension versions, reproduction steps, and error details with credentials and private content removed.
 

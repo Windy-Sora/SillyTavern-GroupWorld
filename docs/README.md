@@ -1,8 +1,8 @@
 # 文档目录 / Documentation
 
-项目介绍与安装入口：[中文](../README.md) · [English](../README_EN.md)。模块内README和Skill资源保留原路径；本目录集中原根目录的说明文档。
+项目介绍与安装入口：[中文](../README.md) · [English](../README_EN.md)。根目录仅保留中英文 README；用户手册、设计、测试和迁移说明集中在本目录，不保留重复的根目录跳转页。模块内 README 和 Skill 资源保留原路径。
 
-本仓库为 **GroupWorld / Group World**，迁入来源及本地验收见 [MIGRATION](../MIGRATION.md)。`GroupDirector`／`GD` 在 API、设置键、日志、存档和测试平台中是保留的兼容名称，不是另一个必须安装的依赖。只启用 GD／GW 其中一个；不能把共享标识当作两套隔离数据。
+本仓库为 **GroupWorld / Group World**，迁入来源及本地验收见 [MIGRATION](MIGRATION.md)。`GroupDirector`／`GD` 在 API、设置键、日志、存档和测试平台中是保留的兼容名称，不是另一个必须安装的依赖。只启用 GD／GW 其中一个；不能把共享标识当作两套隔离数据。
 
 ## 使用 / Usage
 
@@ -12,6 +12,7 @@
 
 ## 开发 / Development
 
+- [GroupWorld 迁移与兼容 / Migration and compatibility](MIGRATION.md)
 - 架构设计：[中文](DESIGN.md) · [English](DESIGN_EN.md)
 - [测试与维护 / Testing](TESTING.md)
 - [暮羽架构 / Muyu architecture](MUYU-AGENT-ARCHITECTURE.md)

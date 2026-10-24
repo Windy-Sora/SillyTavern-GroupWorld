@@ -62,7 +62,7 @@ node --test --test-concurrency=2 --test-reporter=tap "tests/**/*.test.mjs"
 git diff --check
 ```
 
-Quoted Node glob avoids Windows expanded-command limits. Static checks run separately. The optional real-host contract requires `GD_TEST_ST_ROOT` or `--st-root`. See [testing rules](docs/TESTING.md).
+Quoted Node glob avoids Windows expanded-command limits. Static checks run separately. The optional real-host contract requires `GD_TEST_ST_ROOT` or `--st-root`. See [testing rules](TESTING.md).
 
 ## Real-model spot checks
 
@@ -112,4 +112,4 @@ The following **have not been run in a real desktop/phone ST browser during this
 
 详报仅在忽略目录 `test-results/gw-knowledge-live-results.json`，不含密钥、隐藏思考或真实用户数据。上述两项说明缺口已补齐，不保证每次模型措辞完全一致；真实设备／实存档的手工验收门槛不变，release 部署需另行安排。
 
-[中文 README](README.md) · [English README](README_EN.md) · [docs index](docs/README.md). Current manuals/designs live in `docs/`; old root paths are redirect stubs, not separately maintained copies. Upstream dated test logs are not current release evidence. The temporary synchronization checklist remains only until its outstanding manual gate is reconciled; it is not a product manual.
+[中文 README](../README.md) · [English README](../README_EN.md) · [docs index](README.md). Manuals, designs and this migration record live in `docs/`; the repository root retains only the bilingual READMEs, without duplicate redirect pages. Upstream dated test logs are not current release evidence. The temporary synchronization checklist remains local until its outstanding manual gate is reconciled; it is not a product manual.
