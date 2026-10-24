@@ -198,6 +198,7 @@ registerSection('memoryExport', function (ctx) {
             const count = Object.keys(result.data._matches).length;
             toastr.info(isZh() ? `已解析：${count} 个角色` : `Parsed: ${count} character(s)`);
         };
+        reader.onerror = reader.onabort = () => toastr.error(isZh() ? '读取导入文件失败，请重新选择文件' : 'Could not read import file; please select it again');
         reader.readAsText(file);
         this.value = '';
     });

@@ -203,11 +203,14 @@ registerSection('npc', function (ctx) {
         $list.find('.gd-npc-import').on('click', async function () {
             if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
+            const target = npcs[idx];
+            if (!target || npcSystem.getNpcs()[idx] !== target) { renderNpcList(); return; }
+            const npcName = target.name;
             const btn = $(this);
             btn.prop('disabled', true);
             try {
                 const avatarName = await npcSystem.importNpcAsCharacter(idx);
-                toastr.success(L(`NPC「${npcs[idx].name}」已导入为角色卡: ${avatarName}`, `NPC "${npcs[idx].name}" imported as: ${avatarName}`));
+                toastr.success(L(`NPC「${npcName}」已导入为角色卡: ${avatarName}`, `NPC "${npcName}" imported as: ${avatarName}`));
                 renderNpcList();
                 window.__gdRefreshDashboard?.();
             } catch (e) {

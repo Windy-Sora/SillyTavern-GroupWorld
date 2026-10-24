@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -33,7 +34,7 @@ export function createCustomAgentModule({ port, charge }) {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
         run.candidate = null;
         let content;
-        try { content = importing ? port.previewImport(JSON.parse(args.exportJson), args.conflict) : port.previewBatch(JSON.parse(args.requestsJson)); }
+        try { content = importing ? port.previewImport(parseJsonArgument(args.exportJson, 'exportJson'), args.conflict) : port.previewBatch(parseJsonArgument(args.requestsJson, 'requestsJson')); }
         catch (error) {
             // A fully skipped import is a no-op, not an uncertain failed write.
             // Do not expose arbitrary adapter error messages to the model.
@@ -65,7 +66,7 @@ export function createCustomAgentModule({ port, charge }) {
         'muyu.agents.preview': (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
-            const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
+            const content = port.preview({ ...args, changes: parseJsonArgument(args.changesJson, 'changesJson') });
             const candidateId = 'agent:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name, enabled: content.next?.enabled ?? false, modelCalled: false, autoEnabled: content.next?.autoEnabled ?? false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },

@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -29,7 +30,7 @@ export function createCustomPromptModule({ port, charge }) {
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
         run.candidate = null;
         let content;
-        try { content = importing ? port.previewImport(JSON.parse(args.exportJson), args.conflict) : port.previewBatch(JSON.parse(args.requestsJson)); }
+        try { content = importing ? port.previewImport(parseJsonArgument(args.exportJson, 'exportJson'), args.conflict) : port.previewBatch(parseJsonArgument(args.requestsJson, 'requestsJson')); }
         catch (error) {
             if (importing && error?.message === 'PROMPT_IMPORT_NO_CHANGES') return { candidateId: '', text: JSON.stringify({ state: 'no_changes', saved: false, code: 'PROMPT_IMPORT_NO_CHANGES' }) };
             throw error;
@@ -48,7 +49,7 @@ export function createCustomPromptModule({ port, charge }) {
         'muyu.prompts.preview': (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
-            const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
+            const content = port.preview({ ...args, changes: parseJsonArgument(args.changesJson, 'changesJson') });
             const candidateId = 'prompt:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name, enabled: content.next?.enabled ?? false, rendered: false, modelCalled: false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },

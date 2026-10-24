@@ -144,6 +144,7 @@ registerSection('profileExport', function (ctx) {
             renderImportList(result.data);
             toastr.info(isZh() ? `已解析文件：${result.data.profiles.length} 个档案` : `Parsed: ${result.data.profiles.length} profile(s)`);
         };
+        reader.onerror = reader.onabort = () => toastr.error(isZh() ? '读取导入文件失败，请重新选择文件' : 'Could not read import file; please select it again');
         reader.readAsText(file);
     }
 

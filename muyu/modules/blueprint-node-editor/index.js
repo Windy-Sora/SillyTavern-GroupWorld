@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -32,7 +33,7 @@ export function createBlueprintNodeEditorModule({port,charge}) {
         const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
         runs.discardCandidate(ctx.runId);
         const method=structural?port.structurePreview:port.preview;
-        const content=method(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='blueprint-node-editor:'+randomUUID();
+        const content=method(ctx.target,{...args,changes:parseJsonArgument(args.changesJson, 'changesJson')}),candidateId='blueprint-node-editor:'+randomUUID();
         run.candidate={content,candidateId};
         return{candidateId,text:JSON.stringify({state:'draft_only',selector:content.selector,warnings:content.warnings,...(structural?{operation:content.operation,affectedCount:content.affected.length,progressChanges:Object.entries(content.after.progressTracks).map(([scope,track])=>({scope,before:content.before.progressTracks?.[scope]?.doneSignals?.length??(scope===content.after.activeProgressKey?content.before.doneSignals?.length||0:0),after:track.doneSignals.length})),completionReset:content.completion.before.exists}:{})}),...(args.apply?{applyRequested:true}:{})};
     }
@@ -41,7 +42,7 @@ export function createBlueprintNodeEditorModule({port,charge}) {
         'muyu.blueprint_node_editor.initialize_preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=port.initializePreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='blueprint-node-editor:'+randomUUID();
+            const content=port.initializePreview(ctx.target,{...args,changes:parseJsonArgument(args.changesJson, 'changesJson')}),candidateId='blueprint-node-editor:'+randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:'initialize',warnings:content.warnings,completionReset:content.completion.before.exists}),...(args.apply?{applyRequested:true}:{})};
         },

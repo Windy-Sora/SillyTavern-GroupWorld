@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -30,7 +31,7 @@ export function createTaskBundleModule({ port }) {
         if (run.candidate) port.forget(run.candidate.content);
         run.candidate = null;
         const input = validateJson(toolSchema, args);
-        const settings = input.settingsJson === undefined ? {} : validateJson(configChangesSchema, JSON.parse(input.settingsJson));
+        const settings = input.settingsJson === undefined ? {} : validateJson(configChangesSchema, parseJsonArgument(input.settingsJson, 'settingsJson'));
         const content = port.prepare(ctx.target, { settings, variables: input.variables || [], scripts: input.scripts || [] });
         const preview = { scope: 'current-chat-and-global', order: 'variables-then-settings-then-scripts',
             variables: content.variables.map(row => row.preview), settings: content.settings?.preview || null,

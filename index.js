@@ -2057,6 +2057,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    scriptCounterSnapshots.clear();
     directorRoundEpoch++;
     takeoverOwner?.controller.abort();
     takeoverOwner = null;

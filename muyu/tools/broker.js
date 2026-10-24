@@ -1,4 +1,5 @@
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
+import { jsonArgumentField } from '../core/json-argument.js';
 import { assertActive, bounded, ExecutionError, safeFailure, systemClock } from '../core/execution.js';
 import { tracePermission } from '../core/permission-debug.js';
 
@@ -77,6 +78,12 @@ export function createToolBroker({ registry, handlers, runId, target, allowedToo
             return remember({ ok: true, data: output });
         } catch (error) {
             assertActive(signal);
+            const field = jsonArgumentField(error);
+            if (field) {
+                const result = safeFailure('INVALID_ARGUMENT', 'not_started');
+                result.error.message = `Invalid JSON in ${field}; provide a valid JSON string. No business operation was started.`;
+                return remember(result);
+            }
             // Only closed, read-only selection and preview contract errors are safe to disclose.
             // Other handler exceptions may contain secrets or have unknown effects.
             const selection = d.id === 'muyu.tools.select' && error instanceof ExecutionError &&

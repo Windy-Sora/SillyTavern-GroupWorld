@@ -9,6 +9,7 @@
  */
 
 import { djb2Hash } from '../utils/string-utils.js';
+import { saveImportedTemplate } from '../utils/import-template.js';
 import { profilePresets } from '../assets/profiles/manifest.js';
 import { rollbackJsonValue } from './variable-system.js';
 
@@ -271,16 +272,9 @@ export function createProfileExportSystem(deps) {
         let templateImported = false;
         if (options.importTemplate && importData.template) {
             const t = importData.template;
-            if (t.generatorPrompt !== undefined) {
-                settings.profileGeneratorPrompt = t.generatorPrompt;
-            }
-            if (t.jsonSchema !== undefined) {
-                settings.profileJsonSchema = t.jsonSchema;
-            }
-            if (t.renderTemplate !== undefined) {
-                settings.profileRenderTemplate = t.renderTemplate;
-            }
-            saveSettings();
+            const patch = Object.fromEntries([['generatorPrompt', 'profileGeneratorPrompt'], ['jsonSchema', 'profileJsonSchema'], ['renderTemplate', 'profileRenderTemplate']]
+                .filter(([source]) => t[source] !== undefined).map(([source, key]) => [key, t[source]]));
+            await saveImportedTemplate(settings, patch, saveSettings);
             templateImported = true;
             log('Profile templates imported');
         }

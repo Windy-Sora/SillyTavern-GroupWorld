@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -26,7 +27,7 @@ export function createLedgerEditorModule({port,charge}) {
         'muyu.ledger_editor.preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='ledger-editor:'+randomUUID();
+            const content=port.preview(ctx.target,{...args,changes:parseJsonArgument(args.changesJson, 'changesJson')}),candidateId='ledger-editor:'+randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:content.operation,selector:content.selector,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },

@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { normalizeApiBase } from '../../utils/api-endpoint.js';
 
 const AGENT_DISPLAY = {
     director:    { zh: '导演 (Director)',        en: 'Director' },
@@ -40,7 +41,7 @@ async function fetchModels(endpoint, apiKey, protocol) {
     if (protocol === 'anthropic') {
         return { error: 'Anthropic does not provide a public model list endpoint. Check docs for available models.' };
     }
-    const base = endpoint.replace(/\/+$/, '');
+    const base = normalizeApiBase(endpoint);
     try {
         const resp = await fetch(`${base}/v1/models`, {
             headers: {

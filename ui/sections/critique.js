@@ -90,9 +90,10 @@ registerSection('critique', function (ctx) {
     $c('critique-schema').val(settings.critiqueSchema || DEFAULT_SCHEMA);
     $c('critique-schema').data?.('gdDefaultSchema', DEFAULT_SCHEMA);
 
+    let actionPending = false;
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;
-        const on = !!settings.critiqueEnabled && !locked;
+        const on = !!settings.critiqueEnabled && !locked && !actionPending;
         $c('critique-lock-warn').toggle(locked);
         $c('critique-reuse').prop('disabled', !settings.critiqueEnabled);
         $c('critique-prompt').prop('disabled', !settings.critiqueEnabled);
@@ -175,10 +176,11 @@ registerSection('critique', function (ctx) {
 
     // Execute
     $c('critique-execute').on('click', async () => {
-        if (isRoundActive && isRoundActive()) return;
+        if (actionPending || (isRoundActive && isRoundActive())) return;
         const $btn = $c('critique-execute');
         const origText = $btn.text();
-        $btn.prop('disabled', true);
+        actionPending = true;
+        checkEnabled();
         $btn.text(settings.lang === 'zh' ? '执行中...' : 'Running...');
         try {
             const entry = await cs.generateCritique();
@@ -188,17 +190,20 @@ registerSection('critique', function (ctx) {
                 : `Critique complete, covers ${entry.rangeEnd} messages`);
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '批判失败' : 'Critique failed'));
+        } finally {
+            actionPending = false;
+            $btn.text(origText);
+            checkEnabled();
         }
-        $btn.prop('disabled', false);
-        $btn.text(origText);
     });
 
     // Regenerate
     $c('critique-regenerate').on('click', async () => {
-        if (isRoundActive && isRoundActive()) return;
+        if (actionPending || (isRoundActive && isRoundActive())) return;
         const $btn = $c('critique-regenerate');
         const origText = $btn.text();
-        $btn.prop('disabled', true);
+        actionPending = true;
+        checkEnabled();
         $btn.text(settings.lang === 'zh' ? '重新生成中...' : 'Regenerating...');
         try {
             await cs.regenerateLastCritique();
@@ -206,18 +211,27 @@ registerSection('critique', function (ctx) {
             toastr.success(settings.lang === 'zh' ? '已重新批判' : 'Regenerated critique');
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '重新批判失败' : 'Regenerate failed'));
+        } finally {
+            actionPending = false;
+            $btn.text(origText);
+            checkEnabled();
         }
-        $btn.prop('disabled', false);
-        $btn.text(origText);
     });
 
     // Revert
     $c('critique-revert').on('click', async () => {
-        if (isRoundActive && isRoundActive()) return;
+        if (actionPending || (isRoundActive && isRoundActive())) return;
         if (!await callGenericPopup(settings.lang === 'zh' ? '回退本次批判？' : 'Revert this critique?', POPUP_TYPE.CONFIRM)) return;
-        await cs.revertLastCritique();
-        refreshStatus();
-        toastr.info(settings.lang === 'zh' ? '已回退批判' : 'Critique reverted');
+        if (actionPending || (isRoundActive && isRoundActive())) return;
+        actionPending = true; checkEnabled();
+        try {
+            await cs.revertLastCritique();
+            toastr.info(settings.lang === 'zh' ? '已回退批判' : 'Critique reverted');
+        } catch (error) {
+            toastr.error(error.message || (settings.lang === 'zh' ? '回退批判失败' : 'Critique revert failed'));
+        } finally {
+            actionPending = false; refreshStatus(); checkEnabled();
+        }
     });
 
     // Refresh
@@ -228,11 +242,18 @@ registerSection('critique', function (ctx) {
 
     // Reset
     $c('critique-reset').on('click', async () => {
-        if (isRoundActive && isRoundActive()) return;
+        if (actionPending || (isRoundActive && isRoundActive())) return;
         if (!await callGenericPopup(settings.lang === 'zh' ? '关闭全部批判？' : 'Deactivate all critiques?', POPUP_TYPE.CONFIRM)) return;
-        await cs.resetAll();
-        refreshStatus();
-        toastr.info(settings.lang === 'zh' ? '已重置全部批判' : 'All critiques reset');
+        if (actionPending || (isRoundActive && isRoundActive())) return;
+        actionPending = true; checkEnabled();
+        try {
+            await cs.resetAll();
+            toastr.info(settings.lang === 'zh' ? '已重置全部批判' : 'All critiques reset');
+        } catch (error) {
+            toastr.error(error.message || (settings.lang === 'zh' ? '重置批判失败' : 'Critique reset failed'));
+        } finally {
+            actionPending = false; refreshStatus(); checkEnabled();
+        }
     });
 
     function refreshStatus() {

@@ -690,7 +690,7 @@ registerSection('variables', function (ctx) {
         input.style.display = 'none';
         input.addEventListener('change', async () => {
             const file = input.files?.[0];
-            if (!file) return;
+            if (!file) { input.remove(); return; }
             try {
                 const result = await variableSystem.importFromFile(file, { mode: 'merge', includeLog: true });
                 if (!result.ok) throw new Error(result.error);
@@ -702,6 +702,7 @@ registerSection('variables', function (ctx) {
                 input.remove();
             }
         });
+        input.addEventListener('cancel', () => input.remove(), { once: true });
         document.body.appendChild(input);
         input.click();
     }

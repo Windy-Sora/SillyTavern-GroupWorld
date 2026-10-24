@@ -75,7 +75,8 @@ test('OpenAI caller builds requests, trims endpoint slashes, and supports reason
     assert.equal(await caller.generate('hello', { signal: controller.signal }), 'answer');
     assert.equal(await caller.generate('think'), 'reasoning');
     assert.equal(requests[0].url, 'https://api.example.com/v1/chat/completions');
-    assert.equal(requests[0].options.signal, controller.signal);
+    assert.ok(requests[0].options.signal instanceof AbortSignal);
+    assert.equal(requests[0].options.signal.aborted, false);
     assert.equal(requests[0].options.headers.Authorization, 'Bearer secret-key');
     assert.equal('X-CSRF-Token' in requests[0].options.headers, false);
     assert.deepEqual(JSON.parse(requests[0].options.body), {
@@ -140,7 +141,8 @@ test('Anthropic caller builds protocol-specific requests and parses responses', 
     assert.equal(caller.supportsAbort, true);
     assert.equal(await caller.generate('hello', { signal: controller.signal }), 'anthropic answer');
     assert.equal(requests[0].url, 'https://anthropic.example/v1/messages');
-    assert.equal(requests[0].options.signal, controller.signal);
+    assert.ok(requests[0].options.signal instanceof AbortSignal);
+    assert.equal(requests[0].options.signal.aborted, false);
     assert.equal(requests[0].options.headers['x-api-key'], 'anthropic-key');
     assert.equal(requests[0].options.headers['anthropic-version'], '2023-06-01');
     assert.deepEqual(JSON.parse(requests[0].options.body), {

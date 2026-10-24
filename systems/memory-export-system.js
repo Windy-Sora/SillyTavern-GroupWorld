@@ -11,6 +11,7 @@
  */
 
 import { djb2Hash } from '../utils/string-utils.js';
+import { saveImportedTemplate } from '../utils/import-template.js';
 
 const MEMORY_EXPORT_VERSION = 1;
 
@@ -269,11 +270,9 @@ async function applyImport(importData, decisions, options, deps) {
     let templateImported = false;
     if (options.importTemplate && importData.template) {
         const t = importData.template;
-        if (t.memoryPrompt !== undefined) settings.memoryPrompt = t.memoryPrompt;
-        if (t.memoryJsonSchema !== undefined) settings.memoryJsonSchema = t.memoryJsonSchema;
-        if (t.memoryRenderTemplate !== undefined) settings.memoryRenderTemplate = t.memoryRenderTemplate;
-        if (t.memoryCompressPrompt !== undefined) settings.memoryCompressPrompt = t.memoryCompressPrompt;
-        saveSettings();
+        const patch = Object.fromEntries(['memoryPrompt', 'memoryJsonSchema', 'memoryRenderTemplate', 'memoryCompressPrompt']
+            .filter(key => t[key] !== undefined).map(key => [key, t[key]]));
+        await saveImportedTemplate(settings, patch, saveSettings);
         templateImported = true;
     }
 

@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../core/json-argument.js';
 import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
 import { configChangesSchema, dependencyFields, previewSettings, readSettingsFields } from '../config/registry.js';
@@ -39,7 +40,7 @@ export function createTaskBundleDraftPort({ getTarget, getSettings, variableDraf
             try {
                 const settings = settingsPart(changes);
                 if (scriptRequests.length && !scriptPort) throw Error('WRITE_UNAVAILABLE');
-                const scripts = scriptRequests.map(request => scriptPort.preview({ ...request, changes: JSON.parse(request.changesJson) }));
+                const scripts = scriptRequests.map(request => scriptPort.preview({ ...request, changes: parseJsonArgument(request.changesJson, 'changesJson') }));
                 const ids = scripts.filter(row => row.id).map(row => row.id), names = scripts.filter(row => row.next).map(row => row.next.name);
                 if (new Set(ids).size !== ids.length || new Set(names).size !== names.length) throw Error('INVALID_TASK_BUNDLE');
                 for (const request of requests) variables.push(variableDraftPort.prepare(target, request));

@@ -133,10 +133,10 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 if (!Array.isArray(memories)) return null;
 
                 return memories
-                    .filter(m => m.event && typeof m.event === 'string' && m.event.trim().length > 0)
+                    .filter(m => m && typeof m.event === 'string' && m.event.trim().length > 0)
                     .map(m => ({
                         event: m.event.trim(),
-                        mood: m.mood || 'neutral',
+                        mood: typeof m.mood === 'string' && m.mood.trim() ? m.mood : 'neutral',
                         round: pool.chat()?.length ?? 0,
                         timestamp: Date.now(),
                     }));
@@ -148,7 +148,12 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 const existingEvents = new Set(
                     (ctx.existingMemories || []).map(m => m.event?.toLowerCase?.() || '')
                 );
-                return parsed.filter(m => !existingEvents.has((m.event || '').toLowerCase()));
+                return parsed.filter(m => {
+                    const event = (m.event || '').toLowerCase();
+                    if (existingEvents.has(event)) return false;
+                    existingEvents.add(event);
+                    return true;
+                });
             },
         },
     };

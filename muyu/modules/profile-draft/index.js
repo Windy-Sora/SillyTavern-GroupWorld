@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -23,7 +24,7 @@ export function createProfileDraftModule() {
         const run = runs.get(ctx.runId);
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         const input = validateJson(inputSchema, args);
-        const content = prepareGeneratedProfile({ name: input.name, description: input.description || '', changes: JSON.parse(input.settingsJson) });
+        const content = prepareGeneratedProfile({ name: input.name, description: input.description || '', changes: parseJsonArgument(input.settingsJson, 'settingsJson') });
         if (run.candidates.size >= 16) throw Error('PROFILE_PREVIEW_LIMIT');
         const candidateId = 'profile:' + randomUUID();
         run.candidates.set(candidateId, content);

@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -15,7 +16,7 @@ export function createSelectionEditorModule({port,charge}) {
  return {registry,handlers:{
   'muyu.selection.read':(args,ctx)=>{const text=JSON.stringify(port.read(ctx.target,args.kind));if(text.length>24000)throw Error('SELECTION_READ_TOO_LARGE');if(charge&&!charge(ctx.runId,new TextEncoder().encode(text).length))throw Error('PROVIDER_BUDGET_EXCEEDED');return{candidateId:'',text};},
   'muyu.selection.preview':(args,ctx)=>{const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');runs.discardCandidate(ctx.runId);
-   const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='selection:'+randomUUID();run.candidate={content,candidateId};
+   const content=port.preview(ctx.target,{...args,changes:parseJsonArgument(args.changesJson, 'changesJson')}),candidateId='selection:'+randomUUID();run.candidate={content,candidateId};
    return{candidateId,text:JSON.stringify({state:'draft_only',kind:content.kind,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};},
  },
  bindRun(identity){if(runs.size>=128||runs.has(identity.id))throw Error('RUN_CAPACITY');runs.set(identity.id,{taskId:identity.taskId,target:copyJson(identity.target),candidate:null});},

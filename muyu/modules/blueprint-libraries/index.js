@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -27,7 +28,7 @@ export function createBlueprintLibraryModule({ port, charge }) {
         'muyu.blueprint_libraries.preview': (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
-            const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
+            const content = port.preview({ ...args, changes: parseJsonArgument(args.changesJson, 'changesJson') });
             const candidateId = 'blueprint-library:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name,  rendered: false, modelCalled: false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },

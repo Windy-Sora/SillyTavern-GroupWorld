@@ -1,3 +1,5 @@
+import { normalizeApiBase } from './api-endpoint.js';
+
 /**
  * Protocol layer for Agent Runtime.
  *
@@ -21,13 +23,34 @@
  * }}
  */
 export function createCaller(config, stGenerateRaw, stAbort) {
-    if (!config?.useCustom) {
-        return makeNativeCaller(stGenerateRaw, stAbort);
-    }
-    if (config.protocol === 'anthropic') {
-        return makeAnthropicCaller(config);
-    }
-    return makeOpenAICaller(config);
+    const caller = !config?.useCustom ? makeNativeCaller(stGenerateRaw, stAbort)
+        : config.protocol === 'anthropic' ? makeAnthropicCaller(config) : makeOpenAICaller(config);
+    const configured = Number(config?.call?.timeout);
+    const timeout = Number.isFinite(configured) && configured > 0 ? Math.min(configured, 2147483647) : 30000;
+    return {
+        ...caller,
+        async generate(prompt, { signal } = {}) {
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+            const controller = new AbortController();
+            let timer, onAbort;
+            const stopped = new Promise((_, reject) => {
+                onAbort = () => { controller.abort(); reject(new DOMException('Aborted', 'AbortError')); };
+                signal?.addEventListener('abort', onAbort, { once: true });
+                timer = setTimeout(() => {
+                    const error = new Error(caller.supportsAbort ? 'Model request timed out' : 'Model request timed out; the native host request may still be running. Wait before retrying.');
+                    error.name = 'TimeoutError';
+                    reject(error);
+                    controller.abort();
+                }, timeout);
+            });
+            try {
+                return await Promise.race([stopped, caller.generate(prompt, { signal: controller.signal })]);
+            } finally {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
+            }
+        },
+    };
 }
 
 // ─── Native ST caller ────────────────────────────────────────────────
@@ -56,7 +79,7 @@ function makeNativeCaller(stGenerateRaw, stAbort) {
 // ─── OpenAI Compatible ────────────────────────────────────────────────
 
 function makeOpenAICaller(config) {
-    const base = config.endpoint.replace(/\/+$/, '');
+    const base = normalizeApiBase(config.endpoint);
 
     /** Build headers — only add CSRF token for localhost (ST native). */
     function headers() {
@@ -136,7 +159,7 @@ function makeOpenAICaller(config) {
 // ─── Anthropic Compatible ─────────────────────────────────────────────
 
 function makeAnthropicCaller(config) {
-    const base = config.endpoint.replace(/\/+$/, '');
+    const base = normalizeApiBase(config.endpoint);
     function headers() {
         const result = {
             'Content-Type': 'application/json',

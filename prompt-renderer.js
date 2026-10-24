@@ -248,8 +248,19 @@ function outsideBlocks(template, render) {
 
 function replacePathQueries(template, replace) {
     const opening = /\{\{\?(\w+):/g;
+    const ends = new Map(), stack = [];
+    // Index once so many malformed openings cannot repeatedly rescan the tail.
+    for (let i = 0; i < template.length - 1; i++) {
+        if (template.startsWith('{{', i)) { stack.push(i); ends.set(i, null); i++; }
+        else if (template.startsWith('}}', i)) {
+            const start = stack.pop();
+            if (start !== undefined) ends.set(start, i);
+            i++;
+        }
+    }
     let result = '', cursor = 0, match;
     while ((match = opening.exec(template))) {
+        if (ends.has(match.index) && ends.get(match.index) === null) continue;
         let depth = 1, end = opening.lastIndex, separator = -1;
         for (; end < template.length; end++) {
             if (template.startsWith('{{', end)) { depth++; end++; }
@@ -258,7 +269,7 @@ function replacePathQueries(template, replace) {
                 end++;
             } else if (depth === 1 && template[end] === '|' && separator < 0) separator = end;
         }
-        if (depth !== 0) break;
+        if (depth !== 0) continue;
         const pathEnd = separator < 0 ? end : separator;
         result += template.slice(cursor, match.index) + replace(template.slice(match.index, end + 2), match[1],
             template.slice(opening.lastIndex, pathEnd), separator < 0 ? undefined : template.slice(separator + 1, end));

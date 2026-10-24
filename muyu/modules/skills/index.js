@@ -1,3 +1,4 @@
+import { parseJsonArgument } from '../../core/json-argument.js';
 import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -34,7 +35,7 @@ export function createSkillModule({ port, charge }) {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId); await port.ready();
             if (runs.get(ctx.runId) !== run || ctx.signal?.aborted) throw Error('RUN_NOT_BOUND');
-            const request = copyJson(JSON.parse(args.requestJson)); if (request.revision !== undefined) request.revision = revision(request.revision);
+            const request = copyJson(parseJsonArgument(args.requestJson, 'requestJson')); if (request.revision !== undefined) request.revision = revision(request.revision);
             const content = port.preview(request), candidateId = 'skill:' + randomUUID();
             run.candidate = { content, candidateId }; return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.name, enabled: content.enabled, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },
