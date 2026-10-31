@@ -22,5 +22,5 @@ export const BUILTIN_SKILL_MANIFEST = Object.freeze([
     Object.freeze({ name: 'st-card-stack-analysis', revision: 9, files: Object.freeze(['SKILL.md', 'references/pipeline-analysis.md', 'references/patterns-and-cases.md']) }),
     Object.freeze({ name: 'st-ejs-template-guide', revision: 5, files: Object.freeze(['SKILL.md', 'references/syntax-and-context.md', 'references/variables-and-worldbook.md', 'references/troubleshooting.md']) }),
     Object.freeze({ name: 'tavern-helper-guide', revision: 6, files: Object.freeze(['SKILL.md', 'references/scripts-and-rendering.md', 'references/variables-and-mvu.md', 'references/frontend-actions-and-storage.md']) }),
-    Object.freeze({ name: 'muyu-settings-guide', revision: 5, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-settings-guide', revision: 6, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
 ]);

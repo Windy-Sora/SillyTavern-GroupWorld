@@ -52,3 +52,11 @@ dirty 只描述本次读取的草稿；已配置／实际注入文本的 dirty �
 Both tools are read-only. Parameter consent does not cover text or drafts. The separate text source exposes only fixed user-owned instruction/connection slots after sanitization, with versioned pages and explicit draft state. It never exports credential fields, internal system instructions or arbitrary resources. Configured, effective, draft, live policy and persistence remain separate facts. Reading grants no write or execution permission, including in full-access mode. No service plugin is required.
 
 Operational sections reuse passive local metadata: requested/active history routing, independent writers, storage issue flags, feature switches, cached service detection and the current segment's retained tool admission. Inspection does not open stores, load Skills, capture fresh tools or probe servers. Cached detection is not proof of current installation; enabled switches are not execution/data/write approval. Missing optional ports remain unknown and do not block core use.
+
+## 观察覆盖与当前核验
+
+用户明确要求检查当前参数时，需要相应参数读取；Skill、界面和工具目录不提供当前值。纯概念问题不强制读取。禁止探测、加载存档或写入并不禁止被动参数读取，明确禁工具、拒绝或预算不足仍优先。
+
+任务证据的 selfConfigReads 按请求分区保留最近尝试与最近有效观察，最多九项。覆盖由本模块同一纯投影的字段目录验证，只记录列状态对应的字段ID和任务内顺序／执行段，不复制值、标签、备注、正文或密钥。概览与详细分区单独记录，失败不刷新旧观察；新任务重新开始，授权续接保留现有观察，不因此重复读取。覆盖不判断自然语言需求、不自动宣布完成、不授予权限，也不触发工具。
+
+公共 Skill／界面参考／工具目录查询在任务证据中明确标为参考查询，不能作为当前参数观察。工具组目录只有在自身参数读取工具实际列出时，才附带 inspectionPath 指路；不要求文档或网页执行工具可用，不进行任何读取、探测或授权。功能执行不可用与其参数可核验是两个不同能力。

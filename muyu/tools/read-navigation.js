@@ -1,3 +1,4 @@
+import { SELF_SECTIONS } from '../self/config.js';
 // First-party navigation only: no discovery of host data, grants or side effects.
 const paths = Object.freeze({
     'character-card': { list: 'muyu.character_card.list', read: 'muyu.character_card.read', source: 'stCharacterCardState', skill: 'character-npc-workbench', object: 'saved basic card text only; regex/scripts/embedded books use the separate stCharacterComponents Provider source, not this text whitelist' },
@@ -21,6 +22,11 @@ export function sourceReadNavigation(id) {
         boundary: 'Entry support only, not data availability or permission. Separate source authorization is required. Use this source\'s own directory/revision; never reuse the old reader\'s revision. Read only when relevant and allowed; never bypass denial. Skill name is a relevance hint, not proof it is enabled.' } : null;
 }
 export function readNavigation(group, toolIds, availableTools = toolIds) {
+    if (group === 'muyu-self' && toolIds.includes('muyu.self.read')) return { inspectionPath: {
+        tool: 'muyu.self.read', sections: [...SELF_SECTIONS], permission: 'muyuSelfConfig',
+        procedure: 'Select this listed group if grouped, then pass the relevant section. Use tools for document/web/JSON/Skill/memory switches and retained admission; storage for history routing/work status; run/context for budgets; connection for connection flags.',
+        boundary: 'Passive settings observation, not an active document/web call, probe or archive opening. Reading feature switches does not require that feature execution tool to be admitted. Navigation grants no permission or data availability; honor no-read and denial. Overview is a multi-section snapshot, not a catalog. Unknown is not unread; do not use unrelated sections as fallback.',
+    } };
     const path = paths[group];
     if (!path || !toolIds.includes(path.list) || !toolIds.includes(path.read)) return {};
     return { readPath: { ...path, scope: 'global',

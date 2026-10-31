@@ -2,10 +2,12 @@
 name: muyu-settings-guide
 display-name: 暮羽设置与使用调优
 description: 解释或核对暮羽自身预算、权限、存储、补充指令与未保存草稿，比较已配置/实际注入/草稿，判断工具开关与本轮可用资格，或改善长对话、费用和授权打扰时使用。Muyu settings, instruction drafts, tool availability, permissions and storage. 不用于GroupWorld业务参数或自定义Agent资源；只找按钮用界面指南，具体失败用排障指南。
-version: "1.4"
+version: "1.5"
 ---
 
 # 暮羽设置与使用调优
+
+A request to check a named feature in the user’s current Muyu settings includes a passive observation, even if the proposed explanation can already be rejected from the rules. Read the relevant section before answering that inspection request. No probes or changes forbids active tests and writes, not this parameter read. Explain without private reads when the user asks only for meaning or explicitly forbids tools/data access.
 
 暮羽对话存档核验：用户说历史找不到，先用自身 storage 分区核对选定来源与实际来源，再查工具目录并选择 archive-inspection。muyu.archives.list 明确传 browser、account-settings、world-book 或 server 中的一个来源；需要确认某份记录时，用清单返回的局部 id 和 revision 调用 muyu.archives.inspect。各后端独立授权，不沿用自身参数或普通世界书授权；不自动扫描其他源，不切换来源、不合并、不迁移、不启用。返回标题、时间、数量及记录解码核验，不发送旧正文，不恢复会话、授权或操作。清单完整不等于正文已读；记录核验不保证过去操作成功或当前设置。unavailable／unsupported 不能说成空库或删除；browser 的 absent 仅说明当前账号／当前浏览器没有该库。未装服务插件只影响 server 来源；不能为了查世界书存档而启用数据条目或绑定剧情。用户明确禁止打开记录时，只核对允许的参数，不发起存档读取。
 
@@ -13,7 +15,7 @@ version: "1.4"
 
 解释和比较设置前，读取 [设置判断方法](references/workflow.md)。技能提供判断方法，不提供用户当前值、模型真实窗口或修改权限。若正文授权已被拒绝，只说明未能读取并结束即可，不为补齐参考而继续检查。
 
-解释概念不必读私人配置。用户问实际状态时，按问题使用本轮可用的 `muyu.self.read`；只在问题确实涉及指令或接口文字、未保存草稿时使用独立授权的 `muyu.self.read_text`。不为调预算读取聊天正文、密钥或全部草稿。
+纯概念且没有核验要求时不读私人配置；用户要求检查具名功能时，即使同时问开关含义，也先做目标分区的被动参数读取。Please check a feature in Muyu settings means perform the focused self-config read, even when followed by a conceptual question about a flag. No probes/changes does not prohibit that read. 不能因为值不足以解释原因就省略观察。按问题使用本轮可用的 `muyu.self.read`；只在问题确实涉及指令或接口文字、未保存草稿时使用独立授权的 `muyu.self.read_text`。不为调预算读取聊天正文、密钥或全部草稿。
 
 用户明确要求查当前状态，同时说“不要打开记录／加载存档／探测服务”，仍可使用被动自身只读查询；它不会执行这些被禁止的操作。用户明确禁止调用工具时才仅解释并保留当前值未知。不能用“本任务没读取记录”反推存储后端未打开。
 
@@ -22,3 +24,7 @@ version: "1.4"
 预算与自动整理历史位于齿轮→上下文与预算；长期记忆和历史保存位于存储与记忆；权限模式在资料与权限；补充指令在对话与显示→行为偏好。自动整理是在发送时按输入压力检查，没有“每N轮／每N条”的整理间隔设置；保留近期问答的参考值不控制整理频率。未读当前值时说“可以选择”，不说“保持你现在的模式”。逐项审批允许在有效授权范围复用，不是每次读取都确认。
 
 选定存储源不等于实际已打开该来源；实际未知只报告“选择了”。工具资格关闭只说明本执行段不可用，不能猜是拒绝授权、未安装或服务故障。正常回答跟随用户语言；英文可引用GUI原名，但不要夹中文语气词“咕”。
+
+用户要求“检查当前状态”，即使同时问开关含义，也须先完成对应的被动参数读取，再解释；不能只读本技能、界面资料或工具目录后把原请求改成“要不要我查”。例如核对本地资料工具开关和执行资格，用自身 tools 分区；不探测服务、不改设置与此读取兼容。纯概念或明确禁止读取时不查私人配置。收尾前对照用户问题和本任务实际观察：未读取、未知、读取失败、拒绝及预算不足分别说明，不能当成已完成核验；概览遗漏详细字段时只补目标分区，不扫全部设置。
+
+分区定位先查本技能／工具合同，不读私人分区来猜入口。JSON语法校验、长期记忆总开关、Skill总开关、本页诊断与浏览器错误记录都在 tools；storage 是对话存储路由／工作状态，display 是主题／过程显示，不是这些开关的兜底来源。只核对工具开关就只读 tools，不额外读 overview、display、storage。返回 unknown 是已观察但值未知，不是字段未读；不能为把未知补成确定值而跨区搜查。

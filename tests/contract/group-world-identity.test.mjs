@@ -88,7 +88,7 @@ test('Public navigation uses the actual GW display name and remains a bounded st
 test('All 23 builtins load and every adapted package publishes its new content revision', async () => {
     const expected = {
         'config-review': 5, 'provider-workbench': 4, 'variable-workbench': 4,
-        'memory-maintenance': 3, 'muyu-interface-guide': 7, 'muyu-troubleshooting': 10, 'muyu-settings-guide': 5,
+        'memory-maintenance': 3, 'muyu-interface-guide': 7, 'muyu-troubleshooting': 10, 'muyu-settings-guide': 6,
         'character-npc-workbench': 7, 'resource-library-workflow': 6,
         'prompt-template-workbench': 11, 'script-agent-workbench': 4,
         'worldbook-workflow': 13, 'dsl-template-workbench': 2,
