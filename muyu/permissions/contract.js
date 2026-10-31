@@ -23,6 +23,14 @@ export function parseExecutionSource(value) {
     return match ? { providerId: match[1], providerRevision: match[2] } : null;
 }
 export const requestableSources = Object.freeze([...providerCatalog,
+    { id: 'muyuArchiveBrowser', title: '浏览器中的暮羽存档标题、数量与记录核验（不发送正文） / Browser Muyu archive metadata and validation, no bodies', scope: 'global', permission: 'source-only' },
+    { id: 'muyuArchiveSettings', title: '插件设置中的暮羽存档标题、数量与记录核验（不发送正文） / Settings Muyu archive metadata and validation, no bodies', scope: 'global', permission: 'source-only' },
+    { id: 'muyuArchiveWorldBook', title: '世界书中的暮羽存档标题、数量与记录核验（不发送正文） / World-book Muyu archive metadata and validation, no bodies', scope: 'global', permission: 'source-only' },
+    { id: 'muyuArchiveServer', title: '服务文件中的暮羽存档标题、数量与记录核验（不发送正文） / Service-file Muyu archive metadata and validation, no bodies', scope: 'global', permission: 'source-only' },
+    { id: 'muyuNoteStorage', title: '已保存的暮羽笔记清单与正文（关闭功能时也可读取） / Saved Muyu notes and text, including while disabled', scope: 'global', permission: 'source-only' },
+    { id: 'chatSummaryStorage', title: '当前聊天保存的业务总结清单与正文（不启用或生成） / Saved current-chat summaries, no activation or generation', scope: 'chat', permission: 'source-only' },
+    { id: 'muyuSelfConfig', title: '暮羽自身配置参数（无密钥、正文或草稿） / Muyu self-configuration (no secrets, bodies or drafts)', scope: 'global', permission: 'source-only' },
+    { id: 'muyuSelfText', title: '暮羽补充指令、接口文字与未保存草稿（脱敏后发送给模型） / Muyu instructions, connection text and unsaved drafts (sanitized, sent to model)', scope: 'global', permission: 'source-only' },
     { id: 'serviceDocuments', title: '本地资料白名单目录与文本（将发送给模型） / Approved local document roots and text (sent to model)', scope: 'global', permission: 'source-only' },
     { id: 'stCharacterCardState', title: '酒馆角色卡正文与保存资料 / ST saved character-card details', scope: 'global', permission: 'extended' },
     { id: 'stCharacterCardReferences', title: '角色卡删除保护：已加载群组、标签、绑定与当前使用引用计数 / Loaded character-card reference counts for deletion safeguards', scope: 'global', permission: 'extended' },

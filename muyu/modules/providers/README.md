@@ -83,7 +83,25 @@ ST 聊天与名称三来源由即时 `getContext()` 白名单投影，不执行 
 - `stWorldBookEntries`：global 范围，授权范围明确是**整个世界书资源库**。空 selector 获取书名目录；携带其 revision 用 `book:N` 异步加载单书的条目目录；携带该目录 revision 用 `search:N:QUERY` 搜索该书的注释、关键词及正文，或用 `entry:N:M` 精确读取一条的原始正文。目录最多显示80条，搜索最多20条，单书最多1024条；正文不执行宏、递归匹配或注入判断。
 - 两个来源独立授权。目录读取不调用 `loadWorldInfo`；单书与条目读取使用 ST 原有 `loadWorldInfo`，可能命中宿主缓存。因此 readAt 是本次观察时间，不证明磁盘持久化或最新注入。读取等待上限10秒；底层 ST 加载不支持由本适配器强行中止，但目标变化、取消或任务结束后的迟到结果不会发布。失败不向模型泄漏宿主错误正文。
 
+### 角色卡内组件只读
+
+普通角色卡 list/read 的结果可含固定 relatedReads 导航（仅在组件适配器已接入时），只指向 stCharacterComponents 自身目录，不返回组件正文、数量或继承的版本。角色卡工具组另指向 Provider 来源目录；工具组目录不是完整资料来源目录。导航不批准来源、不表示有数据，不触发预取；必须经原 Broker 授权与该来源版本核验。导航来自封闭第一方映射，不采纳角色卡正文、注释或未知扩展自称的工具入口。
+
+muyu.provider.read 的 id 只接受实际登记的固定来源。stCharacterCardState 等授权标识不是来源，错误填入时在参数校验阶段拒绝，不发起无效授权。用户 Provider 仍走独立 discover／execute／result 合同，不因该限定改变代码执行权限。
+
+stCharacterComponents 使用独立 global、source-only 授权。空选择器给最多40个角色名称，cards:N 继续名称目录；card:N 给卡内正则、酒馆助手脚本及嵌入世界书条目目录，再以 card:N:regex:M／card:N:script:M／card:N:book:M 读取白名单正文。子正文用 card:N 的版本；卡目录用根目录版本。正文共用2000字符分页、UTF-8字节预算及任务续读令牌，父目录重新核验后才能从第一页刷新，旧页不能拼接新内容。
+
+复用原角色卡端口的服务器读取、身份及版本核验，投影来自 json_data 保存副本，不读取编辑器草稿；不新增角色卡写入能力。不返回头像路径、脚本ID、任意extensions、脚本data或变量值。变量仅计数；旧字段、键值对格式只解析不迁移，新字段存在时不拼接旧字段。脚本／文件夹启用分别展示，未知、空列表、缺失、超限和不支持分别报告，不证明执行或最终注入。外部世界书绑定不代替嵌入书；不覆盖全局／预设正则或全局脚本。读取不运行正则、宏、按钮、脚本或远程依赖。不需要服务插件；宿主缺角色卡读取端口时仅该来源不可用。角色卡文本与组件正文批准独立，拒绝互相生效。
+
 ### 预设、Persona 与扩展目录
+
+Persona 名称来源 stPersonas 的概况及搜索标为 directory；接入正文适配器时可含 readHint.relatedReads，指向独立 stPersonaContent 目录。其正文目录按 currentReadAvailable／选中项的 storedReadAvailable 提供 nextRead 与可选 alternativeReads，均为本来源自己的完整读取参数，不自动读取。选中项未知时不因只有一个保存项就猜当前身份。仅 current 返回 SOURCE_UNAVAILABLE 时，可回本来源目录核对一次；目录本身不可用即停止。当前内存与保存正文分别说明，不用保存副本替代缺失的当前值；拒绝、取消、超限及不支持的返回不因此获得重试／换路许可。
+
+新正文来源的 readHint.parentRead 返回已读父目录修订号，导航到兄弟项时使用；父目录经过重新核对且 offset=0 时允许重新进入已读子项，正文变更会重新发放子项修订号。正文续页仍只能沿该子项版本，不拼接新旧数据。白名单排除私密字段不标为正文截断：新来源 sourceLimited=false，实际是否还有页由 nextOffset／pageState 表达；投影完成不等于完整原始配置或最终注入。
+
+另有两个独立正文来源，不扩大旧目录授权：stPersonaContent（global）以 current 读当前内存描述、persona:N 读保存描述，仅返回描述、位置、深度、角色、绑定书名的已存在字段。stPresetFamilies（global）以 mode:N 选择旧八类索引，3 委托原 stPresetContent；其余类型用 current／saved:M 读概况、compare:M 比较白名单、:field:K 读正文。字段正文使用概况 revision，概况使用 mode 目录 revision；继续共用原分页、UTF-8 预算和续读令牌。
+
+采样预设与格式模板分别检查，不把采样器没有主 Prompt 判成故障。思考格式不是隐藏思考。保存副本使用 getCompletionPresetByName，不能用 getPresetSettings 当前导出来替代。缺接口、类型不支持或超限均明确失败；不切换、保存、渲染或生成。Persona 名称与正文、其他预设名称与正文之间的拒绝互相生效；批准仍独立。原 OpenAI 选择器和编辑合同保持不变。
 
 - `stPresets`：global 范围。固定八类：kobold、novel、textgenerationwebui、openai、context、instruct、sysprompt、reasoning。空 selector 给类别及当前 UI 选择；`mode:N` 列出该类别最多80个名称，携带其 revision 可用 `search:N:QUERY` 查最多20个名称。只调用宿主预设管理器的 `getAllPresets` / `getSelectedPresetName`，不调用返回设置正文的方法；管理器未初始化显示 unavailable，不能解释为预设为空。当前选择是 UI 观察值，不证明下次生成一定使用它。
 - `stPersonas`：chat 范围。名称目录与 `search:NAME`，显示当前选中、默认和本聊天锁定标记。头像 ID 只作私有 revision 证据，不发送给模型；不读 Persona 描述／Prompt、连接规则或头像文件。最多1024项。
@@ -92,6 +110,8 @@ ST 聊天与名称三来源由即时 `getContext()` 白名单投影，不执行 
 variables 与 storyBlueprint 的 text 是分页的 JSON 文本；ST 三来源是有界文本目录。需要时拼齐页面再理解完整内容；继续沿用2000 UTF-16单元/页、不切代理对、字节预算和版本核验。变量值和节点 content 使用有界 JSON 复制：最多16层、4096访问节点、数组1024项、单字符串32768字符、整体32768 UTF-8字节；不支持或超过详情复制边界返回 SOURCE_UNSUPPORTED，目录/总投影超界返回 SOURCE_TOO_LARGE。不得把拒绝返回解释为无数据。
 
 ### 内部扩展规范
+
+已有专用资源 list/read 的入口不重复登记成 Provider：档案包、NPC包、蓝图包、自定义 Prompt 通过 muyu.tools.list 的实际工具组与 readPath 查找。该元数据只包含第一方固定工具、来源和读取步骤，不访问宿主资源、不批准读取，不提供当前缺席的工具。读取运行数据与核验保存资源分别选择入口；关闭运行开关不等于资源已删除。来源版本、权限、预算及拒绝继续由原专用模块核验；不回退到 Provider 执行代码。
 
 1. catalog.js 集中声明 ID、范围、授权类别、选择器、reader 键、输出合同键与文本大小/分页限制；公开目录剔除内部字段。注册不是授权。
 2. host/providers.js 使用闭合 reader 映射；原八类文本读取保持 legacy 兼容组，memoryConfig 与两个新来源独立分发。新来源不再追加到 legacy 分支，不执行旧 Provider render。现有内置对象身份核验保持不变；新来源直接由固定一方纯读取器提供，不接受自定义注册替换。
@@ -118,6 +138,8 @@ variables 与 storyBlueprint 的 text 是分页的 JSON 文本；ST 三来源是
 该来源由固定一方适配器 `host/config-read.js` 提供，复用既有 readConfigBaseline 校验；通过统一 Provider 端口访问，不伪造 Prompt 占位符或注册通用渲染器。自定义 Provider 即使用相同名称也不能替换此固定读取器。其他八类仍核对启动时捕获的内置对象/render/enabled身份；不执行任意render，不初始化、迁移或保存数据。后续来源必须显式增加目录、封闭输出合同及安全读取适配，注册本身不授予Agent访问权。
 
 通用工具的scope是global，实际边界按来源再次核验：聊天任务必须仍匹配原聊天，全局任务必须匹配原页面所有者且来源为global。全局任务不能读取聊天正文。结构化结果不分页，完整data计入已有Provider UTF-8字节预算，超过预算不返回部分对象；每次重新读取，返回的revision不是宿主持久化版本，也不能用作跨Run缓存。
+
+文本读取证据缓存在任务运行内最多保留256个来源／选择器引用、共8 MiB UTF-8序列化证据（包括正文及身份证据），与实际外发资料的providerBytes预算分别核算。重新读取替换同键时扣除旧证据大小，不累计重复占用；授权续接转移同一份缓存，结束／遗忘运行后释放。不会为了新增条目淘汰已有目录或正在分页的正文。容量不足返回 SOURCE_CACHE_FULL，readHint.recovery=stop、retryable=false，不提供“重读目录”的恢复指引；已有引用仍可在版本、授权、目标和资料预算允许时继续读取。剩余新条目可新建任务读取。真正的版本变化仍返回 STALE_SOURCE，不能把缓存满当作数据发生变化。没有新增授权或修改兼容标识。
 
 memoryConfig 使用 source:memoryConfig 按需授权，已进入 `muyu.permission.request` 枚举；chat/extended 不能代替它。旧 diagnostics 授权仅保留内部兼容。core 及旧 Provider 注册 API 不变。
 
@@ -186,3 +208,9 @@ Agent → ToolBroker → modules/providers → host/providers → 既有业务�
 检索统计区分 `scannedSteps`（本页扫描步数，可能重复访问同条记录）、`scannedRecords`（本页涉及的不同记录）和 `totalRecords`（所选来源／角色的当前记录总数）。预算仍按原32步／65536字符限制，不因区分统计而增加计算量。跨页可能再次扫描同条长记录，不能累加 scannedRecords 当全库总数；query 和 complete 只说明本关键词在指定来源的扫描覆盖，不能据此否定其他主题或角色的记录。失败／预算拒绝不携带已取得的统计或命中作为成功证据。
 
 `scannedRecords` 在扫描循环中按实际访问的不同索引计数，不从续搜游标推导。即使剩余字符额度只有一个 UTF-16 单元、下一条以代理对开头，游标为保护 Unicode 退回该条起点，该条也属于本页已涉及的记录；这不代表该条已完整扫描。共享扫描器的内部计数不改变 `muyu.history.search` 的既有输出字段。
+
+### 静态资料的证据范围
+
+Persona 正文、预设家族概况／正文／比较和卡内组件返回有界的 `evidence` 说明，放在正文前以便首个分页即可看到。`scope` 说明当前内存或宿主加载的保存副本，`bodyCoverage` 区分字段目录、差异字段名和指定正文（Persona 正文由原有 kind/fields 表示），`notObserved` 仅说明该次读取未覆盖的层面，不否定其他已获证据。Persona／预设的 `absentFields` 仅列白名单内、原对象未提供的字段；空字符串和明确值不会被当成缺失，不补默认值，也不据此推断不支持、删除或操作历史。预设比较分别说明两份快照的字段缺失；卡内缺失不代表全局组件不存在。
+
+这些说明不扩展权限、不读取其他来源、不执行组件，不把页面读完等同于故障原因已确认；仍受原分页、版本校验和 UTF-8 字节预算约束，不依赖可选服务插件。

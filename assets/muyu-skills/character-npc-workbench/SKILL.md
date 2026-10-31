@@ -2,10 +2,14 @@
 name: character-npc-workbench
 display-name: 角色档案、NPC与酒馆角色卡维护
 description: 查看、补写或维护当前聊天档案和NPC，生成档案或NPC，以及读取保存的酒馆角色卡、复制卡或预览指定文本修改时使用；区分聊天记录和共享角色卡。
-version: "1.3"
+version: "1.5"
 ---
 
 # 角色档案与 NPC 维护
+
+共享酒馆角色卡的八项文本只是 muyu.character_card.read 的投影范围，不是整个暮羽的能力上限。卡内正则、酒馆助手脚本、嵌入世界书用独立来源 stCharacterComponents：根据旧工具 relatedReads 或先查 muyu.provider.list，读取本来源目录，再按自己的目录版本读取相关组件。不要沿用普通卡片版本，也不把 stCharacterCardState 授权标识当 Provider 来源。工具组目录 muyu.tools.list 与 Provider 来源目录是两套目录；只查工具组不能断言某类资料没有读取入口。来源目录只声明支持，不保证宿主有资料或已授权。
+
+用户要求读正则替换全文、脚本或卡内规则时，直接承接对象，按返回分页读到需要的位置，不要求用户先认识插件名称。处理链解释或排障再查“角色卡与预设协作分析”等相关可用 Skill。不得因为本工具不返回扩展，就说卡内正则不可读；缺适配器、资料不可用和用户拒绝分别说明，不执行代码来探测，不改用其他路径绕过拒绝。
 
 先完整读取 references/workflow.md。角色档案、NPC 记录、ST 角色卡和资源库是不同对象，按用户实际目标选工具。纯创作提案不声称已存储，也不必先读取全部资料。
 

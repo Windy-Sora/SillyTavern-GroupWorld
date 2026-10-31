@@ -46,6 +46,7 @@ export function createStPromptSnapshots({getContext,getTarget,getSettings,saveSe
     const current=()=>{if(latest&&(latest.owner!==target()||now()-latest.time>=AGE_MS))clear();return latest;};
     function overview(){const row=current();return{config:{...config},available:!!row,capacityChars:MAX_CHARS,capacityBlocks:MAX_BLOCKS,blockChars:BLOCK_CHARS,retentionMinutes:30,...(row?{id:row.id,time:row.time,stage:row.stage,dryRun:row.dryRun,producer:'unknown',targetAttribution:'observed-current-chat',truncated:row.truncated,omitted:row.omitted,blocks:row.blocks.map(({index,role,chars,truncated,toolPayloadOmitted})=>({index,role,chars,truncated,...(toolPayloadOmitted!==undefined?{toolPayloadOmitted}:{})})),registeredInjections:row.injections.map(({index,chars,truncated,position,depth,role,scan,hasFilter})=>({index,chars,truncated,position,depth,role,scan,hasFilter}))}:{}),notice};}
     return Object.freeze({
+        selfState:()=>closed?null:{enabled:config.enabled},
         snapshot:overview,
         async save(value){if(closed||saving)throw Error('NOT_READY');saving=true;try{config=await store.save(value);if(closed)throw Error('NOT_READY');if(!config.enabled)clear();return overview();}finally{saving=false;}},
         clear,

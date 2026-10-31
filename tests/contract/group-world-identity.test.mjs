@@ -85,17 +85,17 @@ test('Public navigation uses the actual GW display name and remains a bounded st
     assert.equal(nav.notes.distinctFromCharacterMemory, true);
 });
 
-test('All 22 builtins load and every adapted package publishes its new content revision', async () => {
+test('All 23 builtins load and every adapted package publishes its new content revision', async () => {
     const expected = {
         'config-review': 5, 'provider-workbench': 4, 'variable-workbench': 4,
-        'memory-maintenance': 3, 'muyu-interface-guide': 6, 'muyu-troubleshooting': 6,
-        'character-npc-workbench': 5, 'resource-library-workflow': 5,
-        'prompt-template-workbench': 8, 'script-agent-workbench': 4,
-        'worldbook-workflow': 9, 'dsl-template-workbench': 2,
-        'st-card-stack-analysis': 5, 'st-ejs-template-guide': 5, 'tavern-helper-guide': 5,
+        'memory-maintenance': 3, 'muyu-interface-guide': 7, 'muyu-troubleshooting': 10, 'muyu-settings-guide': 5,
+        'character-npc-workbench': 7, 'resource-library-workflow': 6,
+        'prompt-template-workbench': 11, 'script-agent-workbench': 4,
+        'worldbook-workflow': 13, 'dsl-template-workbench': 2,
+        'st-card-stack-analysis': 9, 'st-ejs-template-guide': 5, 'tavern-helper-guide': 6,
     };
     const packs = await builtins();
-    assert.equal(packs.length, 22);
+    assert.equal(packs.length, 23);
     for (const [name, revision] of Object.entries(expected)) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
     }
@@ -106,6 +106,10 @@ test('All 22 builtins load and every adapted package publishes its new content r
 test('Brand adaptation preserves original Skill code and JSON; added storage names use only canonical literals', async () => {
     const files = [];
     async function walk(path) {
+        // This new guide was not in the original 22-package brand-adaptation snapshot.
+        // Its GroupWorld prose and manifest revision are checked above; keep the
+        // original code/JSON checksum intact rather than replacing it with a new hash.
+        if (path === 'assets/muyu-skills/muyu-settings-guide') return;
         for (const entry of await readdir(new URL(`../../${path}`, import.meta.url), { withFileTypes: true })) {
             const child = `${path}/${entry.name}`;
             if (entry.isDirectory()) await walk(child);
@@ -166,7 +170,7 @@ test('New builtin revisions preserve user Skill documents, disabled policies and
     assert.equal(builtin.enabled, false);
     await assert.rejects(registry.snapshot({ id: builtin.id, revision: '2:7', invocation: 'model' }), /SKILL_STALE/);
     await assert.rejects(registry.snapshot({ id: builtin.id, revision: builtin.revision, invocation: 'model' }), /SKILL_DISABLED/);
-    for (const [name, oldRevision, revision] of [['muyu-interface-guide', '5:7', '6:7'], ['worldbook-workflow', '8:7', '9:7']]) {
+    for (const [name, oldRevision, revision] of [['muyu-interface-guide', '6:7', '7:7'], ['worldbook-workflow', '12:7', '13:7']]) {
         const row = rows.find(r => r.id === 'builtin:' + name);
         assert.equal(row.revision, revision);
         assert.equal(row.enabled, false, 'knowledge updates must not re-enable user-disabled guides');

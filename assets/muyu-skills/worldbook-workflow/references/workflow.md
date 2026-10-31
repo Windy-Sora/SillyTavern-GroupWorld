@@ -1,5 +1,13 @@
 # 世界书与 ST 只读边界
 
+## Persona 与预设正文读取
+
+新正文投影中 sourceLimited=false、nextOffset=-1 表示本投影当前页已读完，不把白名单排除的私密字段说成正文截断；仍不能声称拿到完整原始配置。readHint.parentRead 给出已读父目录及其修订号，选兄弟项时用它，不用当前正文或对照结果的 revision。父目录仍有效时，可用父修订号从 offset:0 重新进入一个已读子项；重新开始会核对当前投影，不能把新旧正文拼接。continuation 只续同一版本页。
+
+Persona 与其他预设正文：目标明确时，直接读 stPersonaContent 或 stPresetFamilies 的本来源目录即可，不必重复读取旧名称来源。正文独立授权，目录批准不扩大，拒绝后不换路。stPersonaContent 用 current 查当前内存描述、persona:N 查保存描述；两者可能不同，缺字段不填默认值，当前名称清单不能证明过去是否切换。stPresetFamilies 先读 mode:N，0/1/2 是 Kobold/NovelAI/文本补全采样预设，4/5/6/7 是上下文/指令/系统提示词/思考格式；3 的聊天补全仍走 stPresetContent。各层使用相应 revision：mode:N → mode:N:current 或 mode:N:saved:M → 加 :field:K 读正文；compare:M 只比较白名单字段，正文变化再读对应概况和字段。首次完整传 id/selector/revision/offset:0，后续按 continuation；不混用父子层级的修订号。getPresetSettings 是当前导出，保存副本必须用保存资源读取器；缺接口就报告缺口。采样预设不一定含主 Prompt，要按问题继续核对上下文、指令或系统模板，不因没有 Prompt 就判故障。思考格式只是模板，不是隐藏思考。宏和激活正则保持原文、不执行；不返回密钥、地址、请求头、Persona连接或任意扩展。选中、enabled、保存副本存在不证明实际采用、最终注入、过去故障原因或持久化；用界面名称／label 解释。
+
+暮羽对话存档核验：用户说历史找不到，先用自身 storage 分区核对选定来源与实际来源，再查工具目录并选择 archive-inspection。muyu.archives.list 明确传 browser、account-settings、world-book 或 server 中的一个来源；需要确认某份记录时，用清单返回的局部 id 和 revision 调用 muyu.archives.inspect。各后端独立授权，不沿用自身参数或普通世界书授权；不自动扫描其他源，不切换来源、不合并、不迁移、不启用。返回标题、时间、数量及记录解码核验，不发送旧正文，不恢复会话、授权或操作。清单完整不等于正文已读；记录核验不保证过去操作成功或当前设置。unavailable／unsupported 不能说成空库或删除；browser 的 absent 仅说明当前账号／当前浏览器没有该库。未装服务插件只影响 server 来源；不能为了查世界书存档而启用数据条目或绑定剧情。用户明确禁止打开记录时，只核对允许的参数，不发起存档读取。
+
 ## 世界书观察
 
 `muyu.provider.list/read` 的 stWorldBooks 提供名称、全局／聊天／当前角色／Persona 绑定线索，不提供最终注入证明。stWorldBookEntries 是整个资源库的独立正文来源授权，不因名称目录已允许就自动可读。

@@ -66,7 +66,7 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             if (type === 'tool.completed' && tool === 'muyu.provider.read') {
                 const d = p.result?.data;
                 if (d && providerCatalog.some(p => p.id === d.source)) {
-                    const status = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'].includes(d.status) ? d.status : 'UNKNOWN_ERROR';
+                    const status = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'SOURCE_CACHE_FULL', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'].includes(d.status) ? d.status : 'UNKNOWN_ERROR';
                     row.read = { source: d.source, status, characters: d.source === 'memoryConfig' && d.data ? Math.min(2000, JSON.stringify(d.data).length) : typeof d.text === 'string' ? Math.min(2000, d.text.length) : 0, truncated: d.truncated === true };
                     if (typeof d.sourceLimited === 'boolean') {
                         row.read.limited = d.sourceLimited;

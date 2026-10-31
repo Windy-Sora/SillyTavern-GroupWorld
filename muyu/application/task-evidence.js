@@ -1,14 +1,16 @@
 import { configFields } from '../config/registry.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { validateConfigData } from '../modules/providers/config-contract.js';
+import { SELF_SECTIONS } from '../self/config.js';
+import { SELF_TEXT_ITEMS } from '../self/text.js';
 
 const fields = new Set(configFields), sources = new Set(providerCatalog.map(row => row.id));
 const previewTools = new Set(['muyu.config.preview', 'muyu.settings.preview', 'muyu.task.preview', 'muyu.profile.preview', 'muyu.variables.preview']);
-const knownTools = new Set(['muyu.config.contract', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.settings.read', 'muyu.provider.list', 'muyu.provider.read', 'muyu.task.plan', ...previewTools]);
+const knownTools = new Set(['muyu.config.contract', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.settings.read', 'muyu.self.read', 'muyu.self.read_text', 'muyu.provider.list', 'muyu.provider.read', 'muyu.task.plan', ...previewTools]);
 const ids = value => Array.isArray(value) ? [...new Set(value.filter(id => fields.has(id)))] : [];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const candidate = value => typeof value === 'string' && /^[a-z][a-z-]*:[a-zA-Z0-9-]{1,80}$/.test(value) ? value : null;
-const note = 'Host evidence footing for this execution trajectory only, not a goal-completion verdict. Observed field IDs describe past reads, not current values, runtime events or durable saving. Catalog and contract queries are not reads. Draft references are historical candidates, not published/validated artifacts, approvals or writes. Provider directory/page results do not prove whole-source coverage. No permissions are granted; use the original results and separate action receipts. An answer/run finishing does not complete a goal. Unlisted tools and earlier omitted observations are not assessed.';
+const note = 'Host evidence footing for this execution trajectory only, not a goal-completion verdict. Observed field IDs describe past reads, not current values, runtime events or durable saving. Catalog and contract queries are not reads. Draft references are historical candidates, not published/validated artifacts, approvals or writes. Provider directory/page results do not prove whole-source coverage or runtime causation; use the source scope and body coverage. A text difference does not establish a historical edit, and a missing field does not establish lack of support. No permissions are granted; use the original results and separate action receipts. An answer/run finishing does not complete a goal. Unlisted tools and earlier omitted observations are not assessed.';
 
 /** No content/value cache and no execution authority. One bounded, replaceable projection. */
 export function createTaskEvidence() {
@@ -42,6 +44,17 @@ export function createTaskEvidence() {
                 row.outcome = 'settings-read';
                 row.returned = selected.filter(returned).length;
                 row.missing = selected.length - row.returned;
+            } else if (call.toolId === 'muyu.self.read') {
+                row.source = 'muyuSelfConfig';
+                row.outcome = data?.status !== 'ok' ? 'source-read-failed' : 'not-established';
+                if (data?.status === 'ok' && body?.version === 1 && body.readOnly === true && SELF_SECTIONS.includes(body.section) && body.section === (call.args?.section || 'overview') && Array.isArray(body.sections)) {
+                    row.outcome = 'self-config-snapshot'; row.section = body.section;
+                }
+            } else if (call.toolId === 'muyu.self.read_text') {
+                row.source = 'muyuSelfText'; row.outcome = data?.status === 'ok' ? 'not-established' : 'source-read-failed';
+                if (data?.status === 'ok' && body?.version === 1 && body.readOnly === true && SELF_TEXT_ITEMS.includes(body.item) && body.item === call.args?.item && typeof body.complete === 'boolean') {
+                    row.item = body.item; row.outcome = body.complete && body.offset === 0 ? 'self-text-snapshot' : 'self-text-page';
+                }
             } else if (call.toolId === 'muyu.settings.contract' && Array.isArray(body)) {
                 for (const id of ids(body.map(item => item?.id))) contracts.add(id);
                 row.outcome = 'contract-query';

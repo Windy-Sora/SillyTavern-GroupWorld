@@ -83,6 +83,7 @@ registerSection('muyu', ctx => {
             } });
         const providerPort = createProviderPort({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, bindings: ctx.muyuProviderBindings, getProviders: ctx.getMuyuProviders,
             stDiagnostics, stPromptSnapshots, services,
+            characterComponents: { read: selector => characterCards.inspectComponents(host?.globalTarget, selector) },
             worldBooks: { getState: ctx.getMuyuWorldBookState, load: ctx.loadWorldInfo },
             stDirectories: { getSelectedPersona: ctx.getMuyuSelectedPersona, getExtensions: ctx.getMuyuExtensionDirectory } });
         const credentials = createCredentialStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });

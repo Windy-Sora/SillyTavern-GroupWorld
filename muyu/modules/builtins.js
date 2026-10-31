@@ -1,4 +1,7 @@
 import { createToolboxModule } from './toolbox.js';
+import { createSelfModule } from './self/index.js';
+import { createStorageInspectionModule } from './storage-inspection/index.js';
+import { createArchiveInspectionModule } from './archive-inspection/index.js';
 import { createSkillModule } from './skills/index.js';
 import { createSkillRuntimeModule } from './skills/runtime.js';
 import { createSelectionEditorModule } from './selection-editor/index.js';
@@ -82,6 +85,9 @@ export function createBuiltins(host) {
     const memoryGeneration = createMemoryGenerationModule({ port: host.memoryGeneration, charge: (id, bytes) => providers.charge(id, bytes) });
     const customAgents = createCustomAgentModule({ port: host.customAgents, charge: (id, bytes) => providers.charge(id, bytes) });
     const toolbox = createToolboxModule();
+    const self = createSelfModule({ read: host.readSelfConfig, readText: host.readSelfText, charge: (id, bytes) => providers.charge(id, bytes) });
+    const storageInspection = createStorageInspectionModule({ port: host.storageInspection, charge: (id, bytes) => providers.charge(id, bytes) });
+    const archiveInspection = createArchiveInspectionModule({ port: host.history?.inspection, charge: (id, bytes) => providers.charge(id, bytes) });
     const skills = createSkillModule({ port: host.skills, charge: (id, bytes) => providers.charge(id, bytes) });
     const skillRuntime = createSkillRuntimeModule({ port: host.skills, charge: (id, bytes) => providers.charge(id, bytes) });
     const customPrompts = createCustomPromptModule({ port: host.customPrompts, charge: (id, bytes) => providers.charge(id, bytes) });
@@ -97,13 +103,13 @@ export function createBuiltins(host) {
     const selectionEditor = createSelectionEditorModule({port:host.selectionEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const ledgerEditor = createLedgerEditorModule({port:host.ledgerEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const stPresetEditor = createStPresetModule({port:host.stPresetEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
-    const characterCards = createCharacterCardModule({port:host.characterCards,charge:(id,bytes)=>providers.charge(id,bytes)});
+    const characterCards = createCharacterCardModule({port:host.characterCards,charge:(id,bytes)=>providers.charge(id,bytes),canReadComponents:()=>host.providerPort?.available?.('stCharacterComponents')===true});
     const worldBookEditor = createWorldBookEditorModule({port:host.worldBookEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const blueprintNodeEditor = createBlueprintNodeEditorModule({port:host.blueprintNodeEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const modules = [toolbox, generationBatch, npcGeneration, profileGeneration, memoryGeneration, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, npcEditor, profileEditor, memoryEditor, variableEditor, blueprintLibraries, npcLibraryChat, blueprintLibraryChat, npcLibraries, profileLibraryChat, profileLibraries, skills, customPrompts, customAgents, scripts, memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web, notes, providerAssets];
     const unified = new Map();
     modules.push(skillRuntime);
-    modules.push(documents, pages, workspace);
+    modules.push(documents, pages, workspace, self, storageInspection, archiveInspection);
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
         if (run && !run.bound) {
@@ -119,12 +125,15 @@ export function createBuiltins(host) {
                 variableEditor, memoryEditor, profileEditor, npcEditor, providerAssets }),
             ...assetDescriptors(host, { customPrompts, skills, profileLibraries, npcLibraries, blueprintLibraries, profileLibraryChat, npcLibraryChat, blueprintLibraryChat }),
             ...executionDescriptors(host, { scriptExecutors: scripts, customAgents, generationBatch, memoryGeneration, profileGeneration, npcGeneration }),
-            ...readDescriptors(host, { toolbox, memory, director, context, history, interaction, permission, skillRuntime }),
+            ...readDescriptors(host, { toolbox, memory, director, context, history, interaction, permission, skillRuntime, self, storageInspection, archiveInspection }),
             ...supportDescriptors(host, { providers, taskPlan, profiles, web, notes, documents, pages, workspace }),
         ] });
     const draftEntry = id => draftAssembly.toolEntries.find(row => row.id === id);
     const entries = [
         { id: 'toolbox', module: toolbox },
+        ...(host.storageInspection ? [{ id: 'storage-inspection', module: storageInspection }] : []),
+        ...(host.history?.inspection ? [{ id: 'archive-inspection', module: archiveInspection }] : []),
+        ...(typeof host.readSelfConfig === 'function' ? [{ id: 'self', module: self }] : []),
         ...(host.generationBatch ? [{ id: 'generation-batch', module: generationBatch }] : []),
         ...(host.npcGeneration ? [{ id: 'npc-generation', module: npcGeneration }] : []),
         ...(host.profileGeneration ? [{ id: 'profile-generation', module: profileGeneration }] : []),
@@ -167,7 +176,11 @@ export function createBuiltins(host) {
     const labels = Object.fromEntries(Object.entries(toolLabels).filter(([id]) => (host.generationBatch || !generationBatch.registry.list().some(tool => tool.id === id)) && (host.npcGeneration || !npcGeneration.registry.list().some(tool => tool.id === id)) && (host.profileGeneration || !profileGeneration.registry.list().some(tool => tool.id === id)) && (host.memoryGeneration || !memoryGeneration.registry.list().some(tool => tool.id === id)) && (host.selectionEditor || !selectionEditor.registry.list().some(tool=>tool.id===id)) && (host.stPresetEditor || !stPresetEditor.registry.list().some(tool=>tool.id===id)) && (host.characterCards || !characterCards.registry.list().some(tool=>tool.id===id)) && (host.worldBookEditor || !worldBookEditor.registry.list().some(tool=>tool.id===id)) && (host.ledgerEditor || !ledgerEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintNodeEditor || !blueprintNodeEditor.registry.list().some(tool=>tool.id===id)) && (host.npcEditor || !npcEditor.registry.list().some(tool=>tool.id===id)) && (host.profileEditor || !profileEditor.registry.list().some(tool=>tool.id===id)) && (host.memoryEditor || !memoryEditor.registry.list().some(tool=>tool.id===id)) && (host.variableEditor || !variableEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintLibraryChat || !blueprintLibraryChat.registry.list().some(tool => tool.id === id)) && (host.blueprintLibraries || !blueprintLibraries.registry.list().some(tool => tool.id === id)) && (host.npcLibraryChat || !npcLibraryChat.registry.list().some(tool => tool.id === id)) && (host.npcLibraries || !npcLibraries.registry.list().some(tool => tool.id === id)) && (host.profileLibraryChat || !profileLibraryChat.registry.list().some(tool => tool.id === id)) && (host.profileLibraries || !profileLibraries.registry.list().some(tool => tool.id === id)) && (host.skills || !skills.registry.list().some(tool => tool.id === id)) && (host.customPrompts || !customPrompts.registry.list().some(tool => tool.id === id)) && (host.customAgents || !customAgents.registry.list().some(tool => tool.id === id)) && (host.providerAssets || !providerAssets.registry.list().some(tool => tool.id === id)) && (host.scriptExecutors || !scripts.registry.list().some(tool => tool.id === id))));
     if (!host.skills?.catalog) for (const definition of skillRuntime.registry.list()) delete labels[definition.id];
     if (!host.bindTaskStep) delete labels['muyu.task.bind_step'];
+    if (!host.storageInspection) { delete labels['muyu.storage.list']; delete labels['muyu.storage.read']; }
+    if (!host.history?.inspection) { delete labels['muyu.archives.list']; delete labels['muyu.archives.inspect']; }
     if (!host.bindTaskRead) delete labels['muyu.task.bind_read'];
+    if (typeof host.readSelfConfig !== 'function') delete labels['muyu.self.read'];
+    if (typeof host.readSelfConfig !== 'function' || typeof host.readSelfText !== 'function') delete labels['muyu.self.read_text'];
     const { registry, handlers } = createToolPlan(entries.map(entry => {
         const declared = draftEntry(entry.id);
         if (!declared || declared.module !== entry.module && !draftAssembly.owns(entry.module)) throw Error('MODULE_OWNER_MISSING');

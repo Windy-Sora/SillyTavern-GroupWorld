@@ -24,6 +24,7 @@ const builtinEnglish = Object.freeze({
     'muyu-troubleshooting': ['Muyu troubleshooting', 'Diagnose connection, permission, context and tool failures from available evidence without requesting secrets.'],
     'skill-workbench': ['Skill management', 'Discover, inspect and manage Skills; imported documents never grant extra permissions.'],
     'muyu-interface-guide': ['Muyu interface guide', 'Find actual GUI controls for connections, history, permissions, Skills and memory without reading private settings.'],
+    'muyu-settings-guide': ['Muyu settings and tuning', 'Explain Muyu budgets, permissions and storage; compare instruction drafts, inspect tool availability read-only and suggest targeted GUI adjustments.'],
 });
 
 export function skillDisplay(row, lang = 'zh') {

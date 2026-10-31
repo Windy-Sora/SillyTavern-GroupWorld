@@ -8,6 +8,8 @@ import { readStSource } from './st-sources.js';
 import { readWorldBookOverview, readWorldBookEntries } from './st-world-books.js';
 import { readStPresets, readStPersonas, readStExtensions } from './st-directories.js';
 import { readStPresetContent } from './st-preset-content.js';
+import { readStPersonaContent } from './st-persona-content.js';
+import { readStPresetFamilies } from './st-preset-families.js';
 import { copyJson } from '../core/json-contract.js';
 import { contextRequirements, missingContext, providerContext } from './provider-context.js';
 import { getTrustedProviderDigest } from '../../systems/user-provider-loader.js';
@@ -15,7 +17,7 @@ export { providerCatalog } from '../modules/providers/catalog.js';
 const text = value => typeof value === 'string' ? value : '';
 const bounded = value => { if (value.length > 131072) throw Error('SOURCE_TOO_LARGE'); return value; };
 /** Fixed built-in identities captured by the extension, not discovered from model input. */
-export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, worldBooks, stDirectories, stDiagnostics, stPromptSnapshots, services, trustedDigest = getTrustedProviderDigest }) {
+export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, worldBooks, stDirectories, stDiagnostics, stPromptSnapshots, services, characterComponents, trustedDigest = getTrustedProviderDigest }) {
     const trusted = new Map(bindings.map(p => [p.id, { object: p, render: p.render, enabled: p.enabled }]));
     const exposed = new Map();
     const stableDigest = (p, requirements) => {
@@ -70,6 +72,8 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         if (source?.reader === 'stWorldBookEntries') return typeof worldBooks?.getState === 'function' && typeof worldBooks?.load === 'function';
         if (source?.reader === 'stPresets') return typeof getContext === 'function';
         if (source?.reader === 'stPresetContent') return typeof getContext === 'function';
+        if (source?.reader === 'stPersonaContent' || source?.reader === 'stPresetFamilies') return typeof getContext === 'function';
+        if (source?.reader === 'stCharacterComponents') return typeof characterComponents?.read === 'function';
         if (source?.reader === 'stPromptOverview' || source?.reader === 'stPromptText') return typeof stPromptSnapshots?.read === 'function';
         if (source?.reader === 'stDiagnostics') return typeof stDiagnostics?.read === 'function';
         if (source?.reader === 'serviceDiagnostics') return typeof services?.readDiagnostics === 'function';
@@ -130,6 +134,9 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         stWorldBookEntries: (_id, selector) => readWorldBookEntries(selector, worldBooks?.getState, worldBooks?.load),
         stPresets: (_id, selector) => readStPresets(selector, getContext),
         stPresetContent: (_id, selector) => readStPresetContent(selector, getContext),
+        stPersonaContent: (_id, selector) => readStPersonaContent(selector, getContext, stDirectories?.getSelectedPersona),
+        stPresetFamilies: (_id, selector) => readStPresetFamilies(selector, getContext),
+        stCharacterComponents: (_id, selector) => characterComponents.read(selector),
         stPromptOverview: (_id, selector) => stPromptSnapshots.read(selector, false),
         stPromptText: (_id, selector) => stPromptSnapshots.read(selector, true),
         stDiagnostics: (_id, selector) => stDiagnostics.read(selector),

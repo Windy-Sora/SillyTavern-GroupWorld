@@ -7,6 +7,7 @@ import { openStWorldBookHistoryStore } from './worldbook-history.js';
 import { serializeSettings } from '../storage/settings-queue.js';
 import { openRoutedHistoryStore, HISTORY_SOURCES, historyTargets } from '../sessions/routed-store.js';
 import { volumeTargetMiB } from '../sessions/worldbook-volume.js';
+import { createArchiveInspectionPort } from './archive-inspection.js';
 
 export function historyStorageChoice(settings) {
     const choice = settings.muyuHistoryStorage;
@@ -14,7 +15,7 @@ export function historyStorageChoice(settings) {
     return ['auto', 'world-book', 'account-settings'].includes(choice) ? choice : 'invalid';
 }
 /** Only the host composition layer supplies account identity, never the model or an import. */
-export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openRecovery = openRecoveryStore, openServer = openServerHistoryStore, openWorldBook = openStWorldBookHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
+export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openArchiveBrowser, openRecovery = openRecoveryStore, openServer = openServerHistoryStore, openWorldBook = openStWorldBookHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
     const activeStorage = historyStorageChoice(getSettings());
     const initialReadSource = getSettings().muyuHistoryReadSource;
     let resolvedSource = null;
@@ -59,6 +60,7 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
         return JSON.stringify(['account', account.handle, account.created]);
     }
     const port = {
+        inspection: createArchiveInspectionPort({ getIdentity: accountKey, getSettings, openBrowser: openArchiveBrowser, openServer, openWorldBook, fetcher, getHeaders }),
         enabled: () => getSettings().muyuHistoryEnabled === true,
         worldBookTargetMiB: () => volumeTargetMiB(getSettings().muyuHistoryVolumeMiB),
         async setWorldBookTargetMiB(value) {

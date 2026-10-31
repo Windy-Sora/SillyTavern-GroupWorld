@@ -9,6 +9,10 @@ function settingsSources(fields) {
 // One application contract for tool effects, required grants and history dependencies.
 // Tool definitions own wire schemas; handlers own business validation.
 const capabilities = Object.freeze({
+    'muyu.self.read': { effect: 'read', sources: () => ['source:muyuSelfConfig'] },
+    ...Object.fromEntries(['muyu.archives.list', 'muyu.archives.inspect'].map(id => [id, { effect: 'read', sources: args => ({ browser: ['source:muyuArchiveBrowser'], 'account-settings': ['source:muyuArchiveSettings'], 'world-book': ['source:muyuArchiveWorldBook'], server: ['source:muyuArchiveServer'] })[args.source] || null }])),
+    ...Object.fromEntries(['muyu.storage.list', 'muyu.storage.read'].map(id => [id, { effect: 'read', sources: args => ({ notes: ['source:muyuNoteStorage'], summaries: ['source:chatSummaryStorage'] })[args.resource] || null }])),
+    'muyu.self.read_text': { effect: 'read', sources: () => ['source:muyuSelfText'] },
     'muyu.service.fetch_page': { effect: 'external', sources: () => [] },
     'muyu.service.write_file': {effect:'read',sources:()=>['source:serviceDocuments']},
     'muyu.service.validate_json': {effect:'read',sources:()=>[]},

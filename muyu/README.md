@@ -1,5 +1,7 @@
 # 暮羽 Agent
 
+关闭长期记忆或业务总结后，仍可要求暮羽只读核验保存的笔记／当前酒馆聊天总结。还可按来源核验暮羽对话存档的清单与指定记录格式；不向模型发送旧正文，不恢复历史授权或操作。管理读取不会启用、生成、迁移或修改内容；服务插件未安装不影响其他来源。详见 [保存资料核验](modules/storage-inspection/README.md) 和 [对话存档核验](modules/archive-inspection/README.md)。
+
 暮羽是 GroupWorld 内置的酒馆助手，使用独立聊天窗口，按需调用工具和 Skill，帮助用户理解功能、读取资料、排查问题，以及预览和执行已接入的配置或资产操作。GroupDirector／GD 为保留的兼容名称，不是额外安装依赖；适配与验收见 [MIGRATION](../docs/MIGRATION.md)。
 
 它通过 SillyTavern 扩展接口与宿主交互，不修改酒馆核心代码。具体能力取决于当前聊天、宿主接口、用户启用项和授权；不能将工具目录或模型回答当作已经读取、执行或保存的证明。
@@ -53,6 +55,7 @@ ST 消息编辑／删除、蓝图业务生成／续写等未开放给暮羽的�
 | `context/`、`instructions/`、`retrieval/` | 历史规划、摘要、指令与有界检索 |
 | `sessions/`、`storage/`、`memory/` | 对话仓库、存储协调与用户长期记忆 |
 | `skills/` | Skill 目录、资源读取、启用管理与运行时加载 |
+| `self/` | 暮羽自身参数的固定只读投影，不开放自身设置写入 |
 | `model/`、`web/`、`services/` | 模型、搜索与可选服务客户端 |
 | `ui/` | 订阅式聊天视图和设置，不直接承担业务写入 |
 | `server-plugin/` | 可单独安装的服务端代码，不存放真实用户数据 |
@@ -66,6 +69,7 @@ ST 消息编辑／删除、蓝图业务生成／续写等未开放给暮羽的�
 - [动作与回执](actions/README.md)
 - [权限与授权续接](permissions/README.md)
 - [运行预算](application/RUN-BUDGETS.md)
+- [自身配置只读入口](modules/self/README.md)
 - [安全执行过程](application/PROCESS.md)
 - [上下文整理](context/README.md)
 - [模型接入](model/README.md)

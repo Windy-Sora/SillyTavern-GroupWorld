@@ -1,5 +1,6 @@
 import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
+import { projectCardComponents } from './st-card-components.js';
 export const CHARACTER_TEXT_FIELDS=Object.freeze({description:'角色描述',personality:'性格',scenario:'场景',first_mes:'首条消息',mes_example:'示例对话',system_prompt:'系统提示词',post_history_instructions:'历史后指令',creator_notes:'创作者备注'});
 const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const avatarOk=v=>typeof v==='string'&&v.length<=200&&v.endsWith('.png')&&!/[\\/<>:"|?*\x00-\x1f]/.test(v)&&v!=='.png'&&v!== '..png';
@@ -24,6 +25,23 @@ export function createCharacterCardPort({getTarget,getDirectory,load,save,duplic
         const result={s,identity,raw,persisted,key,revision};if(versions.size>=128&&!versions.has(selector))versions.delete(versions.keys().next().value);versions.set(selector,result);return result;}
     function page(text,revision,offset){if(text.length>131072)throw Error('CHARACTER_TOO_LARGE');if(!Number.isInteger(offset)||offset<0||offset>text.length||offset&&/[\uDC00-\uDFFF]/.test(text[offset]))throw Error('INVALID_CHARACTER_CARD');let end=Math.min(text.length,offset+6000);if(end<text.length&&/[\uD800-\uDBFF]/.test(text[end-1]))end--;return{text:text.slice(offset,end),revision,nextOffset:end<text.length?end:-1};}
     return Object.freeze({
+        async inspectComponents(target, selector = '') {
+            if (!selector || /^cards:(0|[1-9]\d{0,3})$/.test(selector)) {
+                const s = state(target), offset = selector ? Number(selector.slice(6)) : 0;
+                if (offset > s.rows.length) throw Error('INVALID_SELECTOR');
+                return { text: JSON.stringify({ kind: 'card-directory', cards: s.rows.slice(offset, offset + 40).map((row, index) => ({ name: row.name, selector: 'card:' + (offset + index) })),
+                    nextSelector: offset + 40 < s.rows.length ? 'cards:' + (offset + 40) : null,
+                    notice: 'Names only; select a card to inspect saved regex/helper/embedded-book components. No editor drafts or execution.' }), limited: false, identity: directoryRevision(s) };
+            }
+            const match = /^(card:(?:0|[1-9]\d{0,3}))(?::(?:regex|script|book):(?:0|[1-9]\d{0,3}))?$/.exec(selector);
+            if (!match) throw Error('INVALID_SELECTOR');
+            let c;
+            try { c = await capture(target, match[1]); }
+            catch (error) {
+                throw Error(({ STALE_CHARACTER_CARD: 'STALE_SOURCE', INVALID_CHARACTER_CARD: 'INVALID_SELECTOR', UNSUPPORTED_CHARACTER: 'SOURCE_UNSUPPORTED', CHARACTER_TOO_LARGE: 'SOURCE_TOO_LARGE', CHARACTER_BUSY: 'SOURCE_UNAVAILABLE' })[error.message] || (error instanceof SyntaxError ? 'SOURCE_UNSUPPORTED' : error.message));
+            }
+            return projectCardComponents(c.persisted, selector, c.revision);
+        },
         list(target,offset=0){const s=state(target);if(!Number.isInteger(offset)||offset<0||offset>2048)throw Error('INVALID_CHARACTER_CARD');return {revision:directoryRevision(s),cards:s.rows.slice(offset,offset+20).map((r,i)=>({name:r.name,selector:'card:'+(offset+i)})),nextOffset:offset+20<s.rows.length?offset+20:-1};},
         async read(target,selector,revision,offset=0){const root=directoryRevision(state(target)),c=await capture(target,selector);if(revision!==c.revision&&!(offset===0&&revision===root))throw Error('STALE_CHARACTER_CARD');
             const data=object(c.raw.data)?c.raw.data:c.raw,metadata={};for(const field of ['creator','character_version','tags','alternate_greetings'])if(Object.hasOwn(data,field)){

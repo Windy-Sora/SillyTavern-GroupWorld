@@ -1,5 +1,6 @@
 import { copyJson } from '../core/json-contract.js';
 import { ExecutionError } from '../core/execution.js';
+import { readNavigation } from './read-navigation.js';
 
 // Grouping changes model-visible definitions, NEVER permission or executable capabilities.
 const groups = Object.freeze({
@@ -42,10 +43,11 @@ export function createToolSelection(definitions, allowedTools, moduleGroups = {}
         else { if (!optional.has(group[0])) optional.set(group[0], { id: group[0], title: group[1], tools: [] }); optional.get(group[0]).tools.push(row); }
     }
     const enabled = values.length > 64 && allowed.has('muyu.tools.select') && allowed.has('muyu.tools.list');
+    const availableToolIds = values.map(row => row.id);
     if (enabled && base.length > 61) throw Error('TOOL_BASE_CAPACITY'); // Leave recovery slots, never truncate.
     return Object.freeze({
         enabled,
-        list: () => ({ grouped: enabled, baseCount: base.length, limit: 64, groups: [...optional.values()].map(row => ({ id: row.id, title: row.title, tools: row.tools.map(tool => tool.id), count: row.tools.length })) }),
+        list: () => ({ grouped: enabled, baseCount: base.length, limit: 64, groups: [...optional.values()].map(row => ({ id: row.id, title: row.title, tools: row.tools.map(tool => tool.id), count: row.tools.length, ...readNavigation(row.id, row.tools.map(tool => tool.id), availableToolIds) })) }),
         select(ids = []) {
             if (!Array.isArray(ids) || ids.length > 8 || new Set(ids).size !== ids.length || ids.some(id => !optional.has(id))) throw new ExecutionError('INVALID_TOOL_GROUP');
             const selected = enabled ? [...base, ...ids.flatMap(id => optional.get(id).tools)] : values;

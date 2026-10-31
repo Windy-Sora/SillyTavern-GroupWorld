@@ -54,3 +54,19 @@ test('Context catalog covers implemented static documents, resolves exact IDs an
     assert.equal(out.complete, false); assert.equal(out.documents.length, 2); assert.deepEqual(out.missing, ['../../private']);
     validateJson(m.registry.get('muyu.context.read').outputSchema, out); m.dispose();
 });
+
+test('empty and absent retained director history remain present-time structure without exposing old body', () => {
+    const f = fixture(); f.metadata.gd.directorHistory = [];
+    const empty = f.read();
+    validateJson(f.module.registry.get('muyu.director.inspect').outputSchema, empty);
+    assert.equal(empty.state.historyCount, 0);
+    assert.equal(empty.evidence.scope, 'director-structure');
+    assert.equal(empty.findings.find(row => row.code === 'NO_HISTORY').kind, 'unknown');
+    empty.evidence.scope = 'runtime';
+    delete f.metadata.gd.directorHistory;
+    assert.equal(f.read().evidence.scope, 'director-structure');
+    assert.equal(f.read().state.historyCount, 0);
+    assert.equal(f.metadata.gd.directorHistory, undefined);
+    assert.doesNotMatch(JSON.stringify(f.read()), /PRIVATE/);
+    f.module.dispose();
+});

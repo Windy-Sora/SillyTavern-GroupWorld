@@ -1,4 +1,5 @@
 import { validateConnection } from '../model/connection.js';
+import { projectConnectionText } from '../self/text.js';
 
 /** Use the same connection contract as execution; never expose a credential in errors. */
 export function validateConnectionFields(fields, saved, report, kind = 'test') {
@@ -71,5 +72,7 @@ export function createConnectionForm({ doc, parent, lang }) {
     source.addEventListener('change', refreshOptions);
     profile.addEventListener('change', refreshOptions); thinking.addEventListener('change', refreshOptions);
     refreshOptions();
-    return { source, hostStatus, hostTest, hostTestStatus, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect, savedKeyStatus, forgetKey, activeStatus, actions, modelArea, refreshOptions };
+    const readSelfDraft = () => JSON.parse(projectConnectionText({ source: source.value, endpoint: endpoint.value, model: model.value,
+        profile: profile.value, thinking: thinking.checked, reasoningEffort: effort.value }, [key.value]));
+    return { source, hostStatus, hostTest, hostTestStatus, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect, savedKeyStatus, forgetKey, activeStatus, actions, modelArea, refreshOptions, readSelfDraft };
 }

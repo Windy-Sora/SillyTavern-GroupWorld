@@ -2741,7 +2741,7 @@ test('Original-history reads stay in the active session and cannot undo an omitt
     const f = fixture([[text('PRIVATE_HISTORY_MARKER'), done], [text('second answer'), done], [tool('muyu.history.list', { offset: 0 }), done],
         [text('listed'), done], [readAttempt, done], [text('read'), done], [omittedAttempt, done], [text('denied'), done]],
     // Leave room for stable instructions; this test concerns history authorization, not the exact instruction size.
-    { contextConfig: { read: () => ({ inputTokens: 50000, recentTurns: 1, autoSummary: false }) } });
+    { contextConfig: { read: () => ({ inputTokens: 64000, recentTurns: 1, autoSummary: false }) } });
     await f.enable(); f.controller.setMode('assistant');
     f.controller.setInput('First question'); f.controller.send(); await settle();
     const original = JSON.parse(f.controller.exportHistory()).messages[1];
@@ -3130,26 +3130,28 @@ test('Manual compaction rejects a switched chat before any paid call and succeed
 test('Controller avoids unnecessary recompaction and retains all intermediate corrections', async () => {
     const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old budget 3700'), done],
         [text('revision acknowledged'), done], [text('filler answer'), done], [text('4200'), done]],
-        { contextConfig: { read: () => ({ inputTokens: 64000, recentTurns: 1, autoSummary: false }), save: async () => {} } });
+        // This is the no-pressure case; leave room for the complete tool contracts below the 80% trigger.
+        { contextConfig: { read: () => ({ inputTokens: 80000, recentTurns: 1, autoSummary: false }), save: async () => {} } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true); await seedTurns(f);
     await f.controller.compactHistory();
-    await f.controller.saveContextConfig({ inputTokens: 64000, recentTurns: 1, autoSummary: true });
+    await f.controller.saveContextConfig({ inputTokens: 80000, recentTurns: 1, autoSummary: true });
     for (const input of ['Revision: 4200 replaces 3700', 'Discuss another topic', 'What is the budget?']) {
         f.controller.setInput(input); f.controller.send(); await settle();
     }
     const snapshot = f.controller.snapshot(), last = snapshot.runs.at(-1);
-    assert.equal(last.status, 'succeeded'); assert.equal(last.process.coverage.status, 'skipped');
+    assert.equal(last.status, 'succeeded', JSON.stringify({ notice: snapshot.notice, process: last.process, requests: f.model.requests.length })); assert.equal(last.process.coverage.status, 'skipped');
     assert.equal(last.process.coverage.omitted, 0); assert.equal(last.process.coverage.summarized, 6);
     assert.match(JSON.stringify(f.model.requests.at(-1)), /Revision: 4200 replaces 3700/);
+    assert.equal(f.model.requests.length, 8); // Four answers, one manual summary, three new answers; no automatic summary.
     assert.equal(snapshot.context.coverage.state, 'complete'); assert.equal(snapshot.messages.length, 14);
     await f.controller.dispose();
 });
 
 test('Blocked controller history is recoverable only by explicit omission or a fitting context', async () => {
     const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old summary'), done],
-        [...Array.from({ length: 8 }, () => text('中'.repeat(4000))), done], [text('fresh answer'), done]],
+        [...Array.from({ length: 24 }, () => text('中'.repeat(4000))), done], [text('fresh answer'), done]],
         // Fits the initial requests, but not the deliberately oversized generated history below.
-        { contextConfig: { read: () => ({ inputTokens: 50000, recentTurns: 2, autoSummary: false }) } });
+        { contextConfig: { read: () => ({ inputTokens: 64000, recentTurns: 2, autoSummary: false }) } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true); await seedTurns(f);
     await f.controller.compactHistory(); f.controller.setInput('Long answer'); f.controller.send(); await settle();
     const before = f.model.requests.length, rawCount = f.controller.snapshot().messages.length;
@@ -3243,9 +3245,9 @@ test('A long answer is carried into the next request when the configured input b
 test('An uncarried recent long answer can be summarized once before the follow-up', async () => {
     // Leave room for the current tool contracts after compaction, while the original
     // answer still exceeds the planner's 90% raw-history allowance.
-    const longAnswer = '中'.repeat(29000);
-    const f = fixture([[...Array.from({ length: 10 }, (_, i) => text(longAnswer.slice(i * 3000, (i + 1) * 3000))).filter(e => e.text), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
-        contextConfig: { read: () => ({ inputTokens: 48000, recentTurns: 12, autoSummary: true }) },
+    const longAnswer = '中'.repeat(34000);
+    const f = fixture([[...Array.from({ length: Math.ceil(longAnswer.length / 3000) }, (_, i) => text(longAnswer.slice(i * 3000, (i + 1) * 3000))), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
+        contextConfig: { read: () => ({ inputTokens: 56000, recentTurns: 12, autoSummary: true }) },
     });
     await f.enable(); f.controller.setMode('assistant');
     f.controller.setInput('Draft a plan'); f.controller.send(); await settle();

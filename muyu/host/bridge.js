@@ -1,5 +1,6 @@
 import { randomUUID } from '../runtime/crypto.js';
 import { createHostModelConnection } from './model-connection.js';
+import { createStorageInspectionPort } from './storage-inspection.js';
 /** Page-local identity only; no names or raw identity strings enter model requests. */
 export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, permissionConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, services, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort, getGuards = () => ({}), pageId = randomUUID() }) {
     const userKey = 'page:' + pageId;
@@ -17,6 +18,7 @@ export function createHostBridge({ getContext, getSettings, extensionKey, provid
         return { kind: 'chat', userKey, chatKey: JSON.stringify([...owner, chatId]) };
     }
     return Object.freeze({
+        storageInspection: createStorageInspectionPort({ getContext, getSettings, getTarget: currentTarget, extensionKey, agentMemory }),
         currentTarget, globalTarget, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, permissionConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, services, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort,
         stDiagnostics,
         modelConnection: createHostModelConnection({ getContext, stDiagnostics }),

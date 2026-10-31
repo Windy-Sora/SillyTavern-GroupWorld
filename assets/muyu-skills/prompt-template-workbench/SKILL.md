@@ -2,7 +2,7 @@
 name: prompt-template-workbench
 display-name: Prompt与模板设计
 description: 用户希望修改GroupWorld功能Prompt、创建自定义Prompt数据源、调整输出示例或GroupWorld模板引用时使用；区别提示词、Schema和可执行Provider，第三方EJS转专项技能。
-version: "1.6"
+version: "1.9"
 ---
 
 # Prompt 与模板设计
@@ -26,3 +26,5 @@ ST原生宏、ST-Prompt-Template的EJS和GroupWorld DSL是不同解释器。EJS�
 输出示例、JSON Schema、Prompt 正文和模板包装是不同对象；按具体模块的验证语义设计。只有真实渲染和模型结果才能验证效果，保存或格式通过不等于可用。
 
 用“自定义提示词”“生成提示词”“输出示例”等界面名称，必要时补字段名。引用重命名／删除风险和后续 Provider 运行开销要说清楚。
+
+快照对比只建立本次读取的文字和值差异。不要用“像是你改了一份、加载了另一份”“保存时用了旧版”等类比开头，这仍暗含未读取的编辑／保存／加载历史。可解释条件机制，但不能给原因排序；最终请求未观察时，“有槽位”和“缺槽位”都不证明整条注入路径。

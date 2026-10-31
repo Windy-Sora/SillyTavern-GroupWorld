@@ -1,4 +1,5 @@
 import { randomUUID } from '../runtime/crypto.js';
+import { sanitizeSelfText, projectConnectionText } from '../self/text.js';
 import { serviceToolAllowed } from '../services/tool-gate.js';
 import { createBuiltinActions } from '../actions/builtins.js';
 import { DISPLAY_DEFAULTS, validateDisplayConfig } from '../preferences/contract.js';
@@ -61,6 +62,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
         !permissions.allows(source, target, taskId) && !historyGrants.get(historyGrantKey(record, target))?.has(source));
     const compactResults = new Map();
     let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = copyJson(instructionConfig), savingInstructions = false;
+    const selfConnectionDrafts = new Map();
+    let selfConnectionSecret = '';
     const permissions = createPermissions({ fullAccess: () => fullAccess, readAccess: () => permissionConfig.readAccess === 'all' });
     const requiredPermission = () => mode === 'chat' ? 'chat' : 'diagnostics';
     const category = definition => definition.dataClasses.includes('public-knowledge') ? 'public' : definition.dataClasses.includes('chat-content') ? 'chat' : 'diagnostics';
@@ -391,6 +394,71 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             notice: notices.get(sessionId) || null, error,
         };
     }
+    function readSelfConfig(ctx) {
+        live();
+        const intent = intentions.get(ctx.runId), run = app?.snapshot().runs.find(row => row.id === ctx.runId);
+        if (resetting || !intent || intent.mode !== 'assistant' || intent.explanation || run?.status !== 'running' ||
+            jsonKey(run.target) !== jsonKey(ctx.target) || ctx.target.userKey !== host.globalTarget.userKey ||
+            ctx.target.kind === 'chat' && jsonKey(ctx.target) !== jsonKey(host.currentTarget())) throw Error('SELF_STATE_UNAVAILABLE');
+        // No GUI snapshot, credentials, history, resource bodies or unsaved drafts enter this port.
+        const reply = instructionConfig.replyLanguage;
+        const active = intent.instructions;
+        // Passive local getters only: do not capture tools, open storage, load resources or probe services.
+        const observe = read => { try { return read(); } catch { return undefined; } };
+        const routing = observe(() => host.history?.routing?.());
+        const stored = observe(() => library.selfState(intent.historyId));
+        const web = observe(() => host.webSearch?.describe());
+        const service = observe(() => host.services?.toolStatus?.());
+        const diagnostics = observe(() => host.stDiagnostics?.selfState?.());
+        const promptCapture = observe(() => host.stPromptSnapshots?.selfState?.());
+        const skill = observe(() => host.skills?.selfState?.());
+        const tools = Object.fromEntries([['documents', 'documentsEnabled'], ['pages', 'pagesEnabled'], ['workspace', 'workspaceEnabled'], ['json', 'jsonEnabled']].map(([key, method]) => [key, observe(() => host.services?.[method]?.())]));
+        const allowed = capability => observe(() => !!intent.serviceTools && intent.serviceTools.allows(capability));
+        return {
+            configured: { run: runConfig, context: contextConfig, permission: permissionConfig, fullAccess,
+                connection: connection && { source: connection.source || 'independent', profile: connection.profile, thinking: connection.thinking,
+                    autoConnect: connection.autoConnect, remembered: connection.remembered },
+                storage: { autoSave: observe(() => host.history?.enabled()), choice: observe(() => host.history?.storageChoice?.()),
+                    readSource: routing?.readSource, writeTargets: routing?.writeTargets, worldBookTargetMiB: observe(() => host.history?.worldBookTargetMiB?.()) },
+                tools: { ...tools, webSearch: webSearchEnabled, webLimits: web, serviceStatus: service?.status,
+                    diagnostics: diagnostics?.enabled, browserErrors: diagnostics?.browserErrors, promptCapture: promptCapture?.enabled,
+                    memory: observe(() => host.agentMemory?.enabled()), skills: skill?.enabled },
+                display: { ...displayConfig, theme: displayConfig.theme ?? 'host' },
+                behavior: { enabled: instructionConfig.enabled, length: instructionConfig.text.length,
+                    languageEnabled: reply?.enabled === true, language: reply?.language } },
+            effective: { run: intent.runConfig, context: intent.contextConfig,
+                storage: stored,
+                tools: { webSearch: observe(() => !!intent.webSearch && intent.webAllowed?.() === true), webLimits: intent.webSearch?.limits,
+                    documents: allowed('documentSearch'), pages: allowed('webFetch'), workspace: allowed('workspaceWrite'), json: allowed('jsonValidate'),
+                    skillsLoaded: skill?.loaded },
+                behavior: { injected: !!active?.preference, length: active?.preference?.length,
+                    languageEnabled: typeof active?.responseLanguage === 'string', language: active?.responseLanguage } },
+        };
+    }
+    function readSelfText(item, ctx) {
+        readSelfConfig(ctx); // Same active run/account/chat boundary as parameter inspection.
+        const intent = intentions.get(ctx.runId);
+        const secrets = [selfConnectionSecret];
+        const saved = host.credentials?.describe();
+        if (saved?.endpoint) secrets.push(host.credentials?.resolve?.({ endpoint: saved.endpoint }));
+        const dirty = JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft);
+        const text = item === 'configured-instructions' ? instructionConfig.text : item === 'effective-instructions' ? intent.instructions?.preference : item === 'draft-instructions' ? instructionDraft.text : null;
+        if (typeof text === 'string') return { text: sanitizeSelfText(text, secrets), owner: item === 'effective-instructions' ? ctx.runId : item,
+            enabled: item === 'effective-instructions' ? !!intent.instructions?.preference : item === 'draft-instructions' ? instructionDraft.enabled : instructionConfig.enabled,
+            dirty: item === 'draft-instructions' ? dirty : null };
+        if (item === 'configured-connection') {
+            const body = projectConnectionText(connection, secrets);
+            return body === null ? null : { text: body, owner: 'active-connection', dirty: false };
+        }
+        if (item === 'draft-connection') {
+            const candidates = [...selfConnectionDrafts].map(([owner, read]) => [owner, read()]).filter(([, value]) => value !== null);
+            if (candidates.length !== 1) return null;
+            const [owner, draft] = candidates[0];
+            const body = projectConnectionText(draft, secrets);
+            return body === null ? null : { text: body, owner, dirty: null };
+        }
+        return null;
+    }
     function assemble() {
         taskStates.clear();
         compactionBreaker.clear();
@@ -405,7 +473,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         selectionEpoch++;
         viewedId = null;
         sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear();
-        builtins = createBuiltins({ ...host, historyAccess, historyReadBudget: id => intentions.get(id)?.runConfig?.providerBytes ?? 0,
+        builtins = createBuiltins({ ...host, readSelfConfig, readSelfText, historyAccess, historyReadBudget: id => intentions.get(id)?.runConfig?.providerBytes ?? 0,
             bindTaskStep: (args, ctx) => {
                 const intent = intentions.get(ctx.runId), run = app?.snapshot().runs.find(row => row.id === ctx.runId);
                 if (intent?.mode !== 'assistant' || intent.explanation || !run || run.status !== 'running' || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('STEP_BINDING_STALE');
@@ -596,7 +664,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const tail = record.messages.slice(candidate.through).map(({ role, content }) => ({ role, content }));
         return { ...candidate, tail, coverage: { state: 'complete', total: record.messages.length, summarized: candidate.through, raw: tail.length, omitted: 0, excluded: 0 } };
     }
-    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); host.services?.cancel(); recoveryWorkbench.clear(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); host.services?.cancel(); recoveryWorkbench.clear(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; selfConnectionSecret = ''; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const unsubscribeConnection = host.modelConnection?.subscribe(() => {
         if (!hostConnectionCurrent || resetting || disposed) return;
@@ -990,6 +1058,11 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             });
         },
         cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); taskStates.invalidateWait(request.taskId); releaseContinuation(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
+        registerSelfConnectionDraft(read) {
+            live(); if (typeof read !== 'function') throw Error('INVALID_SELF_DRAFT_READER');
+            const id = randomUUID(); selfConnectionDrafts.set(id, read);
+            return () => selfConnectionDrafts.delete(id);
+        },
         setInstructionDraft(value) { live(); instructionDraft = validateInstructionDraft(value); emit(); },
         discardInstructionDraft() { live(); instructionDraft = copyJson(instructionConfig); emit(); },
         resetInstructionDraft() { live(); instructionDraft = { ...INSTRUCTION_DEFAULTS }; emit(); },
@@ -1257,7 +1330,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             }
             const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
             const next = createModel({ connection: resolved }); resetting = true; emit();
-            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null, { source: 'independent', autoConnect: config.rememberKey === true && config.autoConnect === true }); else await host.credentials?.saveSourcePreference?.('independent', false); live(); const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; model = next; connection = { source: 'independent', endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
+            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null, { source: 'independent', autoConnect: config.rememberKey === true && config.autoConnect === true }); else await host.credentials?.saveSourcePreference?.('independent', false); live(); const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; model = next; selfConnectionSecret = resolved.apiKey; connection = { source: 'independent', endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
             finally { resetting = false; emit(); }
         },
         async probeConnection(config, options = {}) {
@@ -1281,7 +1354,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
             catch { app.validateArtifact(id, revision, { status: 'stale', message: '重新生成预览 / Generate a fresh preview' }); emit(); throw new Error('STALE_DRAFT'); }
         },
-        async dispose() { if (disposed) return; disposed = true; host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); for (const owned of historyLibraries) await owned.close(); await recoveryJournal.close(); },
+        async dispose() { if (disposed) return; disposed = true; selfConnectionDrafts.clear(); host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); for (const owned of historyLibraries) await owned.close(); await recoveryJournal.close(); },
     };
     function send({ consent, fields = [], artifactId = null, planArtifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
             if (hostConnectionCurrent) { try { hostConnectionCurrent(); } catch { invalidateHostConnection(); throw Error('HOST_CONNECTION_CHANGED'); } }
@@ -1396,7 +1469,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         if (preference?.source === 'st' && preference.autoConnect && host.modelConnection?.describe().available) {
             const bound = host.modelConnection.bind(); model = bound.model; connection = bound.connection; hostConnectionCurrent = bound.current; assemble();
         } else if (saved && preference?.source !== 'st') {
-            model = createModel({ connection: saved });
+            model = createModel({ connection: saved }); selfConnectionSecret = saved.apiKey;
             connection = { endpoint: saved.endpoint, model: saved.model, profile: saved.profile || 'deepseek', thinking: saved.thinking !== false, reasoningEffort: saved.reasoningEffort || 'high', remembered: true, autoConnect: true };
             assemble();
         }

@@ -170,6 +170,11 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
         finally { managing.delete(id); notify(); }
     }
     return {
+        selfState(id) {
+            return { enabled, backend: store?.kind, readSource: store?.readSource,
+                writeTargets: store?.writeTargets?.(), loading, pending,
+                hasError: !!error || failures.has(id) || recoveries.has(id) || external.has(id) };
+        },
         ready, load,
         meta: id => summaries.has(id) ? structuredClone(summaries.get(id)) : null,
         snapshot(scope, id, filters) {

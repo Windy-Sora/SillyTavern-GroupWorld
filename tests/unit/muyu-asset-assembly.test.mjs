@@ -85,7 +85,7 @@ test('Production consumes asset and read owners, preserves Prompt batch alias an
     const ports = Object.fromEntries(['selectionEditor', 'ledgerEditor', 'blueprintNodeEditor', 'stPresetEditor', 'characterCards', 'worldBookEditor', 'variableEditor', 'memoryEditor', 'profileEditor', 'npcEditor', 'providerAssets',
         'customPrompts', 'skills', 'profileLibraries', 'npcLibraries', 'blueprintLibraries', 'profileLibraryChat', 'npcLibraryChat', 'blueprintLibraryChat'].map(key => [key, {}]));
     const builtins = createBuiltins(createHostBridge({ ...options, ...ports }));
-    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 38);
+    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 39);
     for (const row of rows) for (const id of row.tools) { assert.ok(builtins.registry.get(id)); assert.equal(typeof builtins.handlers[id], 'function'); }
     for (const row of rows) for (const artifact of row.artifacts) for (const id of artifact.tools) assert.equal(builtins.candidateGroup(id), artifact.tools[0]);
     assert.equal(builtins.candidateGroup('muyu.prompts.preview'), 'muyu.prompts.batch_preview');
@@ -97,6 +97,6 @@ test('Production consumes asset and read owners, preserves Prompt batch alias an
     assert.equal(groups.find(group => group.id === 'library-chat').count, 2);
     builtins.tasks.assistant.bind(identity('r'), {}); builtins.transferRun('r', identity('next'), {});
     builtins.forgetRun('next'); builtins.retainArtifacts([]); builtins.dispose();
-    const absent = createBuiltins(createHostBridge(options)); assert.equal(absent.moduleDescriptors().length, 19);
+    const absent = createBuiltins(createHostBridge(options)); assert.equal(absent.moduleDescriptors().length, 20);
     assert.equal(absent.tasks.assistant.tools.includes('muyu.prompts.preview'), false); absent.dispose();
 });

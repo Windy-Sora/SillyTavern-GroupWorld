@@ -10,6 +10,12 @@ export function createPermissions({ fullAccess = () => false, readAccess = () =>
     let diagnostics = false;
     const chats = new Set(), extended = new Set(), decided = new Set();
     const sources = createSourcePermissions();
+    // Related metadata/content readers overlap. Denial crosses routes; approval never does.
+    const denialPeer = { 'source:chatSummary': 'source:chatSummaryStorage', 'source:chatSummaryStorage': 'source:chatSummary',
+        'source:stPersonas': 'source:stPersonaContent', 'source:stPersonaContent': 'source:stPersonas',
+        'source:stPresets': 'source:stPresetFamilies', 'source:stPresetFamilies': 'source:stPresets',
+        'source:stCharacterCardState': 'source:stCharacterComponents', 'source:stCharacterComponents': 'source:stCharacterCardState' };
+    const denied = (kind, target, taskId) => sources.denied(kind, target, taskId) || !!denialPeer[kind] && sources.denied(denialPeer[kind], target, taskId);
     const key = target => target?.kind === 'chat' ? jsonKey(target) : null;
     const broadAllows = (kind, target) => kind === 'public' || (fullAccess() && (kind === 'diagnostics' || ['chat', 'extended'].includes(kind) && !!key(target))) || (kind === 'diagnostics' ? diagnostics : ['chat', 'extended'].includes(kind) && !!key(target) && (kind === 'chat' ? chats : extended).has(key(target)));
     return Object.freeze({
@@ -19,13 +25,13 @@ export function createPermissions({ fullAccess = () => false, readAccess = () =>
             if (execution) return fullAccess() && target?.kind === 'chat' || sources.allows(kind, target, taskId);
             if (permissionSources.includes(kind)) {
                 const spec = permissionSource(kind.slice(7));
-                if (!fullAccess() && sources.denied(kind, target, taskId)) return false;
-                return !!spec && !!target && (spec.scope === 'global' || target.kind === 'chat') && (fullAccess() || readAccess() && readSourceAllowed(kind) && !sources.denied(kind, target, taskId) || broadAllows(spec.permission, target) || sources.allows(kind, target, taskId));
+                if (!fullAccess() && denied(kind, target, taskId)) return false;
+                return !!spec && !!target && (spec.scope === 'global' || target.kind === 'chat') && (fullAccess() || readAccess() && readSourceAllowed(kind) && !denied(kind, target, taskId) || broadAllows(spec.permission, target) || sources.allows(kind, target, taskId));
             }
             return broadAllows(kind, target) || readAccess() && (kind === 'diagnostics' || ['chat', 'extended'].includes(kind) && !!key(target));
         },
         sourceGrants: target => sources.list(target).filter(source => !broadAllows(sourcePermission(source.slice(7)), target)),
-        denied: (source, target, taskId) => !fullAccess() && sources.denied(source, target, taskId),
+        denied: (source, target, taskId) => !fullAccess() && denied(source, target, taskId),
         allowsExecution: (target, taskId, providerId, providerRevision) => fullAccess() && target?.kind === 'chat' || sources.allowsExecution(target, taskId, providerId, providerRevision),
         deniedExecution: (target, taskId, providerId, providerRevision) => !fullAccess() && sources.deniedExecution(target, taskId, providerId, providerRevision),
         decide: (request, decision, continuation) => sources.decide(request, decision, continuation),

@@ -3,7 +3,7 @@ import { copyJson } from '../core/json-contract.js';
 import { createTaskEvidence } from './task-evidence.js';
 import { assertPlanSteps } from './task-step-bindings.js';
 
-const tools = new Set(['muyu.settings.read', 'muyu.provider.read', 'muyu.settings.contract', 'muyu.config.contract', 'muyu.settings.catalog', 'muyu.provider.list']);
+const tools = new Set(['muyu.settings.read', 'muyu.self.read', 'muyu.self.read_text', 'muyu.provider.read', 'muyu.settings.contract', 'muyu.config.contract', 'muyu.settings.catalog', 'muyu.provider.list']);
 
 /** Historical metadata only; neither content cache nor proof of an analysis being complete. */
 export function createTaskReadEvidence({ canCarry = () => false } = {}) {

@@ -57,6 +57,7 @@ export function createStDiagnostics({ getContext, getTarget, getSettings, saveSe
             records: rows.filter(row => row.target === target || row.target === 'null').map(({ target: owner, ...row }) => ({ ...row, scope: owner === 'null' ? 'page-unattributed' : 'observed-current-chat' })), notice };
     }
     return Object.freeze({
+        selfState: () => closed ? null : { enabled: config.enabled, browserErrors: config.browserErrors },
         snapshot,
         async save(value) {
             if (closed || saving) throw Error('NOT_READY'); saving = true;

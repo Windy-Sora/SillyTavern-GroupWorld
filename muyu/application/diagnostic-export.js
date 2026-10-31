@@ -7,7 +7,7 @@ import { modelDiagnosticStage } from '../core/model-diagnostics.js';
 const number = (value, max = 16000000000) => Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null;
 const pick = (value, choices) => choices.includes(value) ? value : null;
 const phases = ['queued', 'running', 'cancelling', 'yielded', 'succeeded', 'failed', 'cancelled', 'interrupted', 'model.started', 'model.completed', 'model.failed', 'tool.requested', 'tool.started', 'tool.reused', 'tool.completed', 'tool.failed'];
-const readStatuses = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'];
+const readStatuses = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'SOURCE_CACHE_FULL', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'];
 
 /** Explicit local export: reconstruct an allowlist, never serialize the controller snapshot. */
 export function diagnosticExport(snapshot, now = Date.now()) {

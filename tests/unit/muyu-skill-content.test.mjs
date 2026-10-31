@@ -17,7 +17,7 @@ test('Live-quality guide revisions preserve numeric intent, separate memory navi
     const packs = await readBuiltins();
     for (const [name, revision, patterns] of [
         ['memory-maintenance', 3, [/没有明确目标数值时/, /意味着增大自动提取间隔/, /不能断言当前值/]],
-        ['muyu-interface-guide', 6, [/经典设置→角色记忆/, /不另加未列出的二级分区/, /不属于|不能把角色记忆/]],
+        ['muyu-interface-guide', 7, [/经典设置→角色记忆/, /不另加未列出的二级分区/, /不属于|不能把角色记忆/]],
         ['configuration-orchestration', 6, [/同一份整单不等于同一种步骤/, /variables步骤/, /不篡改草稿类型/]],
     ]) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
@@ -51,7 +51,7 @@ test('Third-round guides distinguish explicit independent goals and operation st
     for (const [name, revision, version, patterns] of [
         ['configuration-orchestration', 6, '1.5', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
         ['script-agent-workbench', 4, '1.2', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
-        ['resource-library-workflow', 5, '1.3', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
+        ['resource-library-workflow', 6, '1.4', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
     ]) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
@@ -94,9 +94,9 @@ test('Revised guides retain live-test boundaries and publish new content revisio
         'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
     };
     for (const [name, checks] of Object.entries(patterns)) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'prompt-template-workbench' ? 8 : name === 'variable-workbench' ? 4 : name==='muyu-troubleshooting' ? 6 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 5 : 2);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'director-diagnosis' ? 3 : name === 'prompt-template-workbench' ? 11 : name === 'variable-workbench' ? 4 : name==='muyu-troubleshooting' ? 10 : name === 'character-npc-workbench' ? 7 : name === 'resource-library-workflow' ? 6 : 2);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name === 'prompt-template-workbench' ? /version: "1.6"/ : name === 'variable-workbench' ? /version: "1.2"/ : name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
+        assert.match(pack.package.files[0].text, name === 'director-diagnosis' ? /version: "1.2"/ : name === 'prompt-template-workbench' ? /version: "1.9"/ : name === 'variable-workbench' ? /version: "1.2"/ : name==='muyu-troubleshooting' ? /version: "1.8"/ : name === 'character-npc-workbench' ? /version: "1.5"/ : name === 'resource-library-workflow' ? /version: "1.4"/ : /version: "1.1"/);
         for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
     }
 });
@@ -146,9 +146,9 @@ test('Builtin skills remain discoverable through bounded catalog pages without p
 test('Preset reading guides distinguish paging, body coverage and source authorization', async () => {
     const packs = await readBuiltins();
     for (const name of ['worldbook-workflow', 'prompt-template-workbench']) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'worldbook-workflow' ? 9 : 8);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'worldbook-workflow' ? 13 : 11);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name === 'worldbook-workflow' ? /version: "1.7"/ : /version: "1.6"/);
+        assert.match(pack.package.files[0].text, name === 'worldbook-workflow' ? /version: "1.11"/ : /version: "1.9"/);
         const text = pack.package.files[1].text;
         for (const pattern of [/continuation/, /SOURCE_TOO_LARGE/, /stPresetContent/, /正文/, /主动/, /页尾/, /宿主核验/]) assert.match(text, pattern);
     }
@@ -163,7 +163,7 @@ test('Card stack guide loads references independently and projects only loaded d
     const task = createSkillTaskRuntime({ port, charge: () => true });
     task.bindRun(identity); await task.prepare(identity.id);
     const row = (await catalogAll(port)).find(row => row.id === 'builtin:st-card-stack-analysis');
-    assert.ok(row); assert.equal(row.revision, '5:0');
+    assert.ok(row); assert.equal(row.revision, '9:0');
     assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, 'Character card and preset integration');
     const query = { id: row.id, revision: String(row.revision) };
     const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes('name: st-card-stack-analysis\n')).package;
@@ -198,7 +198,7 @@ for (const [name, title] of [
     const task = createSkillTaskRuntime({ port, charge: () => true });
     task.bindRun(identity); await task.prepare(identity.id);
     const row = (await catalogAll(port)).find(row => row.id === `builtin:${name}`);
-    assert.ok(row); assert.equal(row.revision, '5:0');
+    assert.ok(row); assert.equal(row.revision, name === 'tavern-helper-guide' ? '6:0' : '5:0');
     assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, title);
     const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes(`name: ${name}\n`)).package;
     assert.equal(pack.files.length, 4);

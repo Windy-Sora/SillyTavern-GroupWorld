@@ -71,6 +71,11 @@ export function createSkillPort({ getSettings, saveSettings, loadBuiltins = load
     }
     const port = {
         ready,
+        selfState() {
+            live(); const data = owner.muyuSkillData;
+            return { enabled: data === undefined || data?.version === 1 ? true : typeof data?.enabled === 'boolean' && data.version === 2 ? data.enabled : undefined,
+                loaded: !!service };
+        },
         async catalog(offset = 0) {
             await ready(); const value = await service.list();
             const rows = value.entries.filter(row => row.modelInvocable);

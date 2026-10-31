@@ -4,6 +4,8 @@ Skill 是可复用的任务方法，说明何时采用、需要哪些证据、�
 
 内置内容在 [assets/muyu-skills](../../assets/muyu-skills) 独立维护，包名、revision 与资源清单以 [builtin-manifest.js](builtin-manifest.js) 为准，不在此复制一份容易过时的版本表。当前指南覆盖配置检查、导演／记忆／蓝图、变量及复杂系统、Provider／DSL、Prompt／脚本／Agent、角色与资源库、世界书、界面与排障，以及常见 ST 卡片配件、EJS 和酒馆助手协作机制。
 
+暮羽自身使用指南分工：[界面与按钮](../../assets/muyu-skills/muyu-interface-guide/SKILL.md)负责找入口；[设置与使用调优](../../assets/muyu-skills/muyu-settings-guide/SKILL.md)负责预算、权限、存储及功能之间的关系和针对性建议；[连接与上下文排障](../../assets/muyu-skills/muyu-troubleshooting/SKILL.md)负责具体失败。自身当前值由只读工具提供，Skill 不复制默认参数、授予权限或开放自身设置写入。
+
 ## 分层
 
 | 部件 | 职责 |

@@ -64,7 +64,7 @@ test('Production consumes optional editor/asset descriptors once and keeps exact
     const ports = Object.fromEntries(['variableEditor', 'memoryEditor', 'profileEditor', 'npcEditor', 'providerAssets'].map(key => [key, {}]));
     const builtins = createBuiltins(createHostBridge({ getContext: () => ({ groupId: 'g', chatId: 'A', chatMetadata: {} }),
         getSettings: () => ({}), extensionKey: 'gd', pageId: 'test', ...ports }));
-    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 24);
+    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 25);
     for (const row of rows) for (const tool of row.tools) { assert.ok(builtins.registry.get(tool)); assert.equal(typeof builtins.handlers[tool], 'function'); }
     for (const row of rows) for (const artifact of row.artifacts) for (const tool of artifact.tools) {
         assert.equal(builtins.candidateTool(tool), true);
@@ -121,7 +121,7 @@ test('Full production editor descriptors retain exact scopes, aliases and option
     const ports = Object.fromEntries(['selectionEditor', 'ledgerEditor', 'blueprintNodeEditor', 'stPresetEditor', 'characterCards', 'worldBookEditor',
         'variableEditor', 'memoryEditor', 'profileEditor', 'npcEditor', 'providerAssets'].map(key => [key, {}]));
     const builtins = createBuiltins(createHostBridge({ ...options, ...ports }));
-    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 30);
+    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 31);
     for (const row of rows) for (const id of row.tools) { assert.ok(builtins.registry.get(id)); assert.equal(typeof builtins.handlers[id], 'function'); }
     for (const row of rows) for (const artifact of row.artifacts) for (const id of artifact.tools) assert.equal(builtins.candidateGroup(id), artifact.tools[0]);
     for (const name of ['st_preset', 'character_card', 'worldbook_editor', 'selection']) assert.equal(builtins.registry.get('muyu.' + name + '.preview').scope, 'global');
@@ -132,7 +132,7 @@ test('Full production editor descriptors retain exact scopes, aliases and option
     builtins.tasks.assistant.bind(identity('r'), {});
     builtins.transferRun('r', identity('next'), {}); builtins.forgetRun('next'); builtins.retainArtifacts([]); builtins.dispose();
     const absent = createBuiltins(createHostBridge(options));
-    assert.equal(absent.moduleDescriptors().length, 19);
+    assert.equal(absent.moduleDescriptors().length, 20);
     assert.equal(absent.tasks.assistant.tools.includes('muyu.st_preset.preview'), false);
     assert.equal(Object.hasOwn(absent.toolGroups, 'muyu.st_preset.preview'), false);
     absent.tasks.assistant.bind(identity('r'), {}); absent.forgetRun('r'); absent.dispose();

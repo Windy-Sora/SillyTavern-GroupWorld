@@ -119,8 +119,8 @@ test('Published settings plans survive Run cleanup and release on artifact delet
 
 test('Production builtins consume pilot plus read descriptors for exact tools, candidate owners and group policy', () => {
     const builtins = createBuiltins(createHostBridge({ getContext: () => ({ groupId: 'g', chatId: 'A', chatMetadata: {} }), getSettings: () => ({}), extensionKey: 'gd', pageId: 'test' }));
-    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 19);
-    assert.deepEqual(rows.map(row => row.id), ['legacy-draft', 'settings', 'variables', 'task-bundle', 'toolbox', 'memory', 'director', 'context', 'history', 'interaction', 'permission', 'providers', 'task-plan', 'profile-draft', 'web', 'service-documents', 'service-pages', 'service-workspace', 'agent-memory']);
+    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 20);
+    assert.deepEqual(rows.map(row => row.id), ['legacy-draft', 'settings', 'variables', 'task-bundle', 'toolbox', 'memory', 'director', 'context', 'history', 'interaction', 'permission', 'storage-inspection', 'providers', 'task-plan', 'profile-draft', 'web', 'service-documents', 'service-pages', 'service-workspace', 'agent-memory']);
     for (const row of rows) for (const id of row.tools) { assert.ok(builtins.registry.get(id)); assert.equal(typeof builtins.handlers[id], 'function'); }
     for (const row of rows) for (const artifact of row.artifacts) for (const id of artifact.tools) assert.equal(builtins.candidateTool(id), true);
     assert.equal(builtins.toolGroups['muyu.variables.preview'], null); assert.equal(builtins.toolGroups['muyu.settings.read'], null);

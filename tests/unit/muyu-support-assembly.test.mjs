@@ -49,13 +49,13 @@ test('Task-plan read review cannot masquerade as write approval or external exec
     d.artifacts = [artifact]; d.module.registry.list = () => [{ id: 'budget', effect: 'external' }];
     assert.throws(() => createModuleAssembly([d], { ...options, capabilityFor: () => ({ effect: 'external', sources: () => [] }) }), /ARTIFACT/);
 });
-test('All 45 enabled modules own exact tools, publications and group metadata, including optional task bindings', () => {
+test('All 46 enabled modules own exact tools, publications and group metadata, including optional task bindings', () => {
     const ports = Object.fromEntries(['selectionEditor', 'ledgerEditor', 'blueprintNodeEditor', 'stPresetEditor', 'characterCards', 'worldBookEditor', 'variableEditor', 'memoryEditor', 'profileEditor', 'npcEditor', 'providerAssets',
         'customPrompts', 'skills', 'profileLibraries', 'npcLibraries', 'blueprintLibraries', 'profileLibraryChat', 'npcLibraryChat', 'blueprintLibraryChat',
         'scriptExecutors', 'customAgents', 'generationBatch', 'memoryGeneration', 'profileGeneration', 'npcGeneration'].map(key => [key, {}]));
     ports.skills.catalog = async () => ({ entries: [] });
     const f = fixture({ ...ports, bindTaskStep: () => ({ bound: true, notice: '' }), bindTaskRead: () => ({ bound: true, notice: '' }) });
-    const b = createBuiltins(f.host), rows = b.moduleDescriptors(); assert.equal(rows.length, 45);
+    const b = createBuiltins(f.host), rows = b.moduleDescriptors(); assert.equal(rows.length, 46);
     const ids = rows.flatMap(r => r.tools); assert.equal(new Set(ids).size, ids.length);
     assert.deepEqual([...ids].sort(), b.registry.list().map(d => d.id).sort());
     assert.deepEqual(Object.keys(b.toolGroups).sort(), [...ids].sort());
@@ -68,7 +68,7 @@ test('All 45 enabled modules own exact tools, publications and group metadata, i
     assert.equal(b.handlers['muyu.task.bind_step']({}, f.ctx('r')).bound, true);
     b.bindBudget('next', 1000000, 'r'); b.transferRun('r', f.identity('next'), {});
     b.forgetRun('r'); b.forgetRun('next'); b.forgetTask('task'); b.dispose();
-    const absent = createBuiltins(fixture().host); assert.equal(absent.moduleDescriptors().length, 19);
+    const absent = createBuiltins(fixture().host); assert.equal(absent.moduleDescriptors().length, 20);
     assert.equal(absent.registry.list().some(d => d.id === 'muyu.task.bind_step'), false); absent.dispose();
 });
 test('Production Provider continuation keeps tokens, cumulative bytes and the lower budget after handoff', () => {

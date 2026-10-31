@@ -64,7 +64,7 @@ test('Production consumes execution and read owners without treating execution a
         'customPrompts', 'skills', 'profileLibraries', 'npcLibraries', 'blueprintLibraries', 'profileLibraryChat', 'npcLibraryChat', 'blueprintLibraryChat',
         'scriptExecutors', 'customAgents', 'generationBatch', 'memoryGeneration', 'profileGeneration', 'npcGeneration'].map(key => [key, {}]));
     const builtins = createBuiltins(createHostBridge({ ...options, ...ports }));
-    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 44); assert.equal(rows.filter(row => row.taskLifecycle).length, 8);
+    const rows = builtins.moduleDescriptors(); assert.equal(rows.length, 45); assert.equal(rows.filter(row => row.taskLifecycle).length, 8);
     for (const row of rows) for (const id of row.tools) { assert.ok(builtins.registry.get(id)); assert.equal(typeof builtins.handlers[id], 'function'); }
     for (const prefix of ['scripts', 'agents', 'generation_batch', 'memory_generation', 'profile_generation', 'npc_generation']) {
         assert.equal(builtins.registry.get('muyu.' + prefix + '.execute').effect, 'external');
