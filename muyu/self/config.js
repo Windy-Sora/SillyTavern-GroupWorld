@@ -64,9 +64,10 @@ export function projectSelfConfig(section, state) {
     add('connection', row => {
         const c = configured.connection;
         row('connectionSource', '连接来源', 'Connection source', '', choice(c?.source, { st: '酒馆当前连接 / Current ST connection', independent: '暮羽独立接口 / Separate Muyu connection' }), absent(), '当前启用连接的元数据，不代表另存但未启用的连接。地址和模型文字走独立正文授权。 / Active connection metadata only; endpoint/model text needs separate text consent.');
-        row('connectionProtocol', '接口协议', 'API protocol', '', choice(c?.profile, { deepseek: 'DeepSeek', 'chat-completions': '通用 Chat Completions / Generic Chat Completions' }));
+        row('connectionProtocol', '接口协议', 'API protocol', '', choice(c?.profile, { deepseek: 'DeepSeek', 'chat-completions': '通用 Chat Completions / Generic Chat Completions', responses: 'OpenAI Responses' }));
         if (section !== 'overview') {
-            row('connectionThinking', '开启 DeepSeek 思考', 'Enable DeepSeek thinking', '', toggle(c?.thinking));
+            row('connectionThinking', '开启 DeepSeek 思考', 'Enable DeepSeek thinking', '', c && c.profile !== 'deepseek' ? absent() : toggle(c?.thinking));
+            row('connectionReasoningEffort', '模型思考强度', 'Model reasoning effort', '', c?.profile === 'responses' || c?.profile === 'deepseek' && c.thinking ? choice(c.reasoningEffort, { low: '低 / Low', medium: '中 / Medium', high: '高 / High', xhigh: '更高 / Extra high', max: '最高 / Maximum' }) : c ? absent() : unknown(), absent(), '连接的配置强度，不是逐次调用的实际强度。摘要：DeepSeek 关闭思考，Responses 使用 low；不修改正常对话配置。 / Configured effort, not the actual effort of every call. Summaries disable DeepSeek thinking and use low for Responses without changing normal conversations.');
             row('connectionRemembered', '记住 API Key', 'Remember API key', '', toggle(c?.remembered));
             row('connectionAutoConnect', '下次打开时自动启用此连接', 'Enable this connection automatically next time', '', toggle(c?.autoConnect));
         }

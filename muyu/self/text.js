@@ -22,7 +22,7 @@ export function projectConnectionText(value, secrets = []) {
     return sanitizeSelfText(JSON.stringify({ source: value.source === 'st' ? 'st' : 'independent',
         endpoint: typeof value.endpoint === 'string' ? sanitizeSelfText(value.endpoint, secrets).slice(0, 4096) : null,
         model: typeof value.model === 'string' ? sanitizeSelfText(value.model, secrets).slice(0, 256) : null,
-        profile: ['deepseek', 'chat-completions'].includes(value.profile) ? value.profile : null,
+        profile: ['deepseek', 'chat-completions', 'responses'].includes(value.profile) ? value.profile : null,
         thinking: typeof value.thinking === 'boolean' ? value.thinking : null,
-        reasoningEffort: ['low', 'high', 'max'].includes(value.reasoningEffort) ? value.reasoningEffort : null }), secrets);
+        reasoningEffort: ['low', 'medium', 'high', 'xhigh', 'max'].includes(value.reasoningEffort) ? value.reasoningEffort : null }), secrets);
 }

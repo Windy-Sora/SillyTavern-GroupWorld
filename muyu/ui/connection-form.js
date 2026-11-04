@@ -17,9 +17,11 @@ export function validateConnectionFields(fields, saved, report, kind = 'test') {
 export function createConnectionForm({ doc, parent, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, owner = parent) => { const el = doc.createElement(tag); el.textContent = text; owner.append(el); return el; };
+    const labels = new WeakMap();
     const field = (text, type, owner) => {
         const label = node('label', text, owner); label.className = type === 'checkbox' ? 'gd-muyu-connection-check' : 'gd-muyu-connection-field';
         const el = node(type === 'select' ? 'select' : 'input', '', label);
+        labels.set(el, label);
         if (type !== 'select') el.type = type;
         if (type !== 'checkbox') el.className = 'text_pole';
         return el;
@@ -36,7 +38,7 @@ export function createConnectionForm({ doc, parent, lang }) {
     const hostArea = node('div', '', card), hostStatus = node('p', '', hostArea);
     hostArea.className = 'gd-muyu-connection-section';
     hostStatus.setAttribute('role', 'status');
-    node('small', t('无需另填密钥，由酒馆后端使用当前连接。只复用接口，不自动带入角色卡、世界书或聊天正文；仍需资料授权并可能产生费用。首版支持 OpenAI、自定义兼容接口、OpenRouter 和 DeepSeek 非 reasoner 模型；原生 DeepSeek 不开启新版思考。其他连接请使用独立接口。', 'ST handles credentials. Only the connection is reused, not character cards, world books or chat text. Data permissions still apply and calls may incur costs. Initial support: OpenAI, Custom compatible APIs, OpenRouter and non-reasoner DeepSeek. Native DeepSeek does not enable the new thinking mode. Use a separate connection for other sources.'), hostArea);
+    node('small', t('无需另填密钥，由酒馆后端使用当前连接。只复用接口，不自动带入角色卡、世界书或聊天正文；仍需资料授权并可能产生费用。首版支持 OpenAI、自定义兼容接口、OpenRouter 和 DeepSeek 非 reasoner 模型；原生 DeepSeek 不开启新版思考。此路径仅支持聊天补全；需要 Responses 的模型（如 GPT-6.1 Sol）请选择独立 Responses 接口。其他连接请使用独立接口。', 'ST handles credentials. Only the connection is reused, not character cards, world books or chat text. Data permissions still apply and calls may incur costs. Initial support: OpenAI, Custom compatible APIs, OpenRouter and non-reasoner DeepSeek. Native DeepSeek does not enable the new thinking mode. This path supports Chat Completions only; models requiring Responses (such as GPT-6.1 Sol) need a separate Responses connection. Use a separate connection for other sources.'), hostArea);
     const hostTest = node('button', t('测试酒馆连接', 'Test ST connection'), hostArea); hostTest.type = 'button'; hostTest.className = 'menu_button';
     const hostTestStatus = node('p', '', hostArea); hostTestStatus.setAttribute('role', 'status');
     node('small', t('测试仅发送固定短消息，可能产生少量费用；不会自动启用连接。模型选择请在酒馆连接设置中操作。', 'Testing sends only a fixed short message and may incur a small charge; it does not enable the connection. Select the model in ST connection settings.'), hostArea);
@@ -45,10 +47,11 @@ export function createConnectionForm({ doc, parent, lang }) {
     const profile = field(t('接口协议', 'API protocol'), 'select', card);
     option(profile, 'deepseek', t('DeepSeek（支持思考）', 'DeepSeek (thinking supported)'));
     option(profile, 'chat-completions', t('通用 Chat Completions', 'Generic Chat Completions'));
+    option(profile, 'responses', 'OpenAI Responses');
     profile.value = 'deepseek';
     const endpoint = field(t('完整接口地址', 'Full endpoint'), 'url', card);
     endpoint.value = 'https://api.deepseek.com/chat/completions'; endpoint.placeholder = 'https://…/chat/completions'; endpoint.spellcheck = false;
-    node('small', t('填写完整 /chat/completions 地址；通用协议不发送 DeepSeek 专用思考参数，不支持 Responses 或 Anthropic 原生协议。', 'Use the full /chat/completions URL. Generic mode omits DeepSeek thinking fields; Responses and native Anthropic protocols are not supported.'), card);
+    const endpointHint = node('small', '', card);
     const key = field(t('API 密钥', 'API key'), 'password', card); key.autocomplete = 'off'; key.spellcheck = false;
     key.placeholder = t('输入密钥；同地址已保存时可留空', 'Enter a key, or leave blank for a saved key at this endpoint');
     const savedKeyStatus = node('small', '', card);
@@ -58,21 +61,37 @@ export function createConnectionForm({ doc, parent, lang }) {
     const advanced = node('details', '', card); advanced.className = 'gd-muyu-connection-advanced';
     node('summary', t('高级与保存选项', 'Advanced & storage options'), advanced);
     const thinking = field(t('开启 DeepSeek 思考', 'Enable DeepSeek thinking'), 'checkbox', advanced); thinking.checked = true;
-    const effort = field(t('DeepSeek 思考强度', 'DeepSeek reasoning effort'), 'select', advanced);
-    for (const [value, zh, en] of [['low', '低', 'Low'], ['high', '高（默认）', 'High (default)'], ['max', '最高', 'Maximum']]) option(effort, value, t(zh, en));
+    const effort = field(t('模型思考强度', 'Model reasoning effort'), 'select', advanced);
+    const effortOptions = [];
+    for (const [value, zh, en] of [['low', '低', 'Low'], ['medium', '中（Responses 默认）', 'Medium (Responses default)'], ['high', '高（DeepSeek 默认）', 'High (DeepSeek default)'], ['xhigh', '更高', 'Extra high'], ['max', '最高', 'Maximum']]) {
+        option(effort, value, t(zh, en)); effortOptions.push(effort.lastElementChild || effort.children[effort.children.length - 1]);
+    }
     effort.value = 'high';
-    node('small', t('思考选项仅用于 DeepSeek 协议，具体模型是否支持由服务决定。', 'Thinking options apply only to DeepSeek; support depends on the service and model.'), advanced);
+    node('small', t('DeepSeek 支持思考开关；Responses 选择推理强度，默认中，不提供通用关闭承诺。支持的档位取决于具体模型，失败不会自动重试或换协议。输出额度包含推理消耗。', 'DeepSeek has a thinking toggle. Responses selects reasoning effort (medium by default), with no general promise to disable reasoning. Supported levels depend on the model; failures do not trigger automatic retries or protocol changes. Output limits include reasoning tokens.'), advanced);
     const rememberKey = field(t('记住 API Key', 'Remember API key'), 'checkbox', advanced);
     const autoConnect = field(t('下次打开时自动启用此连接（默认开启）', 'Enable this connection automatically next time (on by default)'), 'checkbox', advanced);
     const forgetKey = node('button', t('清除已保存密钥', 'Forget saved key'), advanced); forgetKey.type = 'button'; forgetKey.className = 'menu_button';
     node('small', t('自动启用需要记住密钥。密钥明文保存在酒馆插件设置，同源脚本及备份可能读取；不恢复授权，也不主动发送消息。', 'Auto-enable requires saving the key. It is stored unencrypted in ST settings and may be read by same-origin scripts/backups. It does not restore grants or send messages.'), advanced);
     const actions = node('div', '', rootCard); actions.className = 'gd-muyu-connection-actions';
     node('small', t('输入及获授权资料发送至该服务；启用新连接会取消任务并清除运行产物和授权，历史仍可查看。', 'Input and authorized data go to this service. Enabling a new connection cancels tasks and clears live artifacts/grants, not saved history.'), card);
-    const refreshOptions = () => { independent.hidden = source.value === 'st'; hostArea.hidden = source.value !== 'st'; thinking.disabled = profile.value !== 'deepseek'; effort.disabled = thinking.disabled || !thinking.checked; };
+    let shownProfile = profile.value;
+    const effortByProfile = { deepseek: 'high', responses: 'medium', 'chat-completions': 'high' };
+    const refreshOptions = () => {
+        independent.hidden = source.value === 'st'; hostArea.hidden = source.value !== 'st';
+        const responses = profile.value === 'responses', deepseek = profile.value === 'deepseek';
+        thinking.disabled = !deepseek;
+        labels.get(thinking).hidden = !deepseek;
+        effort.disabled = !responses && (!deepseek || !thinking.checked);
+        for (const item of effortOptions) item.hidden = item.disabled = !responses && ['medium', 'xhigh'].includes(item.value);
+        if (!responses && ['medium', 'xhigh'].includes(effort.value)) effort.value = 'high';
+        shownProfile = profile.value; effortByProfile[shownProfile] = effort.value;
+        endpoint.placeholder = responses ? 'https://api.openai.com/v1/responses' : 'https://…/chat/completions';
+        endpointHint.textContent = responses ? t('填写完整 /responses 地址，例如 https://api.openai.com/v1/responses。只使用暮羽自有工具；不会自动开启联网等托管工具。', 'Use a full /responses URL, e.g. https://api.openai.com/v1/responses. Only Muyu function tools are used; hosted web search and other tools are not enabled automatically.') : t('填写完整 /chat/completions 地址；通用协议不发送 DeepSeek 专用思考参数。Anthropic 原生协议暂不支持。', 'Use the full /chat/completions URL. Generic mode omits DeepSeek thinking fields. Native Anthropic is not supported.');
+    };
     source.addEventListener('change', refreshOptions);
-    profile.addEventListener('change', refreshOptions); thinking.addEventListener('change', refreshOptions);
+    profile.addEventListener('change', () => { effortByProfile[shownProfile] = effort.value; effort.value = effortByProfile[profile.value] || 'high'; refreshOptions(); }); thinking.addEventListener('change', refreshOptions);
     refreshOptions();
     const readSelfDraft = () => JSON.parse(projectConnectionText({ source: source.value, endpoint: endpoint.value, model: model.value,
-        profile: profile.value, thinking: thinking.checked, reasoningEffort: effort.value }, [key.value]));
+        profile: profile.value, thinking: profile.value === 'deepseek' && thinking.checked, reasoningEffort: effort.value }, [key.value]));
     return { source, hostStatus, hostTest, hostTestStatus, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect, savedKeyStatus, forgetKey, activeStatus, actions, modelArea, refreshOptions, readSelfDraft };
 }

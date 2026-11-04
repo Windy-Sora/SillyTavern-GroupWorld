@@ -13,7 +13,7 @@ const callId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.te
 function prepare(request, connection, privateHistory, knownTools = new Map()) {
     // A per-request reduction only: never enable reasoning or change the saved connection.
     if (request.reasoning !== undefined) {
-        if (request.reasoning !== 'disabled' || !Array.isArray(request.tools) || request.tools.length || request.messages?.some(m => m.role === 'tool' || m.toolCalls?.length)) fail();
+        if (!['disabled', 'reduced'].includes(request.reasoning) || !Array.isArray(request.tools) || request.tools.length || request.messages?.some(m => m.role === 'tool' || m.toolCalls?.length)) fail();
         connection = { ...connection, thinking: false };
     }
     if (!Array.isArray(request.tools) || request.tools.length > 64 || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > MAX_CONTEXT_MESSAGES) fail();
@@ -154,6 +154,7 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
 
 /** Trusted transport seam: host authentication never enters the runtime DTOs. */
 export function createChatCompletionsAdapter({ config, post, mapPayload = value => value, onUsage = () => {}, onDiagnostic = () => {} }) {
+    if (config.profile === 'responses') throw new TypeError('Invalid model options');
     const histories = new WeakMap();
     const toolMappings = new WeakMap();
     return Object.freeze({

@@ -2,7 +2,7 @@
 name: muyu-settings-guide
 display-name: 暮羽设置与使用调优
 description: 解释或核对暮羽自身预算、权限、存储、补充指令与未保存草稿，比较已配置/实际注入/草稿，判断工具开关与本轮可用资格，或改善长对话、费用和授权打扰时使用。Muyu settings, instruction drafts, tool availability, permissions and storage. 不用于GroupWorld业务参数或自定义Agent资源；只找按钮用界面指南，具体失败用排障指南。
-version: "1.5"
+version: "1.6"
 ---
 
 # 暮羽设置与使用调优

@@ -17,7 +17,7 @@ test('Live-quality guide revisions preserve numeric intent, separate memory navi
     const packs = await readBuiltins();
     for (const [name, revision, patterns] of [
         ['memory-maintenance', 3, [/没有明确目标数值时/, /意味着增大自动提取间隔/, /不能断言当前值/]],
-        ['muyu-interface-guide', 7, [/经典设置→角色记忆/, /不另加未列出的二级分区/, /不属于|不能把角色记忆/]],
+        ['muyu-interface-guide', 8, [/经典设置→角色记忆/, /不另加未列出的二级分区/, /不属于|不能把角色记忆/]],
         ['configuration-orchestration', 6, [/同一份整单不等于同一种步骤/, /variables步骤/, /不篡改草稿类型/]],
     ]) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);

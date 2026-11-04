@@ -316,7 +316,7 @@ test('Truncated automatic summary retries once with a fresh context and reserves
     const s = run([], { model, compaction: candidate(), maxTokens: 32768, contextConfig: { ...config, summaryTokens: 32768 }, limits: { modelCalls: 3 } });
     assert.equal((await s.handle.completion).answer, 'answer'); await s.handle.drained;
     assert.deepEqual(requests.map(r => r.maxTokens), [16384, 32768, 32768]);
-    assert.deepEqual(requests.map(r => r.reasoning), ['disabled', 'disabled', undefined]);
+    assert.deepEqual(requests.map(r => r.reasoning), ['reduced', 'reduced', undefined]);
     assert.notEqual(contexts[0], contexts[1]); assert.ok(released.includes(contexts[0]));
     const process = createProcessStore(); process.create(identity.id); s.events.forEach(e => process.event(identity.id, e));
     assert.equal(process.snapshot(identity.id).summaryUsage.calls, 2);

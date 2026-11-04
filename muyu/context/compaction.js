@@ -54,7 +54,7 @@ export function compactionSegments(messages, sourceOffset = 0) {
 
 /** A tool-free model request. The runtime owns its budget, deadline and physical drain. */
 export function compactionRequest(candidate, inputTokenLimit, maxTokens = 16384) {
-    return { messages: [{ role: 'user', content: SUMMARY_INSTRUCTION }, ...compactionSegments(candidate.messages)], tools: [], maxTokens, reasoning: 'disabled',
+    return { messages: [{ role: 'user', content: SUMMARY_INSTRUCTION }, ...compactionSegments(candidate.messages)], tools: [], maxTokens, reasoning: 'reduced',
         ...(inputTokenLimit === null ? {} : { inputTokenLimit }) };
 }
 export async function collectSummary(model, request, { signal, context, onUsage }) {

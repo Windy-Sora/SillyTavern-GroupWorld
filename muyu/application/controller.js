@@ -15,7 +15,8 @@ import { checkReceiptConfig } from './config-check.js';
 import { assistantToolAccess, permissionApprovalCurrent, permissionRequestAllowed, permissionRequestAlreadyGranted, toolAvailableInMode } from './capabilities.js';
 import { actionReceipt, receiptStatuses, receiptSources } from '../actions/receipts.js';
 import { startMuyuRun } from '../composition.js';
-import { createChatCompletionsModel } from '../model/chat-completions.js';
+import { createModel as createConfiguredModel } from '../model/factory.js';
+import { connectionPreferences } from '../model/connection.js';
 import { probeConnection } from '../model/connection-probe.js';
 import { createBuiltins } from '../modules/builtins.js';
 import { taskCatalog } from '../modules/catalog.js';
@@ -41,7 +42,7 @@ import { createMemoryWorkbench } from '../memory/workbench.js';
 import { tracePermission, permissionTraceError } from '../core/permission-debug.js';
 
 /** Lifetime is the extension instance, not a DOM panel. Grants belong to a connection/chat. */
-export function createMuyuController({ host, createModel = createChatCompletionsModel }) {
+export function createMuyuController({ host, createModel = createConfiguredModel }) {
     let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false, hostConnectionCurrent = null;
     let completionVersion = 0, completedSessionId = null;
     let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
@@ -416,7 +417,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const allowed = capability => observe(() => !!intent.serviceTools && intent.serviceTools.allows(capability));
         return {
             configured: { run: runConfig, context: contextConfig, permission: permissionConfig, fullAccess,
-                connection: connection && { source: connection.source || 'independent', profile: connection.profile, thinking: connection.thinking,
+                connection: connection && { source: connection.source || 'independent', profile: connection.profile, thinking: connection.thinking, reasoningEffort: connection.reasoningEffort,
                     autoConnect: connection.autoConnect, remembered: connection.remembered },
                 storage: { autoSave: observe(() => host.history?.enabled()), choice: observe(() => host.history?.storageChoice?.()),
                     readSource: routing?.readSource, writeTargets: routing?.writeTargets, worldBookTargetMiB: observe(() => host.history?.worldBookTargetMiB?.()) },
@@ -1328,9 +1329,9 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
                 finally { resetting = false; emit(); }
                 return;
             }
-            const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
+            const resolved = { ...config, profile: config.profile || 'chat-completions', apiKey: host.credentials?.resolve(config) || config.apiKey };
             const next = createModel({ connection: resolved }); resetting = true; emit();
-            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null, { source: 'independent', autoConnect: config.rememberKey === true && config.autoConnect === true }); else await host.credentials?.saveSourcePreference?.('independent', false); live(); const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; model = next; selfConnectionSecret = resolved.apiKey; connection = { source: 'independent', endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
+            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null, { source: 'independent', autoConnect: config.rememberKey === true && config.autoConnect === true }); else await host.credentials?.saveSourcePreference?.('independent', false); live(); const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; model = next; selfConnectionSecret = resolved.apiKey; connection = { source: 'independent', endpoint: config.endpoint, model: config.model, ...connectionPreferences(resolved, 'chat-completions'), remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
             finally { resetting = false; emit(); }
         },
         async probeConnection(config, options = {}) {
@@ -1343,7 +1344,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
                 try { for await (const event of bound.model.run({ messages: [{ role: 'user', content: 'Reply OK.' }], tools: [], maxTokens: 256 }, { signal: abort.signal, context: {} })) { /* Explicit fixed-message probe only. */ } return true; }
                 finally { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel); }
             }
-            const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
+            const resolved = { ...config, profile: config.profile || 'chat-completions', apiKey: host.credentials?.resolve(config) || config.apiKey };
             return probeConnection(resolved, options);
         },
         async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); if (connection?.source === 'st') await host.credentials?.saveSourcePreference?.('st', false); else await host.credentials?.setAutoConnect?.(false); clear(); hostConnectionCurrent = null; inputs.clear(); } finally { resetting = false; emit(); } },
@@ -1470,7 +1471,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             const bound = host.modelConnection.bind(); model = bound.model; connection = bound.connection; hostConnectionCurrent = bound.current; assemble();
         } else if (saved && preference?.source !== 'st') {
             model = createModel({ connection: saved }); selfConnectionSecret = saved.apiKey;
-            connection = { endpoint: saved.endpoint, model: saved.model, profile: saved.profile || 'deepseek', thinking: saved.thinking !== false, reasoningEffort: saved.reasoningEffort || 'high', remembered: true, autoConnect: true };
+            connection = { endpoint: saved.endpoint, model: saved.model, ...connectionPreferences(saved), remembered: true, autoConnect: true };
             assemble();
         }
     } catch { model = null; connection = null; }

@@ -17,10 +17,10 @@ export const BUILTIN_SKILL_MANIFEST = Object.freeze([
     Object.freeze({ name: 'automation-workflow', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'muyu-troubleshooting', revision: 10, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'skill-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
-    Object.freeze({ name: 'muyu-interface-guide', revision: 7, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-interface-guide', revision: 8, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'dsl-template-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/syntax.md', 'references/runtime.md', 'references/examples.json']) }),
     Object.freeze({ name: 'st-card-stack-analysis', revision: 9, files: Object.freeze(['SKILL.md', 'references/pipeline-analysis.md', 'references/patterns-and-cases.md']) }),
     Object.freeze({ name: 'st-ejs-template-guide', revision: 5, files: Object.freeze(['SKILL.md', 'references/syntax-and-context.md', 'references/variables-and-worldbook.md', 'references/troubleshooting.md']) }),
     Object.freeze({ name: 'tavern-helper-guide', revision: 6, files: Object.freeze(['SKILL.md', 'references/scripts-and-rendering.md', 'references/variables-and-mvu.md', 'references/frontend-actions-and-storage.md']) }),
-    Object.freeze({ name: 'muyu-settings-guide', revision: 6, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-settings-guide', revision: 7, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
 ]);

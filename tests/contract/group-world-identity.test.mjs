@@ -88,7 +88,7 @@ test('Public navigation uses the actual GW display name and remains a bounded st
 test('All 23 builtins load and every adapted package publishes its new content revision', async () => {
     const expected = {
         'config-review': 5, 'provider-workbench': 4, 'variable-workbench': 4,
-        'memory-maintenance': 3, 'muyu-interface-guide': 7, 'muyu-troubleshooting': 10, 'muyu-settings-guide': 6,
+        'memory-maintenance': 3, 'muyu-interface-guide': 8, 'muyu-troubleshooting': 10, 'muyu-settings-guide': 7,
         'character-npc-workbench': 7, 'resource-library-workflow': 6,
         'prompt-template-workbench': 11, 'script-agent-workbench': 4,
         'worldbook-workflow': 13, 'dsl-template-workbench': 2,
@@ -170,7 +170,7 @@ test('New builtin revisions preserve user Skill documents, disabled policies and
     assert.equal(builtin.enabled, false);
     await assert.rejects(registry.snapshot({ id: builtin.id, revision: '2:7', invocation: 'model' }), /SKILL_STALE/);
     await assert.rejects(registry.snapshot({ id: builtin.id, revision: builtin.revision, invocation: 'model' }), /SKILL_DISABLED/);
-    for (const [name, oldRevision, revision] of [['muyu-interface-guide', '6:7', '7:7'], ['worldbook-workflow', '12:7', '13:7']]) {
+    for (const [name, oldRevision, revision] of [['muyu-interface-guide', '7:7', '8:7'], ['worldbook-workflow', '12:7', '13:7']]) {
         const row = rows.find(r => r.id === 'builtin:' + name);
         assert.equal(row.revision, revision);
         assert.equal(row.enabled, false, 'knowledge updates must not re-enable user-disabled guides');

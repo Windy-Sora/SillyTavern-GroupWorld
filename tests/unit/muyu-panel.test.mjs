@@ -1412,6 +1412,44 @@ for (const lang of ['zh', 'en']) test(`Connection card separates basic and advan
     f.root.__gdMuyuDispose();
 });
 
+for (const lang of ['zh', 'en']) test('Responses form keeps protocol-specific effort and requires explicit enablement / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh, probes = [];
+    const protocol = f.all().find(e => e.tag === 'select' && e.parent.textContent === t('接口协议', 'API protocol'));
+    const thinking = f.all().find(e => e.type === 'checkbox' && /DeepSeek/.test(e.parent.textContent));
+    const effort = f.all().find(e => e.tag === 'select' && /reasoning effort|思考强度/.test(e.parent.textContent));
+    const endpoint = f.all().find(e => e.type === 'url'), key = f.all().find(e => e.type === 'password');
+    const model = f.all().find(e => e.tag === 'input' && e.parent.textContent === t('模型', 'Model'));
+    endpoint.value = 'https://user.test/custom/chat/completions'; key.value = 'PRIVATE_FORM_KEY'; model.value = 'user-model'; effort.value = 'max';
+    protocol.value = 'responses'; protocol.events.change();
+    assert.equal(effort.value, 'medium'); assert.equal(effort.disabled, false); assert.equal(thinking.disabled, true); assert.equal(thinking.parent.hidden, true);
+    assert.equal(endpoint.value, 'https://user.test/custom/chat/completions'); assert.equal(model.value, 'user-model'); assert.equal(key.value, 'PRIVATE_FORM_KEY');
+    assert.equal(f.configs.length, 0); assert.equal(f.sent.length, 0);
+    endpoint.value = 'https://user.test/v1/responses'; effort.value = 'xhigh';
+    f.controller.probeConnection = async (config, options) => { probes.push({ config, kind: options.kind }); return options.kind === 'models' ? ['sol', 'other'] : { ok: true }; };
+    await f.find('button', t('获取模型', 'Fetch models')).click();
+    assert.equal(probes[0].config.profile, 'responses'); assert.equal(probes[0].config.thinking, false); assert.equal(probes[0].config.reasoningEffort, 'xhigh');
+    const menu = f.all().find(e => e.tag === 'select' && e.children.some(c => c.value === 'sol'));
+    menu.value = 'sol'; menu.onchange(); assert.equal(model.value, 'sol'); assert.equal(f.configs.length, 0);
+    await f.find('button', t('测试连接', 'Test connection')).click(); assert.equal(probes[1].kind, 'test');
+    await f.find('button', t('启用此连接', 'Enable connection')).click();
+    assert.equal(f.configs[0].profile, 'responses'); assert.equal(f.configs[0].reasoningEffort, 'xhigh'); assert.equal(f.configs[0].thinking, false); assert.equal(key.value, '');
+    protocol.value = 'deepseek'; protocol.events.change(); assert.equal(effort.value, 'max'); assert.equal(thinking.parent.hidden, false);
+    protocol.value = 'responses'; protocol.events.change(); assert.equal(effort.value, 'xhigh');
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Saved and active Responses connections restore matching form options without requests / ' + lang, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh;
+    f.state.savedConnection = { endpoint: 'https://saved.test/v1/responses', model: 'saved-sol', profile: 'responses', autoConnect: false, remembered: true, thinking: false }; f.emit();
+    const protocol = f.all().find(e => e.tag === 'select' && e.parent.textContent === t('接口协议', 'API protocol'));
+    const effort = f.all().find(e => e.tag === 'select' && /reasoning effort|思考强度/.test(e.parent.textContent));
+    assert.equal(protocol.value, 'responses'); assert.equal(effort.value, 'medium'); assert.equal(effort.disabled, false);
+    assert.equal(f.all().find(e => e.type === 'password').value, ''); assert.equal(f.configs.length, 0); assert.equal(f.sent.length, 0);
+    f.state.connection = { ...f.state.savedConnection, reasoningEffort: 'xhigh', source: 'independent' }; f.emit();
+    assert.equal(effort.value, 'xhigh'); assert.equal(f.configs.length, 0);
+    f.root.__gdMuyuDispose();
+});
+
 test('Changing protocol aborts model discovery and ignores its late reply', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' }); let resolve, signal;
     f.all().find(e => e.type === 'password').value = 'PRIVATE_TEST_KEY';

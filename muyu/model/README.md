@@ -1,4 +1,41 @@
-# 模型适配层：非流式 Chat Completions
+# 模型适配层：Chat Completions 与 Responses 内核
+
+## Responses 复核修正（2026-11-04）
+
+修正酒馆复用连接的 Sol 误拦截：先验证实际请求地址，仅在 OpenAI 来源且目标为官方 https://api.openai.com origin 时要求独立 Responses。用户明确配置的其他兼容反代不再仅按模型名被禁用，仍使用原选定路由、认证、工具校验和连接变化失效规则，不自动换地址或保证任意反代兼容。官方域名大小写、默认端口和显式 /v1 反代都不能绕过原生限制。
+
+## Responses 第三轮：真实 API 范围（2026-11-04）
+
+正式 factory/controller/Runtime 接 gpt-6.1-sol，4个合成场景、13次请求均成功：批准一次后读取多个自身分区，拒绝后不绕读，以及两仓各一次手动摘要/仅摘要回忆。摘要 low、后续回答 medium，原文和 GroupWorld/旧兼容键边界保持。未发现需要修改适配器的问题。实际续接没有 reasoning 项，因此不把本次成功当作加密推理回传的真实 API 证明；该分支仍由离线测试覆盖。此轮不含浏览器/CORS、真实用户存储、百万Token或写入验收；外部 harness 的临时文件和原始记录不纳入插件代码。
+
+## Responses 第二轮：GUI、恢复与摘要（2026-11-04）
+
+默认 controller 已接 `factory.js`，独立接口页增加 OpenAI Responses；完整地址必须以 /responses 结尾，默认 medium，可选 low/medium/high/xhigh/max，档位是否支持由具体模型决定。切换协议只更新说明/可选强度，保留地址、模型、密钥和各协议的表单强度选择；表单编辑、测试连接、获取/选择模型都不自动启用。中英文入口一致，DeepSeek 思考开关不用于 Responses。
+
+Responses 测试连接走相同适配器，只发固定短问题，low、512 总输出 Token、15秒取消，无聊天正文或工具；截断/拒答不算成功。模型目录请求完整地址的同级 /models，不猜 /v1。两种探测都沿用传输限制、取消及安全错误码；成功不证明工具兼容。
+
+记住密钥与自动启用沿用原 opt-in 存储。恢复 Responses 保留协议与强度；缺省 medium，DeepSeek 旧记录仍 high/开启。密钥只按精确 endpoint 复用，未扩张到跨地址；启用/恢复不主动发消息、不恢复资料授权或全权限。配置保存失败仍按原契约回滚，未发送输入保留。自身只读投影显示协议、配置强度与 DeepSeek 开关的不适用状态，不泄漏密钥；地址和模型正文仍走单独正文授权。
+
+摘要通用请求改为 reasoning:reduced，语义是降低开销而非保证关闭推理。DeepSeek 单次关闭思考，通用 Chat Completions 不发送专有参数，Responses 单次使用 low。普通对话配置不变，Responses 不接受将 disabled 静默改成 low/none，也不允许在工具轨迹上降档。输出预算仍包含推理，完整性、摘要缩减、原文保留、失败保护和物理 drain 继续由原 Runtime 管理。
+
+酒馆当前连接仍使用官方 Chat Completions 服务。已知原生 OpenAI GPT-6.1 Sol 路由在发请求前标为不支持，请使用独立 Responses；不修改 ST 核心、不读服务端密钥，不推断其他兼容服务的能力或自动切换。所有能力不依赖可选服务插件。
+
+新增离线集成覆盖 `muyu-responses-integration.test.mjs`、中英文表单/恢复和 ST 路由保护；第三轮仍需小规模真实 API 与实际浏览器验收。本轮未新增付费调用。下方第一轮段落保留为阶段记录，当前接入状态以本节为准。
+
+## Responses 第一轮（2026-11-04）
+
+新增 `responses.js`、`responses-budget.js` 和 `factory.js`。可信组合方可用 `createModel({ connection: { profile: 'responses', endpoint: 'https://api.openai.com/v1/responses', apiKey, model, supportsTools: true } })` 创建独立 Responses 模型；默认 reasoning effort 为 medium，支持 low/medium/high/xhigh/max。协议由调用方显式选择，不按名称推断、不自动切换或重试。旧 Chat Completions/DeepSeek 默认参数不变，旧适配器拒绝 Responses 配置，避免向错误地址发送错误请求体。
+
+本轮是协议内核，不是 GUI 已上线：controller 的默认工厂、接口表单、测试连接、模型目录、密钥恢复、自身配置投影及摘要策略将在后续轮接入。服务插件与酒馆后端均未修改。当前 `reasoning: 'disabled'` 摘要请求在 Responses 上明确返回 UNSUPPORTED_CAPABILITY，不能机械映射成模型不支持的 none，亦不声称已关闭推理。
+
+只接受非流式 completed 响应中的 reasoning/message/function_call 子集；只允许暮羽声明的函数工具，不启用 OpenAI 托管工具。incomplete/max_output_tokens、内容过滤或 refusal、失败及未知输出类型均在公开任何批次事件前失败。合法 JSON 参数继续由既有 Broker 校验工具 Schema。max_output_tokens 使用现有单次输出预算（包含模型推理消耗），不是仅最终可见文字额度。
+
+请求固定 store:false，不使用 previous_response_id 或服务端会话。每个执行 context 的 WeakMap 保存有界的白名单响应项、阶段、加密推理及本地消息签名；同执行的授权暂停/续接复用，成功/失败/取消或用户放弃续接由现有 Runtime 清理。单条加密推理最多 128 KiB、私有历史最多 16 份/512 KiB，超限失败而非截断。未带私有状态的工具轨迹拒绝重放；旧最终回答仅作标明角色的参考资料，不恢复授权。清理后迟到响应不能重新写回；同 context 并发请求被拒绝。私有项不进入事件、用量、诊断、对话或存档。
+
+`inspect` 无网络且不修改状态，测量实际 Responses 请求结构：input、指令、函数定义/结果与加密推理均计入字节及保守估算 Token，后者不是供应商分词实测。HTTP 仍复用无 Cookie/重定向、响应字节上限、取消和 drain；取消不保证远端停止计费。usage 仅投影可校验的输入/输出/总 Token，错误仅保留固定阶段及错误码。正式浏览器 CORS 和真实 API 兼容验收留到第三轮，不把离线 fixture 通过当作发布认证。
+
+依据：[Responses 函数调用](https://developers.openai.com/api/docs/guides/function-calling)、[推理项与 phase 回传](https://developers.openai.com/api/docs/guides/reasoning)。专项覆盖见 `tests/unit/muyu-responses.test.mjs`；下方为现有 Chat Completions 路径说明。
+
 
 2026-10-06 C首切片：taskGuides允许原257份Skill投影加1份有界的宿主执行证据摘要，最大258条，仍受总消息／字节／输入预算检查；不改变私有思考索引、原工具轨迹或4000字符基础指令合同。证据投影不保存进历史，也不进入专用压缩请求。生命周期与未接范围见 [证据投影合同](../application/TASK-EVIDENCE.md)。
 

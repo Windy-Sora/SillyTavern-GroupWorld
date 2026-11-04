@@ -66,7 +66,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const savedConnection = controller.snapshot().savedConnection;
     if (savedConnection && initialConnection?.source === 'st') {
         endpoint.value = savedConnection.endpoint; model.value = savedConnection.model; profile.value = savedConnection.profile || 'deepseek';
-        thinking.checked = savedConnection.thinking; effort.value = savedConnection.reasoningEffort || 'high';
+        thinking.checked = savedConnection.thinking; effort.value = savedConnection.reasoningEffort || (savedConnection.profile === 'responses' ? 'medium' : 'high');
     }
     source.value = initialConnection?.source || (initialConnection || savedConnection ? 'independent' : controller.snapshot().hostConnection?.available ? 'st' : 'independent');
     connectionForm.refreshOptions();
@@ -321,7 +321,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         const view = s.viewToken;
         const previousConnection = lastConnection;
         if (view !== lastView) { resetAuthorization(); lastView = view; }
-        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { source.value = s.connection.source || 'independent'; if (source.value !== 'st') { endpoint.value = s.connection.endpoint; model.value = s.connection.model; profile.value = s.connection.profile || 'deepseek'; thinking.checked = s.connection.thinking; effort.value = s.connection.reasoningEffort || 'high'; rememberKey.checked = s.connection.remembered !== false; autoConnect.checked = s.connection.autoConnect === true; } connectionForm.refreshOptions(); lastConnection = JSON.stringify(s.connection); }
+        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { source.value = s.connection.source || 'independent'; if (source.value !== 'st') { endpoint.value = s.connection.endpoint; model.value = s.connection.model; profile.value = s.connection.profile || 'deepseek'; thinking.checked = s.connection.thinking; effort.value = s.connection.reasoningEffort || (s.connection.profile === 'responses' ? 'medium' : 'high'); rememberKey.checked = s.connection.remembered !== false; autoConnect.checked = s.connection.autoConnect === true; } connectionForm.refreshOptions(); lastConnection = JSON.stringify(s.connection); }
         hostStatus.textContent = s.hostConnection?.available ? t('酒馆当前连接：', 'Current ST connection: ') + s.hostConnection.provider + ' · ' + s.hostConnection.model + ' · ' + s.hostConnection.endpoint : t('当前酒馆连接未配置、版本接口不可用或尚未支持。请配置酒馆的聊天补全连接，或使用独立接口。', 'ST connection is unavailable or unsupported. Configure a supported Chat Completion connection in ST or use a separate connection.');
         activeConnection.textContent = s.connection ? t('当前请求目标：', 'Active request destination: ') + s.connection.model + ' · ' + s.connection.endpoint : '';
         connectionForm.activeStatus.textContent = s.enabled && s.connection ? t('当前使用：', 'Currently using: ') + s.connection.model + ' · ' + s.connection.endpoint : t('当前未启用连接。', 'No active connection.');
@@ -338,7 +338,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         else if (s.permissionConfig?.readAccess === 'all') permissionSummary.textContent = t('阅读全开 · 修改与执行需确认', 'Reads allowed · Changes and execution require approval');
         savedKeyStatus.textContent = s.savedConnection ? t('已保存密钥；相同接口可留空使用。', 'Saved key available; leave blank for the same endpoint.') : t('未保存密钥', 'No saved key');
         forgetKey.disabled = !s.savedConnection || s.resetting;
-        if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; profile.value = s.savedConnection.profile || 'deepseek'; thinking.checked = s.savedConnection.thinking; effort.value = s.savedConnection.reasoningEffort || 'high'; connectionForm.refreshOptions(); rememberKey.checked = true; autoConnect.checked = s.savedConnection.autoConnect === true; lastConnection = 'saved'; }
+        if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; profile.value = s.savedConnection.profile || 'deepseek'; thinking.checked = s.savedConnection.thinking; effort.value = s.savedConnection.reasoningEffort || (s.savedConnection.profile === 'responses' ? 'medium' : 'high'); connectionForm.refreshOptions(); rememberKey.checked = true; autoConnect.checked = s.savedConnection.autoConnect === true; lastConnection = 'saved'; }
         status.textContent = [s.enabled ? t('已启用', 'Enabled') : t('未启用', 'Disabled'), (unified ? s.targetKind === 'chat' : task.scope === 'chat') ? t('绑定：当前聊天', 'Bound to current chat') : t('绑定：全局会话', 'Bound to global conversation'), s.resetting || s.draining ? t('等待上游清理…', 'Waiting for cleanup…') : s.busy ? t('运行中…', 'Running…') : t('空闲', 'Idle'), notices[s.notice] || ''].filter(Boolean).join(' · ');
         const latestProcess = s.runs.at(-1)?.process;
         if (localErrorCode && (localErrorIdentity !== errorIdentity(s) || localErrorRun !== s.runs.at(-1)?.id)) clearError();

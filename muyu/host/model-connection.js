@@ -42,6 +42,8 @@ export function createHostModelConnection({ getContext, stDiagnostics }) {
         const rawEndpoint = source === 'custom' ? settings.custom_url : settings.reverse_proxy && source !== 'openrouter' ? settings.reverse_proxy : URLS[source];
         let endpoint;
         try { const url = new URL(rawEndpoint); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error(); endpoint = url.href; } catch { throw modelError('HOST_CONNECTION_UNAVAILABLE'); }
+        // Only the native endpoint is known to require Responses; configured gateways may translate it.
+        if (source === 'openai' && new URL(endpoint).origin === URLS.openai && /^gpt-6\.1-sol(?:-|$)/.test(model)) throw modelError('HOST_CONNECTION_UNSUPPORTED');
         const route = { chat_completion_source: source, model, ...(source === 'custom' ? { custom_url: endpoint, custom_prompt_post_processing: '', custom_include_headers: settings.custom_include_headers || '' } : {}),
             ...(source !== 'custom' && source !== 'openrouter' && settings.reverse_proxy ? { reverse_proxy: endpoint, proxy_password: settings.proxy_password || '' } : {}),
             ...(source === 'openrouter' ? { provider: structuredClone(settings.openrouter_providers || []), allow_fallbacks: false, use_fallback: false } : {}) };

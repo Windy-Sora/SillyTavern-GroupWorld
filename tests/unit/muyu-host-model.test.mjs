@@ -42,6 +42,32 @@ test('ST models whose frontend removes tools are rejected before requesting', ()
         assert.equal(f.calls.length, 0);
     }
 });
+
+test('Native Sol requires the separate Responses connection rather than a silent ST downgrade', () => {
+    for (const reverse_proxy of ['', 'https://api.openai.com/v1', 'https://API.OPENAI.COM:443/v1']) {
+        const f = fixture('openai'); f.ctx.chatCompletionSettings.custom_model = 'gpt-6.1-sol'; f.ctx.chatCompletionSettings.reverse_proxy = reverse_proxy;
+        assert.equal(f.port.describe().available, false); assert.throws(() => f.port.bind(), /HOST_CONNECTION_UNSUPPORTED/);
+        assert.equal(f.calls.length, 0);
+    }
+});
+
+test('Sol through an explicitly configured compatible proxy retains ST tools and route-bound authorization', async () => {
+    const f = fixture('openai'), context = {}, r = request();
+    f.ctx.chatCompletionSettings.custom_model = 'gpt-6.1-sol';
+    f.ctx.chatCompletionSettings.reverse_proxy = 'https://compatible-gateway.invalid/v1';
+    f.ctx.chatCompletionSettings.proxy_password = 'PRIVATE_PROXY_KEY';
+    f.ctx.ChatCompletionService.sendRequest = async (...args) => { f.calls.push(args); return response('', [{ id: 'c1', type: 'function', function: { name: 'muyu_tool_0', arguments: '{}' } }]); };
+    assert.equal(f.port.describe().available, true);
+    const bound = f.port.bind(), events = await collect(bound.model, r, context);
+    assert.equal(events[0].call.toolId, 'example.read'); assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0][0].reverse_proxy, 'https://compatible-gateway.invalid/v1');
+    assert.equal(f.calls[0][0].chat_completion_source, 'openai'); assert.equal(f.calls[0][0].tools.length, 1);
+    assert.doesNotMatch(JSON.stringify([f.port.describe(), events]), /PRIVATE_PROXY_KEY/);
+    r.messages.push({ role: 'assistant', content: '', toolCalls: [events[0].call] }, { role: 'tool', callId: 'c1', result: { ok: true } });
+    f.ctx.chatCompletionSettings.reverse_proxy = 'https://other-gateway.invalid/v1';
+    await assert.rejects(collect(bound.model, r, context), /HOST_CONNECTION_CHANGED/);
+    assert.equal(f.calls.length, 1); bound.model.releaseContext(context);
+});
 test('ST adapter delegates authentication, sends only Muyu messages/tools, and resumes tool pairs', async () => {
     const f = fixture(), context = {}, bound = f.port.bind(), r = request();
     f.ctx.ChatCompletionService.sendRequest = async (...args) => { f.calls.push(args); return response('', [{ id: 'c1', type: 'function', function: { name: 'muyu_tool_0', arguments: '{}' } }]); };

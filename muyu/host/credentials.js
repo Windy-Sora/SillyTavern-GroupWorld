@@ -1,6 +1,7 @@
+import { connectionPreferences } from '../model/connection.js';
 const ID = 'muyu-assistant';
 const SOURCE_ID = 'muyu-connection-source';
-const options = c => ({ profile: c.profile || 'deepseek', thinking: (c.profile || 'deepseek') === 'deepseek' && c.thinking !== false, reasoningEffort: c.reasoningEffort || 'high' });
+const options = connectionPreferences;
 /** Opt-in extension setting; existing agentConfigs export paths strip apiKey. Not encryption. */
 export function createCredentialStore({ getSettings, saveSettings }) {
     const stored = () => getSettings().agentConfigs?.[ID];

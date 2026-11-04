@@ -93,3 +93,10 @@
 英文回答使用自然英文，不带“咕”等中文人设词；GUI名称可保留实际原名，不把中文字段名当正文语言。输出前检查建议的页面、观察与推断范围是否一致，避免先下确定结论、再用一句未知把它抵消。
 
 维护依据：`muyu/modules/self/README.md`、`muyu/self/config.js`、`muyu/ui/navigation-metadata.js`及实际工具Schema；这些路径仅为维护线索，不是模型文件访问能力。具体范围与数值以本轮工具、GUI和运行回执为准，不在技能内复制易过时的默认值。
+
+
+## Responses、推理强度与摘要
+
+自身 connection 分区可被动核对当前协议与“模型思考强度”，地址/模型正文仍需对应正文授权，绝不返回密钥。OpenAI Responses 默认 medium，可选 low/medium/high/xhigh/max，实际支持由所用模型决定；“开启 DeepSeek 思考”在 Responses 下是不适用，不是关闭了 Responses 推理。此值是连接配置，不能当作每次请求的实际强度。
+
+摘要请求使用低开销策略：DeepSeek 单次关闭思考；Responses 使用 low（不能声称完全关闭）；通用 Chat Completions 不额外发送专有思考参数。普通对话仍用原连接配置，不自行降低用户选择的强度。输出预算包含模型推理消耗，只有可见摘要正文通过完整性及缩减检查后才替换摘要；失败、拒答或截断不把半截内容当完整摘要，不删除原始对话。
